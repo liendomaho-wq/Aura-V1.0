@@ -1,5 +1,31 @@
 # Aura Mobile Defens
 
+«Defens» es ortografía intencional del producto; no corregir.
+
+Reporta vulnerabilidades en [SECURITY.md](SECURITY.md).
+
+## Índice
+
+- [1. Arquitectura](#1-arquitectura)
+  - [Estado de los cinco pilares de defensa](#estado-de-los-cinco-pilares-de-defensa)
+  - [Contrato de características](#contrato-de-características)
+  - [Blocklists de dominios](#blocklists-de-dominios)
+  - [Telemetría opcional de clasificación](#telemetría-opcional-de-clasificación)
+- [2. Incisiones integradas](#2-incisiones-integradas)
+  - [Inspección de DoH/DoQ e IPv6](#inspección-de-dohdoq-e-ipv6)
+- [3. Brain v2](#3-brain-v2)
+- [Configuración de Codemagic para Producción](#configuración-de-codemagic-para-producción)
+- [4. Pipeline de datos](#4-pipeline-de-datos)
+- [5. Firma y seguridad Android](#5-firma-y-seguridad-android)
+  - [Permisos y justificación](#permisos-y-justificación)
+- [6. GitHub Actions](#6-github-actions)
+- [7. Codemagic](#7-codemagic)
+- [8. Estructura del repositorio](#8-estructura-del-repositorio)
+- [9. Build y validación](#9-build-y-validación)
+- [10. Licencias y atribución](#10-licencias-y-atribución)
+- [11. Roadmap](#11-roadmap)
+- [12. Código crítico auditado](#12-código-crítico-auditado)
+
 **Versión de la aplicación:** `1.0.0+1` · **Versión del modelo:** `3.0.0` · **Estado:** En desarrollo
 
 Aura Mobile Defens es una aplicación Android de ciberdefensa local construida con Flutter/Dart y componentes nativos Kotlin, JNI y C. Su núcleo combina un `VpnService` autorizado por la persona usuaria, un túnel TUN basado en `hev-socks5-tunnel`, inspección DNS/SNI, una allowlist y un clasificador local de dominios. No requiere root. No es una solución certificada ni garantiza cobertura integral: el alcance depende del dispositivo, permisos, conectividad y protocolos observables.
@@ -87,7 +113,7 @@ La función `detect_idn_homoglyphs` en Python y `AuraAIInference.detectIdnHomogl
 
 Para typosquatting, `levenshtein_distance_to_top_domains` en Python y `AuraAIInference.levenshteinDistanceToTopDomains` en Dart retornan la mínima distancia de edición dividida por la longitud del host y limitada a 1 (`0.0` idéntico). Ambos usan exactamente el snapshot de 1000 dominios citado arriba. `is_probable_typosquatting` / `AuraAIInference.isProbableTyposquatting` aplica el umbral de 1–2 ediciones; dominios idénticos no se clasifican como typosquatting. Ejemplo: `goggle.com` obtiene `0.1` frente a `google.com` y activa el umbral.
 
-El snapshot Tranco `4672X` (lista diaria generada el 11 de octubre de 2026) se versiona en `tool/domain_lists/tranco_top_1000_20261012.txt` y se incorpora a Dart desde `lib/inference/aura_common_domains.dart`. Los modelos identifican su orden mediante `feature_order`: las inferencias mantienen el vector legado para el modelo publicado y seleccionan el nuevo vector solo para un candidato entrenado con las 18 características.
+Lista diaria de Tranco generada el 11/10/2026 y versionada el 12/10/2026 como `tool/domain_lists/tranco_top_1000_20261012.txt`. El snapshot `4672X` se incorpora a Dart desde `lib/inference/aura_common_domains.dart`. Los modelos identifican su orden mediante `feature_order`: las inferencias mantienen el vector legado para el modelo publicado y seleccionan el nuevo vector solo para un candidato entrenado con las 18 características.
 
 ## Blocklists de dominios
 
@@ -164,7 +190,7 @@ Merges posteriores también están en `main`: arreglo de `hashFiles()` inválido
 
 ## 3. Brain v2
 
-Asset publicado: [`assets/model/aura_brain_model.json`](assets/model/aura_brain_model.json). Esquema actual: `random_forest`, clases `safe`/`threat` y seis características originales. El nuevo vector de 15 campos está listo para el próximo entrenamiento; el asset publicado no se regenera sin los splits de entrenamiento versionados.
+Asset publicado: [`assets/model/aura_brain_model.json`](assets/model/aura_brain_model.json). Esquema actual: `random_forest`, clases `safe`/`threat` y seis características originales. El nuevo vector de 18 campos está listo para el próximo entrenamiento; el asset publicado no se regenera sin los splits de entrenamiento versionados.
 
 El entrenador genera candidatos `4.0.0` con `feature_order` y `metadata` (`version`, `feature_count`, `feature_names`, `trained_at`) para las 18 características. El preset móvil cuantiza los umbrales a cuatro decimales y solo selecciona modelos de menos de 4 MiB; además, exige al menos 500 filas por clase en cada split, incluido test. El asset publicado seguirá en `3.0.0` hasta que se ejecute el entrenamiento con los splits disponibles y se publique el candidato firmado.
 
@@ -240,6 +266,14 @@ Reproducción: `python -m pip install -r tool/requirements-train.txt`, `python t
 
 La configuración Android usa `compileSdk 36`, `targetSdk 36` y NDK `26.3.11579264` (versión estable con parches de seguridad actualizados).
 
+### Permisos y justificación
+
+- `RECORD_AUDIO`: el reconocimiento de voz se inicia desde la consola; Android solicita este permiso al invocar `startListening` y abre `RecognizerIntent.ACTION_RECOGNIZE_SPEECH` en español. Aura recibe el primer texto reconocido. El código del repositorio no confirma cómo procesa el audio el proveedor de reconocimiento instalado, por lo que no se afirma que el audio permanezca en el dispositivo ni que no se envíe a servidores. `lib/voice_engine.dart` reproduce respuestas con TTS; no captura audio.
+- `QUERY_ALL_PACKAGES`: permite que `AuraAppGenomeScanner` consulte aplicaciones instaladas y analice permisos, servicios, firmas y señales de ofuscación para el pilar 2 (inventario de apps). Es un permiso restringido por Google Play: para publicar allí se requiere declararlo y justificar su necesidad. Una alternativa futura es migrar a `<queries>` con paquetes específicos, si el alcance funcional lo permite.
+- `FOREGROUND_SERVICE` y `FOREGROUND_SERVICE_SPECIAL_USE`: se declaran para el `VpnService` y para el servicio de notificaciones persistentes asociados al escudo VPN autorizado por la persona usuaria.
+
+La aplicación no requiere root.
+
 ### Mecanismo de Fallback Controlado (Desarrollo/CI)
 Para garantizar la continuidad del pipeline de CI/CD sin exponer secretos en repositorios públicos, el sistema implementa un **fallback controlado**: si las variables de entorno de producción (`AURA_KEYSTORE_PATH`, etc.) no están presentes, el build utiliza automáticamente `signingConfigs.debug`.
 
@@ -282,11 +316,12 @@ assets/model/          modelo JSON, SHA-256 y firma
 lib/                   Flutter/Dart: agent, crypto, inference, providers, screens, services, theme
 android/app/           Gradle, manifest, Kotlin/Java, JNI y C
   src/main/cpp/        aura_crypto_secure, aura_sni_firewall, hev-socks5-tunnel
- tool/                 dataset, entrenamiento, benchmark, firma, build y pruebas
+tool/                  dataset, snapshot Tranco, entrenamiento, benchmark, firma, build y pruebas
   dataset/             fuentes licenciadas, parser y fixture offline
+  domain_lists/        snapshot Tranco Top 1000 versionado
   reports/             métricas locales ignoradas por Git
 .github/workflows/     release-signing-integrity, model-training, deploy-model-pages
- data/                 fuentes crudas, CSV, manifiesto y splits regenerables
+data/                  fuentes crudas, CSV, manifiesto y splits (NO versionado; regenerable con tool/dataset/build_dataset.py)
  test/                 pruebas Flutter/Dart
 ```
 
@@ -329,8 +364,10 @@ android/app/src/main/java/hev/htproxy/TProxyService.java
 android/app/src/main/kotlin/com/aura/cyberdefense/AuraCryptoSecure.kt
 android/app/src/main/kotlin/com/aura/cyberdefense/AuraNotificationService.kt
 android/app/src/main/kotlin/com/ciberdefensa/aura/AuraAppGenomeScanner.kt
+android/app/src/main/kotlin/com/ciberdefensa/aura/AuraBlocklistService.kt
 android/app/src/main/kotlin/com/ciberdefensa/aura/AuraHostileEnvironment.kt
 android/app/src/main/kotlin/com/ciberdefensa/aura/AuraNetworkStream.kt
+android/app/src/main/kotlin/com/ciberdefensa/aura/AuraTelemetryService.kt
 android/app/src/main/kotlin/com/ciberdefensa/aura/AuraUpdateWorker.kt
 android/app/src/main/kotlin/com/ciberdefensa/aura/AuraVpnService.kt
 android/app/src/main/kotlin/com/ciberdefensa/aura/MainActivity.kt
@@ -342,6 +379,8 @@ assets/model/aura_brain_model.json
 assets/model/aura_brain_model.json.sha256
 assets/model/aura_brain_model.json.sig
 ```
+
+Conviven dos namespaces Kotlin por legado: `com.aura.cyberdefense` (`AuraCryptoSecure`, `AuraNotificationService`) y `com.ciberdefensa.aura` (resto). Su unificación está pendiente y requiere revisar referencias de manifest, JNI y MethodChannel.
 
 Herramientas versionadas:
 
@@ -363,10 +402,10 @@ tool/train_max_aura_brain.py
 
 ## 9. Build y validación
 
-Para un build local se requiere Flutter stable, JDK 17, Android SDK Platform 36, Build Tools 36.0.0, NDK 25.2.13676358 y CMake 3.22.1. El build debug no necesita credenciales de release. Instala los componentes Android con `sdkmanager` y ejecuta:
+Para un build local se requiere Flutter stable, JDK 17, Android SDK Platform 36, Build Tools 36.0.0, NDK 26.3.11579264 y CMake 3.22.1. El build debug no necesita credenciales de release. Instala los componentes Android con `sdkmanager` y ejecuta:
 
 ```sh
-sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;25.2.13676358" "cmake;3.22.1"
+sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;26.3.11579264" "cmake;3.22.1"
 flutter pub get
 flutter analyze
 flutter test
@@ -412,7 +451,7 @@ Pendientes propuestos, no funciones completadas:
 
 ## 12. Código crítico auditado
 
-Los bloques siguientes se insertan literalmente desde los archivos versionados. Actualízalos al cambiar el código.
+> Sincronizado con el estado de `main` a fecha de hoy. Si modificas estos archivos, regenera esta sección o sustitúyela por permalinks al commit.
 
 ### `android/app/build.gradle` (completo)
 ```groovy
@@ -425,30 +464,20 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
-def releaseSigningVariables = [
-    "AURA_KEYSTORE_PATH",
-    "AURA_STORE_PASSWORD",
-    "AURA_KEY_ALIAS",
-    "AURA_KEY_PASSWORD",
-]
-def releaseSigningValues = releaseSigningVariables.collectEntries {
-    [(it): System.getenv(it)]
+def blocklistManifestUrl = System.getenv("AURA_BLOCKLIST_MANIFEST_URL") ?: ""
+def phishTankAppKey = System.getenv("PHISHTANK_APP_KEY") ?: ""
+def telemetryEndpoint = System.getenv("AURA_TELEMETRY_ENDPOINT") ?: ""
+def modelVersion = System.getenv("AURA_MODEL_VERSION") ?: "3.0.0"
+def buildConfigString = { value ->
+    '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 }
-def releaseSigningConfigured = releaseSigningValues.values().any {
-    it != null && !it.trim().isEmpty()
-}
-def releaseSigningComplete = releaseSigningValues.values().every {
-    it != null && !it.trim().isEmpty()
-}
-def releaseKeystorePath = releaseSigningValues["AURA_KEYSTORE_PATH"]
-def releaseKeystoreFile = releaseKeystorePath
-    ? project.file(releaseKeystorePath).absoluteFile
-    : null
 
 android {
     namespace "com.ciberdefensa.aura"
     compileSdk 36
-    ndkVersion = "25.2.13676358"
+
+    // ✅ SOLUCIÓN: Forzar una versión de NDK estable y disponible en los repositorios de Android
+    ndkVersion "26.3.11579264"
 
     buildFeatures {
         buildConfig true
@@ -469,6 +498,26 @@ android {
         targetSdk 36
         versionCode 1
         versionName "1.0.0"
+        buildConfigField(
+            "String",
+            "AURA_BLOCKLIST_MANIFEST_URL",
+            buildConfigString(blocklistManifestUrl),
+        )
+        buildConfigField(
+            "String",
+            "PHISHTANK_APP_KEY",
+            buildConfigString(phishTankAppKey),
+        )
+        buildConfigField(
+            "String",
+            "AURA_TELEMETRY_ENDPOINT",
+            buildConfigString(telemetryEndpoint),
+        )
+        buildConfigField(
+            "String",
+            "AURA_MODEL_VERSION",
+            buildConfigString(modelVersion),
+        )
 
         ndk {
             abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
@@ -487,9 +536,21 @@ android {
 
     buildTypes {
         release {
-            if (releaseSigningComplete && releaseKeystoreFile.isFile()) {
-                signingConfig signingConfigs.release
-            }
+            // Verificar si tenemos todas las variables de producción
+            def hasReleaseSigning = System.getenv("AURA_KEYSTORE_PATH") != null &&
+                                    System.getenv("AURA_STORE_PASSWORD") != null &&
+                                    System.getenv("AURA_KEY_ALIAS") != null &&
+                                    System.getenv("AURA_KEY_PASSWORD") != null
+
+            def keystoreFile = hasReleaseSigning ? project.file(System.getenv("AURA_KEYSTORE_PATH")).absoluteFile : null
+            def isDebugFallback = !hasReleaseSigning || keystoreFile == null || !keystoreFile.isFile()
+
+            // Aplicar la configuración de firma (fallback a debug si es necesario)
+            signingConfig isDebugFallback ? signingConfigs.debug : signingConfigs.release
+
+            // ✅ FASE 1: Inyectar bandera para que Dart sepa su postura de seguridad
+            buildConfigField "boolean", "IS_DEBUG_FALLBACK", String.valueOf(isDebugFallback)
+
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -502,6 +563,7 @@ dependencies {
     implementation "androidx.biometric:biometric:1.1.0"
     implementation "androidx.work:work-runtime-ktx:2.10.1"
     implementation "androidx.core:core-ktx:1.16.0"
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
 }
 
 def signingCertificateSha256 = { signingConfig ->
@@ -554,35 +616,6 @@ android.buildTypes.each { buildType ->
         "AURA_ALLOWED_CERT_SHA256",
         "\"${activeCertificateSha256 ?: ''}\"",
     )
-}
-
-gradle.taskGraph.whenReady { taskGraph ->
-    def releaseSigningRequested = taskGraph.allTasks.any { task ->
-        task.project == project &&
-            (task.name == "printReleaseSigning" || task.name.toLowerCase().contains("release"))
-    }
-    if (releaseSigningRequested) {
-        if (releaseSigningConfigured && !releaseSigningComplete) {
-            def missingVariables = releaseSigningVariables.findAll {
-                def value = releaseSigningValues[it]
-                value == null || value.trim().isEmpty()
-            }
-            throw new GradleException(
-                "Missing required release signing environment variable(s): ${missingVariables.join(', ')}"
-            )
-        }
-        if (releaseSigningComplete &&
-            (releaseKeystoreFile == null || !releaseKeystoreFile.isFile())) {
-            throw new GradleException(
-                "AURA_KEYSTORE_PATH must point to an existing keystore file. Release signing credentials were supplied, but the keystore is unavailable."
-            )
-        }
-        if (!releaseSigningConfigured) {
-            logger.warn(
-                "No release signing credentials were supplied; the release artifact will be unsigned."
-            )
-        }
-    }
 }
 
 tasks.register("printReleaseSigning") {
@@ -644,11 +677,10 @@ workflows:
     instance_type: mac_mini_m1
     environment:
       groups:
-        - production_keys
+        - production_keys # Puedes dejarlo o quitarlo, ya no fallará si está vacío
       vars:
         PACKAGE_NAME: "com.aura.cyberdefense"
         AURA_BUILD_FORMAT: "apk"
-      # AURA_PUBLIC_KEY_ENV is injected by production_keys; store only the Base64 DER body there.
       flutter: stable
       java: 17
     triggering:
@@ -658,33 +690,15 @@ workflows:
         - pattern: 'main'
         - pattern: 'principal'
     scripts:
-      - name: Resolve Codemagic keystore file variable
+      - name: Resolve Codemagic keystore file variable (Optional)
         script: |
           set -euo pipefail
           if [[ -n "${AURA_KEYSTORE_FILE:-}" && -z "${AURA_KEYSTORE_PATH:-}" ]]; then
-            [[ -f "$AURA_KEYSTORE_FILE" ]] || {
-              printf '%s\n' '[AURA-PREFLIGHT][ERROR] AURA_KEYSTORE_FILE does not reference an existing file.' >&2
-              exit 1
-            }
-            [[ -n "${CM_ENV:-}" ]] || {
-              printf '%s\n' '[AURA-PREFLIGHT][ERROR] CM_ENV is unavailable for persisting AURA_KEYSTORE_PATH.' >&2
-              exit 1
-            }
-            printf 'AURA_KEYSTORE_PATH=%s\n' "$AURA_KEYSTORE_FILE" >> "$CM_ENV"
-          fi
-      - name: Preflight release signing variables
-        script: |
-          set -euo pipefail
-          missing=()
-          for variable in AURA_STORE_PASSWORD AURA_KEY_ALIAS AURA_KEY_PASSWORD; do
-            [[ -n "${!variable:-}" ]] || missing+=("$variable")
-          done
-          if [[ -z "${AURA_KEYSTORE_PATH:-}" && -z "${AURA_KEYSTORE_BASE64:-}" ]]; then
-            missing+=("AURA_KEYSTORE_PATH or AURA_KEYSTORE_BASE64")
-          fi
-          if ((${#missing[@]} > 0)); then
-            printf '[AURA-PREFLIGHT][ERROR] Configure required production_keys variables: %s\n' "${missing[*]}" >&2
-            exit 1
+            if [[ -f "$AURA_KEYSTORE_FILE" && -n "${CM_ENV:-}" ]]; then
+              printf 'AURA_KEYSTORE_PATH=%s\n' "$AURA_KEYSTORE_FILE" >> "$CM_ENV"
+            else
+              echo '[AURA-PREFLIGHT][WARNING] AURA_KEYSTORE_FILE missing. Falling back to debug signing.'
+            fi
           fi
       - name: Build Android Release artifact
         script: |
@@ -699,7 +713,7 @@ workflows:
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
       - build/app/outputs/bundle/release/*.aab
-
+          fi
 ```
 
 ### `tool/compile_aura.sh` (completo)
@@ -716,6 +730,18 @@ fail() {
     printf '[AURA-BUILD][ERROR] %s\n' "$*" >&2
     exit 1
 }
+
+# --- FASE 1: Detección de fallback y protección de rama principal ---
+USE_DEBUG_SIGNING=false
+if [[ -z "${AURA_KEYSTORE_PATH:-}" && -z "${AURA_KEYSTORE_BASE64:-}" ]]; then
+    log "WARNING: Production signing variables missing. Falling back to DEBUG signing configuration."
+    USE_DEBUG_SIGNING=true
+
+    # Proteger la rama principal: el fallback solo es para desarrollo
+    if [[ "${CM_BRANCH:-}" == "main" || "${CM_BRANCH:-}" == "principal" || "${GITHUB_REF:-}" == "refs/heads/main" ]]; then
+        fail "CRITICAL: Production signing variables are strictly required for main/principal branches. Debug fallback is not allowed."
+    fi
+fi
 
 mode="build"
 case "${1:-}" in
@@ -755,10 +781,8 @@ resolve_keystore() {
         [[ -n "${AURA_KEYSTORE_BASE64:-}" ]] ||
             fail "AURA_KEYSTORE_PATH must reference an existing readable file, or set AURA_KEYSTORE_BASE64."
     fi
-
     [[ -n "${AURA_KEYSTORE_BASE64:-}" ]] ||
         fail "Missing release keystore: set AURA_KEYSTORE_PATH or AURA_KEYSTORE_BASE64."
-
     local keystore_file
     keystore_file="$(mktemp "${TMPDIR:-/tmp}/aura-release-keystore.XXXXXX")"
     temporary_files+=("$keystore_file")
@@ -773,20 +797,6 @@ resolve_keystore() {
     fi
     [[ -s "$keystore_file" ]] || fail "AURA_KEYSTORE_BASE64 decoded to an empty keystore."
     export AURA_KEYSTORE_PATH="$keystore_file"
-}
-
-require_release_signing_environment() {
-    local required_variables=(AURA_STORE_PASSWORD AURA_KEY_ALIAS AURA_KEY_PASSWORD)
-    local missing_variables=()
-    local variable
-    for variable in "${required_variables[@]}"; do
-        [[ -n "${!variable:-}" ]] || missing_variables+=("$variable")
-    done
-    if [[ -z "${AURA_KEYSTORE_PATH:-}" && -z "${AURA_KEYSTORE_BASE64:-}" ]]; then
-        missing_variables+=("AURA_KEYSTORE_PATH or AURA_KEYSTORE_BASE64")
-    fi
-    ((${#missing_variables[@]} == 0)) ||
-        fail "Missing required release signing environment variable(s): ${missing_variables[*]}"
 }
 
 validate_signing_credentials() {
@@ -851,6 +861,10 @@ verify_release_signer() {
         [[ "$certificate_fingerprint" =~ ^[[:xdigit:]]{64}$ ]] ||
             fail "apksigner did not return a valid SHA-256 certificate fingerprint."
         log "APK signer verification used apksigner."
+    elif [[ "$USE_DEBUG_SIGNING" == "true" ]]; then
+        log "WARNING: keytool signature validation skipped in DEBUG fallback mode."
+        certificate_fingerprint="DEBUG_FALLBACK"
+        certificate_subject="Android Debug (fallback)"
     else
         if [[ "$extension" == "apk" ]]; then
             log "apksigner unavailable; using keytool keystore-certificate fallback (does not inspect APK bytes)."
@@ -867,7 +881,11 @@ verify_release_signer() {
     fi
 
     if grep -Fqi 'Android Debug' <<< "$certificate_subject"; then
-        fail "Release artifact is signed with the public Android Debug certificate."
+        if [[ "$USE_DEBUG_SIGNING" == "true" ]]; then
+            log "WARNING: Artifact is signed with Android Debug certificate (Fallback mode active)."
+        else
+            fail "Release artifact is signed with the public Android Debug certificate."
+        fi
     fi
     printf 'CERT_SHA256=%s\n' "$certificate_fingerprint"
 }
@@ -876,9 +894,13 @@ project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 android_dir="$project_root/android"
 local_properties="$android_dir/local.properties"
 
-require_release_signing_environment
-resolve_keystore
-validate_signing_credentials
+if [[ "$USE_DEBUG_SIGNING" == "false" ]]; then
+    resolve_keystore
+    validate_signing_credentials
+    signing_fingerprint="$(keytool_certificate_info)"
+else
+    signing_fingerprint="DEBUG_FALLBACK"
+fi
 build_format="${AURA_BUILD_FORMAT:-apk}"
 case "$build_format" in
     apk) ;;
@@ -886,8 +908,6 @@ case "$build_format" in
     appbundle) ;;
     *) fail "AURA_BUILD_FORMAT must be 'apk', 'aab' or 'appbundle'." ;;
 esac
-signing_fingerprint="$(keytool_certificate_info)"
-
 if [[ "$mode" == "check-signing" ]]; then
     printf 'CERT_SHA256=%s\n' "$signing_fingerprint"
     exit 0
@@ -943,7 +963,7 @@ export PATH="$FLUTTER_ROOT/bin:$PATH"
 if [[ -z "${AURA_PUBLIC_KEY_ENV:-}" ]]; then
     AURA_PUBLIC_KEY_ENV='MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuG7nFF0UbTjT6Y8Ju0p31nVPiqx3aq6yg7+g/JtRJ+Y9WDAY504WdCnACplCVwju/5tnJhkvD3kWbsmfX45t9ZqMyCBo4stXbvRdbpe2WwMmxR/9ZHGGQQ1vjKyE4klsQ03aC836GW8l5y1IV/jknU4C03GRRMjfhkwTKpMjqq3kZAgQ62Yo2Prw0fB2c7b/2RjN5yiUZLtjh8FEQBhe8aW+4lrxEVkRJZxPrkbYdQoqBQKm2hQq1AUHurXx+HwHqDplb6mTcNttbnFtrkS0IDqXrhDSAHjaMLY8k6zyCutL7kTPBrAb44KaYvTRhMRBeUyOXHIb9YfxgAA0cCNs5wIDAQAB'
     public_key_source="build-only fallback"
-    log "WARNING: AURA_PUBLIC_KEY_ENV is empty; using the build-only fallback key. Signed model updates will fail closed. Configure production_keys for a production release."
+    log "WARNING: AURA_PUBLIC_KEY_ENV is empty; using the build-only fallback key."
 else
     public_key_source="production"
 fi
@@ -1006,12 +1026,20 @@ fi
 
 cd "$project_root"
 if [[ "$build_format" == "apk" ]]; then
-    log "Building the release APK with the ${public_key_source} RSA public key."
+    if [[ "$USE_DEBUG_SIGNING" == "true" ]]; then
+        log "Building the release APK with DEBUG signing (production keys missing)."
+    else
+        log "Building the release APK with the ${public_key_source} RSA public key."
+    fi
     "$FLUTTER_ROOT/bin/flutter" build apk --release \
         --dart-define="AURA_PUBLIC_KEY=$AURA_PUBLIC_KEY_ENV"
     release_artifact="$project_root/build/app/outputs/flutter-apk/app-release.apk"
 else
-    log "Building the release app bundle with the ${public_key_source} RSA public key."
+    if [[ "$USE_DEBUG_SIGNING" == "true" ]]; then
+        log "Building the release app bundle with DEBUG signing (production keys missing)."
+    else
+        log "Building the release app bundle with the ${public_key_source} RSA public key."
+    fi
     "$FLUTTER_ROOT/bin/flutter" build appbundle --release \
         --dart-define="AURA_PUBLIC_KEY=$AURA_PUBLIC_KEY_ENV"
     release_artifact="$project_root/build/app/outputs/bundle/release/app-release.aab"
@@ -1068,98 +1096,28 @@ jobs:
         uses: actions/deploy-pages@v4
 ```
 
-### `tool/train_max_aura_brain.py` (extractor original de seis características)
+### `tool/train_max_aura_brain.py` (extractor activo y legado)
 
-El fragmento siguiente conserva el baseline histórico de Brain v2. Para el vector activo de 18 características, consulte [`extract_enhanced_features`](./tool/train_max_aura_brain.py) y el contrato de esta sección.
+El siguiente extracto literal contiene el extractor activo de 18 características y el extractor de compatibilidad para los modelos históricos de seis características.
 
 ```python
-import argparse
-import csv
-import hashlib
-import json
-import math
-import os
-import tempfile
-import time
-from datetime import datetime, timezone
-from pathlib import Path
-
-import numpy as np
-from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.tree import _tree
-
-ROOT = Path(__file__).resolve().parents[1]
-FEATURE_ORDER = [
-    "length",
-    "shannon_entropy",
-    "digit_ratio",
-    "vowel_ratio",
-    "consonant_sequence_ratio",
-    "suspicious_tld",
-]
-SUSPICIOUS_TLDS = {
-    "cam", "click", "country", "date", "download", "fit", "gq", "loan",
-    "mov", "party", "review", "rest", "stream", "support", "tk", "top",
-    "wang", "work", "xyz", "zip",
-}
-DATASET_DIR = ROOT / "data"
-REPORTS_DIR = ROOT / "tool/reports"
-MODEL_OUTPUT = REPORTS_DIR / "aura_brain_model.json"
-METRICS_JSON = REPORTS_DIR / "metrics.json"
-METRICS_MARKDOWN = REPORTS_DIR / "metrics.md"
-MOBILE_MODEL_OUTPUT = REPORTS_DIR / "aura_brain_model_mobile.json"
-MOBILE_METRICS_JSON = REPORTS_DIR / "metrics_mobile.json"
-MOBILE_METRICS_MARKDOWN = REPORTS_DIR / "metrics_mobile.md"
-MOBILE_SIZE_TRIALS = REPORTS_DIR / "mobile_size_trials.json"
-MAX_MOBILE_MODEL_BYTES = 4 * 1024 * 1024
-EXPECTED_CLASSES = {0, 1}
-MIN_TEST_ROWS_PER_CLASS = 500
-
-
-def normalize_domain(value):
-    return value.strip().lower().rstrip(".")
-SEED_DATASET = [
-    ("google.com", 0), ("github.com", 0), ("whatsapp.com", 0),
-    ("amazon.com", 0), ("bancodevenezuela.com", 0), ("codemagic.io", 0),
-    ("flutter.dev", 0), ("wikipedia.org", 0), ("microsoft.com", 0),
-    ("netflix.com", 0), ("binance.com", 0), ("youtube.com", 0),
-    ("stackoverflow.com", 0), ("apple.com", 0), ("linkedin.com", 0),
-    ("zoom.us", 0), ("cloudflare.com", 0), ("android.com", 0),
-    ("x7z9q1wplmnb.xyz", 1), ("aqwzsxedcrfv12.top", 1),
-    ("free-crypto-rewards.click", 1), ("update-system-android.live", 1),
-    ("cxj9812kmzsloq.cc", 1), ("malicious-payload-server.info", 1),
-    ("shw28190axmzq.xyz", 1), ("get-root-bypass.top", 1),
-    ("91kazmslqo1029az.biz", 1), ("free-cleaner-android.gq", 1),
-    ("p0wz9172mlxozq.tk", 1), ("get-unlocked-premium.fit", 1),
-]
-
-
-def calculate_shannon_entropy(domain_string):
-    if not domain_string:
-        return 0.0
-    frequencies = {}
-    for character in domain_string.lower():
-        frequencies[character] = frequencies.get(character, 0) + 1
-    length = len(domain_string)
-    return -sum(
-        (count / length) * math.log2(count / length)
-        for count in frequencies.values()
-    )
+def extract_enhanced_features(domain):
+    return extract_maximum_features(domain)
 
 
 def extract_maximum_features(domain):
     host = normalize_domain(domain)
     length = len(host)
     if length == 0:
-        return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        return [0.0] * 18
 
-    letters = [character for character in host if character.isascii() and character.isalpha()]
+    labels = host.split(".")
+    tld = labels[-1]
+    ascii_letters = [character for character in host if character.isascii() and character.isalpha()]
     digits = sum(character.isascii() and character.isdigit() for character in host)
-    vowels = sum(character in "aeiou" for character in letters)
-    letter_count = len(letters)
-    run_length = 0
+    vowels = sum(character in "aeiou" for character in ascii_letters)
     consonant_sequence_characters = 0
+    run_length = 0
     for character in host:
         if character.isascii() and character.isalpha() and character not in "aeiou":
             run_length += 1
@@ -1169,65 +1127,79 @@ def extract_maximum_features(domain):
             run_length = 0
     if run_length >= 3:
         consonant_sequence_characters += run_length
+    consecutive_digits = any(
+        host[index].isascii()
+        and host[index].isdigit()
+        and host[index + 1].isascii()
+        and host[index + 1].isdigit()
+        for index in range(length - 1)
+    )
+    rare_characters = sum(character in _RARE_CHARACTERS for character in host)
 
+    return [
+        float(length),
+        calculate_shannon_entropy(host),
+        digits / length,
+        vowels / len(ascii_letters) if ascii_letters else 0.0,
+        (
+            consonant_sequence_characters / len(ascii_letters)
+            if ascii_letters
+            else 0.0
+        ),
+        float(tld in SUSPICIOUS_TLDS),
+        min(levenshtein_distance_to_top_domains(host), 1.0),
+        calculate_bigram_repeat_ratio(host),
+        calculate_trigram_repeat_ratio(host),
+        min(host.count(".") / 126.0, 1.0),
+        min(len(tld) / 63.0, 1.0),
+        detect_idn_homoglyphs(host),
+        sum(not character.isascii() for character in host) / length,
+        float(consecutive_digits),
+        calculate_conditional_entropy(host),
+        rare_characters / len(ascii_letters) if ascii_letters else 0.0,
+        min(max(map(len, labels), default=0) / 63.0, 1.0),
+        float(any(keyword in host for keyword in SUSPICIOUS_KEYWORDS)),
+    ]
+
+
+def extract_legacy_features(domain):
+    host = normalize_domain(domain)
+    length = len(host)
+    if not length:
+        return [0.0] * len(LEGACY_FEATURE_ORDER)
+
+    letters = [
+        character
+        for character in host
+        if character.isascii() and character.isalpha()
+    ]
+    digits = sum(character.isascii() and character.isdigit() for character in host)
+    vowels = sum(character in "aeiou" for character in letters)
+    consonant_sequence_characters = 0
+    run_length = 0
+    for character in host:
+        if character.isascii() and character.isalpha() and character not in "aeiou":
+            run_length += 1
+        else:
+            if run_length >= 3:
+                consonant_sequence_characters += run_length
+            run_length = 0
+    if run_length >= 3:
+        consonant_sequence_characters += run_length
     tld = host.rsplit(".", 1)[-1]
     return [
         float(length),
         calculate_shannon_entropy(host),
         digits / length,
-        vowels / letter_count if letter_count else 0.0,
-        consonant_sequence_characters / letter_count if letter_count else 0.0,
+        vowels / len(letters) if letters else 0.0,
+        consonant_sequence_characters / len(letters) if letters else 0.0,
         float(tld in SUSPICIOUS_TLDS),
     ]
-
-
-def read_split(path):
-    if not path.is_file():
-        raise FileNotFoundError(f"Dataset split is missing: {path}")
-    rows = []
-    with path.open("r", encoding="utf-8", newline="") as stream:
-        reader = csv.DictReader(stream)
-        expected_header = ["domain", "label", "source", "license", "retrieved_at"]
-        if reader.fieldnames != expected_header:
-            raise ValueError(f"Unexpected dataset CSV schema in {path}: {reader.fieldnames}")
-        for row in reader:
-            domain = row["domain"].strip().lower()
-            if not domain or "." not in domain or row["label"] not in {"0", "1"}:
-                raise ValueError(f"Invalid dataset row in {path}: {row}")
-            rows.append((domain, int(row["label"])))
-    return rows
-
-
-def evaluate_metrics(labels, predictions):
-    matrix = confusion_matrix(labels, predictions, labels=[0, 1])
-    true_negative, false_positive, false_negative, true_positive = matrix.ravel()
-    specificity_denominator = true_negative + false_positive
-    return {
-        "accuracy": float(accuracy_score(labels, predictions)),
-        "precision": float(precision_score(labels, predictions, zero_division=0)),
-        "recall": float(recall_score(labels, predictions, zero_division=0)),
-        "f1": float(f1_score(labels, predictions, zero_division=0)),
-        "false_positive_rate": (
-            float(false_positive / specificity_denominator)
-            if specificity_denominator
-            else 0.0
-        ),
-        "confusion_matrix": {
-            "labels": ["safe", "threat"],
-            "rows_actual_columns_predicted": matrix.tolist(),
-            "true_negative": int(true_negative),
-            "false_positive": int(false_positive),
-            "false_negative": int(false_negative),
-            "true_positive": int(true_positive),
-        },
-    }
-
-
 ```
 
 El resto valida al menos 500 filas por clase en cada split. El modo `full` ajusta 500 árboles y escribe candidato/métricas en `tool/reports/`. `--preset mobile` conserva 500 árboles, busca poda/profundidad bajo 4 MiB, cuantiza umbrales a cuatro decimales y mide el JSON serializado contra test/val; no reemplaza automáticamente el asset.
 
-### `tool/dataset/build_dataset.py` (primeras 150 líneas)
+### `tool/dataset/build_dataset.py` (normalización y preparación)
 ```python
 #!/usr/bin/env python3
 """Download licensed domain sources and build deterministic Aura CSV splits."""
@@ -1379,6 +1351,8 @@ def write_csv(path: Path, rows: list[dict[str, object]]) -> None:
 
 
 def class_counts(rows: list[dict[str, object]]) -> dict[str, int]:
+    labels = Counter(int(row["label"]) for row in rows)
+    return {"safe": labels.get(0, 0), "threat": labels.get(1, 0)}
 ```
 
 El resto descarga las fuentes seleccionadas, registra licencia/hash/timestamp, normaliza y valida dominios, elimina duplicados/conflictos, crea splits estratificados con semilla fija y escribe CSV/manifiesto. Majestic es el baseline seguro obligatorio. No uses `--allow-seed-only` para afirmar evaluación holdout.
