@@ -57,16 +57,16 @@ class NetworkAuditEvent {
       requestedDomain is! String ||
       (action != 'BLOCKED' && action != 'DGA_ALERT' && action != 'ALLOWED' &&
           action != 'SNI_OBSERVED' && action != 'ENCRYPTED_DNS_BLOCKED') ||
-      (destinationAddress != null && destinationAddress is! String) ||
-      (destinationAddress is String && normalizedDestination == null) ||
-      (destinationPort != null &&
-          (destinationPort is! num ||
-              !destinationPort.isFinite ||
-              destinationPort % 1 != 0 ||
-              destinationPort < 1 ||
-              destinationPort > 65535)) ||
-      (transportProtocol != null && transportProtocol is! String) ||
-      (publicDnsResolver != null && publicDnsResolver is! bool)) {
+        (destinationAddress != null && destinationAddress is! String) ||
+        (destinationAddress is String && normalizedDestination == null) ||
+        (destinationPort != null &&
+            (destinationPort is! num ||
+                !destinationPort.isFinite ||
+                destinationPort % 1 != 0 ||
+                destinationPort < 1 ||
+                destinationPort > 65535)) ||
+        (transportProtocol != null && transportProtocol is! String) ||
+        (publicDnsResolver != null && publicDnsResolver is! bool)) {
       throw const FormatException('El evento de red tiene campos inválidos.');
     }
 
@@ -120,7 +120,43 @@ String? _normalizeIpAddress(String input) {
   if (candidate.startsWith('[') && candidate.endsWith(']')) {
     candidate = candidate.substring(1, candidate.length - 1);
   }
-  return InternetAddress.tryParse(candidate)?.address;
+  final address = InternetAddress.tryParse(candidate);
+  if (address == null) return null;
+  if (address.type != InternetAddressType.IPv6) return address.address;
+
+  final bytes = address.rawAddress;
+  final groups = List<int>.generate(
+    8,
+    (index) => (bytes[index * 2] << 8) | bytes[index * 2 + 1],
+  );
+  var bestStart = -1;
+  var bestLength = 1;
+  for (var start = 0; start < groups.length;) {
+    if (groups[start] != 0) {
+      start++;
+      continue;
+    }
+    var end = start + 1;
+    while (end < groups.length && groups[end] == 0) {
+      end++;
+    }
+    if (end - start > bestLength) {
+      bestStart = start;
+      bestLength = end - start;
+    }
+    start = end;
+  }
+  if (bestStart == -1) {
+    return groups.map((group) => group.toRadixString(16)).join(':');
+  }
+
+  final before =
+      groups.take(bestStart).map((group) => group.toRadixString(16)).join(':');
+  final after = groups
+      .skip(bestStart + bestLength)
+      .map((group) => group.toRadixString(16))
+      .join(':');
+  return '$before::$after';
 }
 
 class AuraNetworkAuditor {

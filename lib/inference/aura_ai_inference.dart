@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -88,6 +89,16 @@ class AuraAIInference {
     r'^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+'
     r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$',
   );
+  static final RegExp _domainPattern = RegExp(
+    r'[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9-]{1,63})+',
+  );
+  static const Set<String> _domainFields = <String>{
+    'domain',
+    'host',
+    'hostname',
+    'qname',
+    'requested_domain',
+  };
   static const int _maximumTreeDepth = 32;
   static const MethodChannel _blocklistChannel =
       MethodChannel('com.ciberdefensa.aura/blocklist');
@@ -95,8 +106,8 @@ class AuraAIInference {
   static const int _binaryTreeHeaderLength = 8;
   static const int _binaryNodeLength = 20;
   static const int _maximumBinaryModelBytes = 5 * 1024 * 1024;
-  static final Map<String, (int, double)> _levenshteinCache =
-      <String, (int, double)>{};
+  static final Map<String, (int, double, String)> _levenshteinCache =
+      <String, (int, double, String)>{};
 
   /// Returns true for allowlisted hosts or hosts classified as safe by the model.
   static bool analyzeHostSecure(
@@ -157,9 +168,34 @@ class AuraAIInference {
   }
 
   static List<String> extractDomainsForBlocklist(String rawData) {
-    return _extractHosts(rawData)
+    return extractHosts(rawData)
         .where((host) => InternetAddress.tryParse(host) == null)
         .toList(growable: false);
+  }
+
+  static List<String> extractHosts(String rawData) {
+    final hosts = <String>{};
+    var rawAddressInput = rawData.trim();
+    if (rawAddressInput.startsWith('[') && rawAddressInput.endsWith(']')) {
+      rawAddressInput =
+          rawAddressInput.substring(1, rawAddressInput.length - 1);
+    }
+    final rawAddress = InternetAddress.tryParse(rawAddressInput);
+    if (rawAddress != null) {
+      return <String>[rawAddress.address.toLowerCase()];
+    }
+    try {
+      _collectHosts(jsonDecode(rawData), hosts);
+    } on FormatException {
+      for (final match in _domainPattern.allMatches(rawData)) {
+        final value = match.group(0);
+        if (value != null) {
+          final host = _normalizeHost(value);
+          if (host != null) hosts.add(host);
+        }
+      }
+    }
+    return hosts.toList(growable: false);
   }
 
   static Future<Set<String>> findBlocklistedDomains(
@@ -196,7 +232,8 @@ class AuraAIInference {
             _sameFeatureOrder(featureOrder, legacyFeatureOrder))) {
       return _calculateLegacyFeatures(host);
     }
-    throw const FormatException('El modelo tiene un orden de características no compatible.');
+    throw const FormatException(
+        'El modelo tiene un orden de características no compatible.');
   }
 
   static bool _sameFeatureOrder(List<dynamic> actual, List<String> expected) {
@@ -205,6 +242,29 @@ class AuraAIInference {
       if (actual[index] != expected[index]) return false;
     }
     return true;
+  }
+
+  static void _collectHosts(Object? value, Set<String> hosts, [int depth = 0]) {
+    if (depth > _maximumTreeDepth) {
+      throw const FormatException(
+        'El payload JSON supera la profundidad permitida.',
+      );
+    }
+    if (value is Map) {
+      for (final entry in value.entries) {
+        final key = entry.key.toString().toLowerCase();
+        if (_domainFields.contains(key) && entry.value is String) {
+          final host = _normalizeHost(entry.value as String);
+          if (host != null) hosts.add(host);
+        } else {
+          _collectHosts(entry.value, hosts, depth + 1);
+        }
+      }
+    } else if (value is List) {
+      for (final entry in value) {
+        _collectHosts(entry, hosts, depth + 1);
+      }
+    }
   }
 
   static List<double> _calculateLegacyFeatures(String host) {
@@ -247,9 +307,7 @@ class AuraAIInference {
       _calculateEntropy(characters),
       digits / characters.length,
       letters.isEmpty ? 0 : vowels / letters.length,
-      letters.isEmpty
-          ? 0
-          : consonantSequenceCharacters / letters.length,
+      letters.isEmpty ? 0 : consonantSequenceCharacters / letters.length,
       suspiciousTlds.contains(tld) ? 1 : 0,
     ];
   }
@@ -262,9 +320,11 @@ class AuraAIInference {
 
     final labels = host.split('.');
     final tld = labels.last;
-    final nonAsciiCount = characters.where((character) => character > 0x7f).length;
+    final nonAsciiCount =
+        characters.where((character) => character > 0x7f).length;
     final legacyFeatures = _calculateLegacyFeatures(host);
-    final asciiLetters = characters.where(_isAsciiLetter).toList(growable: false);
+    final asciiLetters =
+        characters.where(_isAsciiLetter).toList(growable: false);
     var hasConsecutiveDigits = false;
     for (var index = 0; index < characters.length - 1; index++) {
       if (_isAsciiDigit(characters[index]) &&
@@ -275,40 +335,38 @@ class AuraAIInference {
     }
     final rareCharacterCount = asciiLetters.where((character) {
       final lower = character | 0x20;
-      return lower == 0x71 ||
-          lower == 0x78 ||
-          lower == 0x7a ||
-          lower == 0x6b;
+      return lower == 0x71 || lower == 0x78 || lower == 0x7a || lower == 0x6b;
     }).length;
     final longestLabelLength = labels.fold<int>(
       0,
       (longest, label) => math.max(longest, label.runes.length).toInt(),
     );
 
-    return legacyFeatures + <double>[
-      _minimumNormalizedLevenshtein(host),
-      _repeatedNgramRatio(characters, 2),
-      _repeatedNgramRatio(characters, 3),
-      math.min(host.split('.').length - 1, 126) / 126,
-      math.min(tld.runes.length, 63) / 63,
-      detectIdnHomoglyphs(host),
-      nonAsciiCount / characters.length,
-      hasConsecutiveDigits ? 1 : 0,
-      _conditionalLabelEntropy(labels),
-      asciiLetters.isEmpty ? 0 : rareCharacterCount / asciiLetters.length,
-      math.min(longestLabelLength, 63) / 63,
-      const <String>[
-        'free',
-        'reward',
-        'update',
-        'system',
-        'unlock',
-        'premium',
-        'crack',
-      ].any(host.contains)
-          ? 1
-          : 0,
-    ];
+    return legacyFeatures +
+        <double>[
+          _minimumNormalizedLevenshtein(host),
+          _repeatedNgramRatio(characters, 2),
+          _repeatedNgramRatio(characters, 3),
+          math.min(host.split('.').length - 1, 126) / 126,
+          math.min(tld.runes.length, 63) / 63,
+          detectIdnHomoglyphs(host),
+          nonAsciiCount / characters.length,
+          hasConsecutiveDigits ? 1 : 0,
+          _conditionalLabelEntropy(labels),
+          asciiLetters.isEmpty ? 0 : rareCharacterCount / asciiLetters.length,
+          math.min(longestLabelLength, 63) / 63,
+          const <String>[
+            'free',
+            'reward',
+            'update',
+            'system',
+            'unlock',
+            'premium',
+            'crack',
+          ].any(host.contains)
+              ? 1
+              : 0,
+        ];
   }
 
   static const Map<int, String> idnConfusables = <int, String>{
@@ -393,15 +451,22 @@ class AuraAIInference {
     return distance > 0 && distance <= 2;
   }
 
+  static String? closestTopDomain(String domain) {
+    final host = _normalizeFeatureDomain(domain);
+    if (host == null) return null;
+    return _minimumTopDomainDistances(host).$3;
+  }
+
   static double _minimumNormalizedLevenshtein(String host) =>
       _minimumTopDomainDistances(host).$2;
 
-  static (int, double) _minimumTopDomainDistances(String host) {
+  static (int, double, String) _minimumTopDomainDistances(String host) {
     final cached = _levenshteinCache[host];
     if (cached != null) return cached;
 
     final hostCharacters = host.runes.toList(growable: false);
     var minimumDistance = math.max(hostCharacters.length, 253).toInt();
+    var closestDomain = '';
     for (final commonDomain in auraCommonDomains) {
       final domainCharacters = commonDomain.runes.toList(growable: false);
       final lengthDifference =
@@ -410,6 +475,7 @@ class AuraAIInference {
       final distance = _levenshteinDistance(hostCharacters, domainCharacters);
       if (distance < minimumDistance) {
         minimumDistance = distance;
+        closestDomain = commonDomain;
       }
       if (minimumDistance == 0) {
         break;
@@ -421,7 +487,7 @@ class AuraAIInference {
     final normalizedDistance = math
         .min(minimumDistance / math.max(hostCharacters.length, 1), 1.0)
         .toDouble();
-    final distances = (minimumDistance, normalizedDistance);
+    final distances = (minimumDistance, normalizedDistance, closestDomain);
     _levenshteinCache[host] = distances;
     return distances;
   }
@@ -434,8 +500,7 @@ class AuraAIInference {
     for (var leftIndex = 0; leftIndex < left.length; leftIndex++) {
       current[0] = leftIndex + 1;
       for (var rightIndex = 0; rightIndex < right.length; rightIndex++) {
-        final substitutionCost =
-            left[leftIndex] == right[rightIndex] ? 0 : 1;
+        final substitutionCost = left[leftIndex] == right[rightIndex] ? 0 : 1;
         current[rightIndex + 1] = math
             .min(
               math.min(
@@ -461,7 +526,8 @@ class AuraAIInference {
     if (candidate.endsWith('.')) {
       candidate = candidate.substring(0, candidate.length - 1);
     }
-    if (candidate.isEmpty || !candidate.contains('.') ||
+    if (candidate.isEmpty ||
+        !candidate.contains('.') ||
         candidate.runes.length > 253 ||
         InternetAddress.tryParse(candidate) != null) {
       return null;

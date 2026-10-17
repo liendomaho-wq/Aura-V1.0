@@ -1,6 +1,4 @@
-import 'dart:convert';
 import 'dart:isolate';
-import 'dart:io';
 
 import '../inference/aura_ai_inference.dart' as shared_features;
 
@@ -10,40 +8,29 @@ class AuraInferenceResult {
     required this.threatScore,
     required this.isThreat,
     required this.computedFeatures,
+    this.featureVector = const <double>[],
+    this.featureOrder = const <String>[],
   });
 
   final String host;
   final double threatScore;
   final bool isThreat;
   final Map<String, double> computedFeatures;
+  final List<double> featureVector;
+  final List<String> featureOrder;
 }
 
 abstract final class AuraAIInference {
   static const int _expectedTreeCount = 500;
   static const int _maximumTreeDepth = 32;
-  static final RegExp _hostnamePattern = RegExp(
-    r'^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+'
-    r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$',
-  );
-  static final RegExp _domainPattern = RegExp(
-    r'[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9-]{1,63})+',
-  );
-  static const Set<String> _domainFields = <String>{
-    'domain',
-    'host',
-    'hostname',
-    'qname',
-    'requested_domain',
-  };
-
   static Future<List<AuraInferenceResult>> analyzeThreatPayload({
     required String rawData,
     required Map<String, dynamic> modelStructure,
     required List<String> suspiciousTlds,
     bool blocklistChecked = false,
   }) async {
-    final domains = shared_features.AuraAIInference
-        .extractDomainsForBlocklist(rawData);
+    final domains =
+        shared_features.AuraAIInference.extractDomainsForBlocklist(rawData);
     final blockedDomains = blocklistChecked
         ? <String>{}
         : await shared_features.AuraAIInference.findBlocklistedDomains(domains);
@@ -68,10 +55,14 @@ abstract final class AuraAIInference {
       final score = result['threat_score'];
       final threat = result['is_threat'];
       final rawFeatures = result['features'];
+      final rawFeatureVector = result['feature_vector'];
+      final rawFeatureOrder = result['feature_order'];
       if (host is! String ||
           score is! num ||
           threat is! bool ||
-          rawFeatures is! Map) {
+          rawFeatures is! Map ||
+          rawFeatureVector is! List ||
+          rawFeatureOrder is! List) {
         throw const FormatException('Campos de inferencia incompletos.');
       }
       final features = <String, double>{};
@@ -83,11 +74,23 @@ abstract final class AuraAIInference {
         }
         features[entry.key as String] = (entry.value as num).toDouble();
       }
+      if (rawFeatureVector.any((value) => value is! num) ||
+          rawFeatureOrder.any((value) => value is! String)) {
+        throw const FormatException(
+          'El vector u orden de características devuelto por el isolate no es válido.',
+        );
+      }
       return AuraInferenceResult(
         host: host,
         threatScore: score.toDouble(),
         isThreat: threat,
         computedFeatures: Map<String, double>.unmodifiable(features),
+        featureVector: List<double>.unmodifiable(
+          rawFeatureVector.cast<num>().map((value) => value.toDouble()),
+        ),
+        featureOrder: List<String>.unmodifiable(
+          rawFeatureOrder.cast<String>(),
+        ),
       );
     }).toList(growable: false);
   }
@@ -98,15 +101,15 @@ abstract final class AuraAIInference {
     List<String> suspiciousTlds,
     List<String> blockedDomains,
   ) {
-    final hosts = _extractHosts(rawData)
-        .where((host) => InternetAddress.tryParse(host) == null)
-        .toList(growable: false);
+    final hosts =
+        shared_features.AuraAIInference.extractDomainsForBlocklist(rawData);
     if (hosts.isEmpty) return <String, Object?>{'results': <Object?>[]};
 
     final blocked = blockedDomains.toSet();
     final requiresModel = hosts.any((host) => !blocked.contains(host));
     final trees = modelStructure['trees'];
-    if (requiresModel && (trees is! List || trees.length != _expectedTreeCount)) {
+    if (requiresModel &&
+        (trees is! List || trees.length != _expectedTreeCount)) {
       throw const FormatException(
         'El modelo local no contiene exactamente 500 árboles.',
       );
@@ -126,6 +129,8 @@ abstract final class AuraAIInference {
           'threat_score': 1.0,
           'is_threat': true,
           'features': <String, double>{'blocklist_match': 1.0},
+          'feature_vector': <double>[],
+          'feature_order': <String>[],
         });
         continue;
       }
@@ -146,6 +151,9 @@ abstract final class AuraAIInference {
       }
       final threatScore = threatVotes / trees.length;
       final maximumConsonantStreak = _maximumConsonantStreak(host);
+      final activeFeatureOrder = usesEnhancedFeatures
+          ? shared_features.AuraAIInference.enhancedFeatureOrder
+          : shared_features.AuraAIInference.legacyFeatureOrder;
       results.add(<String, Object?>{
         'host': host,
         'threat_score': threatScore,
@@ -167,10 +175,10 @@ abstract final class AuraAIInference {
                 features[index],
           'maximum_consonant_streak': maximumConsonantStreak.toDouble(),
           'maximum_consonant_streak_ratio':
-              host.isEmpty
-                  ? 0.0
-                  : maximumConsonantStreak / host.runes.length,
+              host.isEmpty ? 0.0 : maximumConsonantStreak / host.runes.length,
         },
+        'feature_vector': features,
+        'feature_order': activeFeatureOrder,
       });
     }
     return <String, Object?>{'results': results};
@@ -185,87 +193,6 @@ abstract final class AuraAIInference {
       if (actual[index] != expected[index]) return false;
     }
     return true;
-  }
-
-  static List<String> _extractHosts(String rawData) {
-    final hosts = <String>{};
-    var rawAddressInput = rawData.trim();
-    if (rawAddressInput.startsWith('[') && rawAddressInput.endsWith(']')) {
-      rawAddressInput =
-          rawAddressInput.substring(1, rawAddressInput.length - 1);
-    }
-    final rawAddress = InternetAddress.tryParse(rawAddressInput);
-    if (rawAddress != null) {
-      return <String>[rawAddress.address.toLowerCase()];
-    }
-    try {
-      _collectHosts(jsonDecode(rawData), hosts);
-    } on FormatException {
-      for (final match in _domainPattern.allMatches(rawData)) {
-        final value = match.group(0);
-        if (value != null) {
-          final host = _normalizeHost(value);
-          if (host != null) hosts.add(host);
-        }
-      }
-    }
-    return hosts.toList(growable: false);
-  }
-
-  static void _collectHosts(Object? value, Set<String> hosts, [int depth = 0]) {
-    if (depth > _maximumTreeDepth) {
-      throw const FormatException('El payload JSON supera la profundidad permitida.');
-    }
-    if (value is Map) {
-      for (final entry in value.entries) {
-        final key = entry.key.toString().toLowerCase();
-        if (_domainFields.contains(key) && entry.value is String) {
-          final host = _normalizeHost(entry.value as String);
-          if (host != null) hosts.add(host);
-        } else {
-          _collectHosts(entry.value, hosts, depth + 1);
-        }
-      }
-    } else if (value is List) {
-      for (final entry in value) {
-        _collectHosts(entry, hosts, depth + 1);
-      }
-    }
-  }
-
-  static String? _normalizeHost(String input) {
-    var candidate = input.trim().toLowerCase();
-    if (candidate.isEmpty) return null;
-    if (candidate.contains('://')) {
-      final uri = Uri.tryParse(candidate);
-      if (uri == null ||
-          (uri.scheme != 'http' && uri.scheme != 'https') ||
-          uri.userInfo.isNotEmpty ||
-          uri.host.isEmpty) {
-        return null;
-      }
-      candidate = uri.host.toLowerCase();
-    } else {
-      if (candidate.contains('/') ||
-          candidate.contains('\\') ||
-          candidate.contains('?') ||
-          candidate.contains('#') ||
-          candidate.contains('@') ||
-          candidate.contains('%')) {
-        return null;
-      }
-    }
-    if (candidate.startsWith('[') && candidate.endsWith(']')) {
-      candidate = candidate.substring(1, candidate.length - 1);
-    }
-    final address = InternetAddress.tryParse(candidate);
-    if (address != null) return address.address.toLowerCase();
-    if (candidate.contains(':')) return null;
-    if (candidate.endsWith('.')) {
-      candidate = candidate.substring(0, candidate.length - 1);
-    }
-    if (!_hostnamePattern.hasMatch(candidate)) return null;
-    return candidate;
   }
 
   static int _maximumConsonantStreak(String host) {

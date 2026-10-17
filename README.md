@@ -14,6 +14,7 @@ Reporta vulnerabilidades en [SECURITY.md](SECURITY.md).
 - [2. Incisiones integradas](#2-incisiones-integradas)
   - [Inspección de DoH/DoQ e IPv6](#inspección-de-dohdoq-e-ipv6)
 - [3. Brain v2](#3-brain-v2)
+  - [Rendimiento en dispositivo](#rendimiento-en-dispositivo)
 - [Configuración de Codemagic para Producción](#configuración-de-codemagic-para-producción)
 - [4. Pipeline de datos](#4-pipeline-de-datos)
 - [5. Firma y seguridad Android](#5-firma-y-seguridad-android)
@@ -194,6 +195,10 @@ Asset publicado: [`assets/model/aura_brain_model.json`](assets/model/aura_brain_
 
 El entrenador genera candidatos `4.0.0` con `feature_order` y `metadata` (`version`, `feature_count`, `feature_names`, `trained_at`) para las 18 características. El preset móvil cuantiza los umbrales a cuatro decimales y solo selecciona modelos de menos de 4 MiB; además, exige al menos 500 filas por clase en cada split, incluido test. El asset publicado seguirá en `3.0.0` hasta que se ejecute el entrenamiento con los splits disponibles y se publique el candidato firmado.
 
+Consulta la [Model Card en español](docs/model_card.md) o su [copia pública en GitHub Pages](https://yojamm16-boop.github.io/Aura-V1.0/model-card.md) para el uso previsto, evaluación, datos y limitaciones.
+
+Para cada veredicto ML no incluido en la allowlist, la consola conserva una explicación en memoria con las señales calculadas, la versión y el SHA-256. La tarjeta distingue entre dominio bloqueado y considerado seguro. En el modelo publicado `3.0.0`, la distancia de edición no pertenece al vector de seis características; si se muestra, la tarjeta la identifica explícitamente como señal auxiliar y no como causa del voto del bosque. La tarjeta no envía esos datos ni los reportes locales de falso positivo a la telemetría. El panel de auditoría resume eventos y resolutores observados durante la sesión, sin generar tráfico de prueba.
+
 | Propiedad | Valor real |
 |---|---:|
 | Versión JSON | `3.0.0` |
@@ -212,6 +217,16 @@ Métricas del preset móvil sobre test holdout; precision, recall, F1 y FPR son 
 | 0.786501 | 0.964630 | 0.758888 | 0.849479 | 0.107160 |
 
 Matriz de confusión: `[[13381, 1606], [13916, 43800]]`.
+
+### Rendimiento en dispositivo
+
+Pendiente de medición en un dispositivo Android real; no se publican cifras de dispositivo hasta ejecutar el benchmark allí.
+
+| Modo | Muestras | p50 | p95 | p99 |
+|---|---:|---:|---:|---:|
+| Inferencia local (test de referencia) | 1,000 | Pendiente de medición en dispositivo real | Pendiente de medición en dispositivo real | Pendiente de medición en dispositivo real |
+
+Conecta un dispositivo Android y ejecuta `flutter test --run-skipped --device-id <ID> test/aura_inference_benchmark_test.dart --reporter expanded`. El test usa `integration_test`, está omitido por defecto en CI y vuelca los percentiles en la salida; anota los resultados del dispositivo junto con su modelo y versión de Android.
 
 ### Benchmark de runner
 
@@ -293,7 +308,7 @@ Cuando las variables de producción están configuradas, Gradle firma con `signi
 | `release-signing-integrity.yml` | Verifica firma de release y genera `sbom.json` CycloneDX con Syft para Dart (`pubspec.lock`), Android (lockfile Gradle) y Python (`tool/requirements*.txt`); publica el SBOM como artefacto `aura-cyclonedx-sbom`. | PR/push a `main` cuando cambian archivos Gradle, `pubspec.*`, requirements o el workflow; `workflow_dispatch`. |
 | `android-release.yml` | Compila y verifica APK/AAB, genera provenance SLSA firmada por OIDC (`.intoto.jsonl`) y publica APK/AAB más provenance en Releases para tags `v*`; conserva un artefacto combinado. | Push a `main`/`principal`, tags `v*` o `workflow_dispatch`. |
 | `model-training.yml` | Instala Python, construye dataset, entrena, benchmark, pytest y publica reportes de CI. | PR y push a `main` para cambios `tool/**`, `data/**` o workflow; `workflow_dispatch`. |
-| `deploy-model-pages.yml` | Publica JSON, SHA-256 y firma en Pages. | Push a `main` al cambiar workflow o los tres assets; `workflow_dispatch`. |
+| `deploy-model-pages.yml` | Publica JSON, SHA-256, firma y Model Card en Pages. | Push a `main` al cambiar workflow, Model Card o los tres assets; `workflow_dispatch`. |
 
 El job `slsa-provenance` usa el generador genérico SLSA v1.2.2: el builder aislado firma el digest SHA-256 del artefacto con identidad OIDC y publica la attestation `.intoto.jsonl`. Para tags `v*`, la provenance y el APK/AAB se adjuntan a GitHub Release; en `workflow_dispatch` se puede elegir APK/AAB y opcionalmente indicar un tag de Release ya existente. Este generador produce provenance de nivel SLSA 3, pero es provenance-only: por sí solo no certifica todos los requisitos de fuente y construcción de un sistema SLSA Level 3 completo.
 
@@ -1059,6 +1074,7 @@ on:
       - main
     paths:
       - '.github/workflows/deploy-model-pages.yml'
+      - 'docs/model_card.md'
       - 'assets/model/aura_brain_model.json'
       - 'assets/model/aura_brain_model.json.sha256'
       - 'assets/model/aura_brain_model.json.sig'
@@ -1088,6 +1104,7 @@ jobs:
           cp assets/model/aura_brain_model.json _site/model/
           cp assets/model/aura_brain_model.json.sha256 _site/model/
           cp assets/model/aura_brain_model.json.sig _site/model/
+          cp docs/model_card.md _site/model-card.md
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

@@ -3,13 +3,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../agent/agent_controller.dart';
 import '../agent/agent_event.dart';
 import '../ai_brain.dart';
+import '../explanation/aura_verdict_explanation.dart';
 import '../infrastructure/agent/aura_intent_parser.dart';
+import '../models/aura_model_integrity_report.dart';
 import '../network_auditor.dart';
 import '../providers/aura_state_provider.dart';
+import '../theme/aura_tokens.dart';
 
 const Color _terminalGreen = Color(0xFF00FF00);
 const Color _terminalYellow = Color(0xFFFFFF00);
@@ -32,12 +36,15 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
   final TextEditingController _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   AuraNetworkAuditor? _networkAuditor;
+  AuraAIBrain? _aiBrain;
   StreamSubscription<NetworkAuditEvent>? _networkEventSubscription;
   bool _isListening = false;
   bool _isRunning = false;
   bool _isShieldBusy = false;
   bool _isAuthenticated = false;
   bool _authenticationFailed = false;
+  bool _showCoverageAudit = false;
+  String? _coverageAutotestStatus;
   int _lastRenderedEventCount = -1;
 
   @override
@@ -79,9 +86,9 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
   void _startNetworkAuditor() {
     if (_networkAuditor != null) return;
     final state = context.read<AuraStateProvider>();
-    final auditor = AuraNetworkAuditor(
-      aiBrain: AuraAIBrain(stateProvider: state),
-    );
+    final aiBrain = AuraAIBrain(stateProvider: state);
+    final auditor = AuraNetworkAuditor(aiBrain: aiBrain);
+    _aiBrain = aiBrain;
     _networkAuditor = auditor;
     _networkEventSubscription = auditor.eventStream.listen(
       (event) => state.addTelemetryEvent(event.toJson()),
@@ -98,6 +105,65 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
     await _networkAuditor?.dispose();
     _networkEventSubscription = null;
     _networkAuditor = null;
+    _aiBrain = null;
+  }
+
+  void _runCoverageAutotest() {
+    final state = context.read<AuraStateProvider>();
+    setState(() {
+      _coverageAutotestStatus = 'Diagnóstico local completado. Escudo VPN: '
+          '${state.isVpnActive ? 'activo' : 'inactivo'}. '
+          'Eventos de sesión: ${state.sniObservedEvents} SNI, '
+          '${state.blockedEvents} bloqueos, ${state.dgaAlertEvents} alertas DGA '
+          'y ${state.encryptedDnsBlocks} bloqueos de DNS cifrado. '
+          'No se generó tráfico de prueba.';
+    });
+  }
+
+  Future<void> _openModelCard() async {
+    final uri = Uri.parse(
+      'https://yojamm16-boop.github.io/Aura-V1.0/model-card.md',
+    );
+    try {
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
+          mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo abrir la Model Card.')),
+        );
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo abrir la Model Card: $error')),
+      );
+    }
+  }
+
+  Future<AuraModelIntegrityReport> _verifyModelIntegrity() async {
+    final aiBrain = _aiBrain;
+    if (aiBrain == null) {
+      return const AuraModelIntegrityReport(
+        verified: false,
+        signatureVerified: false,
+        modelVersion: 'desconocida',
+        sha256: '',
+        message: 'El motor de inferencia aún no está disponible.',
+      );
+    }
+    return aiBrain.verifyModelIntegrity();
+  }
+
+  void _reportFalsePositive(String explanationId) {
+    context
+        .read<AuraStateProvider>()
+        .markExplanationAsFalsePositive(explanationId);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Falso positivo marcado localmente para revisión; no se enviará telemetría.',
+        ),
+      ),
+    );
   }
 
   Future<void> _dispatch(String text) async {
@@ -332,7 +398,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final vpnActive = context.watch<AuraStateProvider>().isVpnActive;
+    final state = context.watch<AuraStateProvider>();
+    final vpnActive = state.isVpnActive;
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
       resizeToAvoidBottomInset: true,
@@ -352,6 +419,22 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                     color: _terminalYellow,
                   ),
                 ),
+                IconButton(
+                  key: const ValueKey<String>('coverage-audit-toggle'),
+                  tooltip: _showCoverageAudit
+                      ? 'Volver a la consola'
+                      : 'Auditoría de cobertura',
+                  onPressed: () => setState(
+                    () => _showCoverageAudit = !_showCoverageAudit,
+                  ),
+                  constraints:
+                      const BoxConstraints.tightFor(width: 48, height: 48),
+                  icon: Icon(
+                    Icons.fact_check_outlined,
+                    color:
+                        _showCoverageAudit ? _terminalGreen : _terminalYellow,
+                  ),
+                ),
                 const Expanded(
                   child: Text(
                     'Aura Mobile Defens',
@@ -366,10 +449,10 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                 ),
                 IconButton(
                   key: const ValueKey<String>('vpn-toggle'),
-                  tooltip: vpnActive ? 'Detener escudo VPN' : 'Activar escudo VPN',
-                  onPressed: _isAuthenticated && !_isShieldBusy
-                      ? _toggleShield
-                      : null,
+                  tooltip:
+                      vpnActive ? 'Detener escudo VPN' : 'Activar escudo VPN',
+                  onPressed:
+                      _isAuthenticated && !_isShieldBusy ? _toggleShield : null,
                   constraints:
                       const BoxConstraints.tightFor(width: 48, height: 48),
                   icon: _isShieldBusy
@@ -381,7 +464,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                           vpnActive ? Icons.shield : Icons.shield_outlined,
                           color: vpnActive ? _terminalGreen : _terminalYellow,
                         ),
-              ),
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -391,13 +474,37 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                       stream: AgentController.instance.events,
                       builder: (context, snapshot) {
                         final events = AgentController.instance.history;
-                        _scrollToLatest(events.length);
-                        return ListView.builder(
+                        final explanationCount =
+                            state.explanationHistory.length;
+                        final leadingCardCount =
+                            _showCoverageAudit || explanationCount > 0 ? 1 : 0;
+                        _scrollToLatest(events.length + leadingCardCount);
+                        return ListView(
                           controller: _scrollController,
                           padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
-                          itemCount: events.length,
-                          itemBuilder: (context, index) =>
-                              _SyslogLine(event: events[index]),
+                          children: [
+                            if (_showCoverageAudit)
+                              _CoverageAuditCard(
+                                isVpnActive: state.isVpnActive,
+                                sniObserved: state.sniObservedEvents,
+                                blocked: state.blockedEvents,
+                                dgaAlerts: state.dgaAlertEvents,
+                                encryptedDnsBlocked: state.encryptedDnsBlocks,
+                                observedResolvers:
+                                    state.observedPublicDnsResolvers,
+                                autotestStatus: _coverageAutotestStatus,
+                                onRunAutotest: _runCoverageAutotest,
+                              )
+                            else if (explanationCount > 0)
+                              _ExplanationCard(
+                                explanation: state.explanationHistory.last,
+                                onVerifyIntegrity: _verifyModelIntegrity,
+                                onReportFalsePositive: _reportFalsePositive,
+                                onOpenModelCard: _openModelCard,
+                              ),
+                            for (final event in events)
+                              _SyslogLine(event: event),
+                          ],
                         );
                       },
                     )
@@ -415,6 +522,374 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
       ),
     );
   }
+}
+
+class _ExplanationCard extends StatefulWidget {
+  const _ExplanationCard({
+    required this.explanation,
+    required this.onVerifyIntegrity,
+    required this.onReportFalsePositive,
+    required this.onOpenModelCard,
+  });
+
+  final AuraVerdictExplanation explanation;
+  final Future<AuraModelIntegrityReport> Function() onVerifyIntegrity;
+  final ValueChanged<String> onReportFalsePositive;
+  final VoidCallback onOpenModelCard;
+
+  @override
+  State<_ExplanationCard> createState() => _ExplanationCardState();
+}
+
+class _ExplanationCardState extends State<_ExplanationCard> {
+  AuraModelIntegrityReport? _integrityReport;
+  bool _isVerifying = false;
+  bool _verificationStarted = false;
+
+  Future<void> _verifyIntegrity() async {
+    if (_verificationStarted) return;
+    _verificationStarted = true;
+    setState(() => _isVerifying = true);
+    try {
+      final report = await widget.onVerifyIntegrity();
+      if (mounted) setState(() => _integrityReport = report);
+    } on Object catch (error) {
+      if (mounted) {
+        setState(() {
+          _integrityReport = AuraModelIntegrityReport(
+            verified: false,
+            signatureVerified: false,
+            modelVersion: widget.explanation.modelVersion,
+            sha256: widget.explanation.modelSha256,
+            message: 'No se pudo verificar la integridad: $error',
+          );
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isVerifying = false);
+    }
+  }
+
+  Future<void> _showFullDigest() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AuraTokens.surface,
+        title: const Text(
+          'SHA-256 del modelo',
+          style: TextStyle(color: AuraTokens.accent),
+        ),
+        content: SelectableText(
+          widget.explanation.modelSha256,
+          style: const TextStyle(
+            color: AuraTokens.textPrimary,
+            fontFamily: 'monospace',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text(
+              'Cerrar',
+              style: TextStyle(color: AuraTokens.accent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final explanation = widget.explanation;
+    final signatureStatus = _integrityReport == null
+        ? explanation.signatureVerified
+            ? '✅ Firma RSA verificada al cargar'
+            : '⚠️ Firma RSA sin verificación (asset base)'
+        : _integrityReport!.signatureVerified
+            ? '✅ Firma RSA verificada'
+            : _integrityReport!.verified
+                ? '⚠️ Sin firma RSA; SHA-256 verificado'
+                : '⚠️ Sin verificación de integridad';
+    final digestPrefix = explanation.modelSha256.length >= 8
+        ? explanation.modelSha256.substring(0, 8)
+        : explanation.modelSha256;
+
+    return Card(
+      color: AuraTokens.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AuraTokens.rMd),
+        side: const BorderSide(color: AuraTokens.accent),
+      ),
+      child: ExpansionTile(
+        key: ValueKey<String>('verdict-explanation-card-${explanation.id}'),
+        iconColor: AuraTokens.accent,
+        collapsedIconColor: AuraTokens.accent,
+        title: Text(
+          explanation.isThreat
+              ? '¿Por qué se bloqueó?'
+              : '¿Por qué se consideró seguro?',
+          style: TextStyle(
+            color: AuraTokens.accent,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(
+          '${explanation.host} · '
+          '${explanation.isThreat ? 'amenaza' : 'seguro'} · '
+          '${explanation.source}',
+          style: const TextStyle(
+            color: AuraTokens.textPrimary,
+            fontFamily: 'monospace',
+          ),
+        ),
+        onExpansionChanged: (expanded) {
+          if (expanded) _verifyIntegrity();
+        },
+        childrenPadding: const EdgeInsets.fromLTRB(
+          AuraTokens.s3,
+          0,
+          AuraTokens.s3,
+          AuraTokens.s3,
+        ),
+        children: [
+          if (explanation.signals.isEmpty)
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Sin señales de riesgo relevantes observadas.',
+                style: TextStyle(color: AuraTokens.textPrimary),
+              ),
+            ),
+          for (final signal in explanation.signals)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AuraTokens.s2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${signal.label} · ${signal.value.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      color: AuraTokens.warning,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    signal.description,
+                    style: const TextStyle(
+                      color: AuraTokens.textPrimary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: AuraTokens.s1),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Modelo v${explanation.modelVersion}',
+              style: const TextStyle(
+                color: AuraTokens.textPrimary,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: _showFullDigest,
+              style: TextButton.styleFrom(
+                foregroundColor: AuraTokens.accent,
+                padding: EdgeInsets.zero,
+              ),
+              child: Text(
+                'SHA-256: $digestPrefix…',
+                textAlign: TextAlign.left,
+              ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              _isVerifying
+                  ? 'Verificando el modelo…'
+                  : '$signatureStatus${_integrityReport == null ? '' : '\n${_integrityReport!.message}'}',
+              style: TextStyle(
+                color: _integrityReport?.verified == false
+                    ? AuraTokens.warning
+                    : AuraTokens.textMuted,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          Wrap(
+            spacing: AuraTokens.s2,
+            children: [
+              TextButton.icon(
+                onPressed: widget.onOpenModelCard,
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: const Text('Model Card'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AuraTokens.accent,
+                ),
+              ),
+              if (explanation.isThreat)
+                TextButton.icon(
+                  onPressed: explanation.reportedFalsePositive
+                      ? null
+                      : () => widget.onReportFalsePositive(explanation.id),
+                  icon: const Icon(Icons.flag_outlined, size: 16),
+                  label: Text(
+                    explanation.reportedFalsePositive
+                        ? 'Reportado localmente'
+                        : 'Reportar falso positivo',
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AuraTokens.warning,
+                  ),
+                ),
+            ],
+          ),
+          if (explanation.isThreat)
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Se registrará localmente para revisión; no se enviará telemetría.',
+                style: TextStyle(
+                  color: AuraTokens.textMuted,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          const SizedBox(height: AuraTokens.s2),
+          const Text(
+            'Las señales son observaciones del vector de características; '
+            'el bosque de decisión no produce probabilidades calibradas.',
+            style: TextStyle(
+              color: AuraTokens.textMuted,
+              fontSize: 11,
+              height: 1.35,
+            ),
+          ),
+          if (explanation.signals.any(
+            (signal) => signal.label.contains('(señal auxiliar)'),
+          ))
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'La distancia de edición es auxiliar y no forma parte del '
+                'vector del modelo publicado.',
+                style: TextStyle(
+                  color: AuraTokens.textMuted,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CoverageAuditCard extends StatelessWidget {
+  const _CoverageAuditCard({
+    required this.isVpnActive,
+    required this.sniObserved,
+    required this.blocked,
+    required this.dgaAlerts,
+    required this.encryptedDnsBlocked,
+    required this.observedResolvers,
+    required this.autotestStatus,
+    required this.onRunAutotest,
+  });
+
+  final bool isVpnActive;
+  final int sniObserved;
+  final int blocked;
+  final int dgaAlerts;
+  final int encryptedDnsBlocked;
+  final List<String> observedResolvers;
+  final String? autotestStatus;
+  final VoidCallback onRunAutotest;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        color: AuraTokens.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AuraTokens.rMd),
+          side: const BorderSide(color: AuraTokens.accent),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(AuraTokens.s3),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Auditoría de cobertura',
+                style: TextStyle(
+                  color: AuraTokens.accent,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: AuraTokens.s2),
+              Text(
+                'Eventos de la sesión: $sniObserved SNI observados, '
+                '$blocked ${blocked == 1 ? 'bloqueo' : 'bloqueos'}, '
+                '$dgaAlerts ${dgaAlerts == 1 ? 'alerta' : 'alertas'} DGA y '
+                '$encryptedDnsBlocked '
+                '${encryptedDnsBlocked == 1 ? 'bloqueo' : 'bloqueos'} '
+                'de DNS cifrado.',
+                style: const TextStyle(color: AuraTokens.textPrimary),
+              ),
+              const SizedBox(height: AuraTokens.s2),
+              const Text(
+                'Resolutores públicos observados:',
+                style: TextStyle(
+                  color: AuraTokens.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                observedResolvers.isEmpty
+                    ? 'Sin resolutores públicos observados en los eventos de esta sesión.'
+                    : observedResolvers.join(', '),
+                style: const TextStyle(
+                  color: AuraTokens.textMuted,
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: AuraTokens.s2),
+              const Text(
+                'Límites conocidos: QUIC/DoQ sin SNI; ECH puede reducir '
+                'la detección; inspección userspace, sin iptables.',
+                style: TextStyle(
+                  color: AuraTokens.warning,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: AuraTokens.s2),
+              FilledButton.icon(
+                onPressed: onRunAutotest,
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Ejecutar autotest'),
+              ),
+              if (autotestStatus != null) ...[
+                const SizedBox(height: AuraTokens.s2),
+                Text(
+                  autotestStatus!,
+                  style: const TextStyle(
+                    color: AuraTokens.textPrimary,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
 }
 
 class _SyslogLine extends StatelessWidget {

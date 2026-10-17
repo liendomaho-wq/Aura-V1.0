@@ -8,9 +8,11 @@ import 'package:path_provider/path_provider.dart';
 
 import 'agent/aura_crypto_layer.dart';
 import 'agent/aura_whitelist.dart';
+import 'explanation/aura_signal_builder.dart';
 import 'inference/aura_ai_inference.dart' as shared_features;
 import 'infrastructure/security/aura_dynamic_whitelist.dart';
 import 'models/aura_ai_brain.dart';
+import 'models/aura_model_integrity_report.dart';
 import 'secure_vault.dart';
 import 'providers/aura_state_provider.dart';
 import 'security/shannon_entropy.dart';
@@ -55,9 +57,7 @@ const Set<String> _suspiciousTlds = {
 List<double> extractFeatures(String domain) {
   final host = _normalizeDomain(domain);
   final characters = host.runes.toList(growable: false);
-  final letters = characters
-      .where(_isAsciiLetter)
-      .toList(growable: false);
+  final letters = characters.where(_isAsciiLetter).toList(growable: false);
   final digits = characters.where(_isAsciiDigit).length;
   final vowels = letters.where(_isVowel).length;
   final consonantSequenceCharacters = _consonantSequenceLength(characters);
@@ -75,14 +75,12 @@ List<double> extractFeatures(String domain) {
 }
 
 class AuraAIBrain {
-  static const String _modelAssetPath =
-      'assets/model/aura_brain_model.json';
+  static const String _modelAssetPath = 'assets/model/aura_brain_model.json';
   static const String _modelDigestAssetPath =
       'assets/model/aura_brain_model.json.sha256';
   static const String _installedModelFileName = 'aura_brain_model.enc';
   static const int _maxModelBytes = 5 * 1024 * 1024;
-  static const int _maxEncryptedModelHexBytes =
-      2 * (_maxModelBytes + 2 * 16);
+  static const int _maxEncryptedModelHexBytes = 2 * (_maxModelBytes + 2 * 16);
   static const MethodChannel _engineChannel =
       MethodChannel('com.aura.cyberdefense/engine');
   static const MethodChannel _shieldChannel =
@@ -100,6 +98,8 @@ class AuraAIBrain {
   AuraDnsBlockRuleHandler? _onDnsBlockRule;
   Future<Map<String, dynamic>>? _modelLoad;
   Map<String, dynamic>? _modelCache;
+  String? _loadedModelSha256;
+  bool _loadedModelSignatureVerified = false;
 
   AuraAIBrain({
     AuraStateProvider? stateProvider,
@@ -107,8 +107,8 @@ class AuraAIBrain {
     AuraToolStartedCallback? onToolStarted,
     AuraToolCompletedCallback? onToolCompleted,
     AuraDnsBlockRuleHandler? onDnsBlockRule,
-    })  : _stateProvider = stateProvider,
-      _secureVault = secureVault ?? AuraSecureVault(),
+  })  : _stateProvider = stateProvider,
+        _secureVault = secureVault ?? AuraSecureVault(),
         _onToolStarted = onToolStarted,
         _onToolCompleted = onToolCompleted,
         _onDnsBlockRule = onDnsBlockRule {
@@ -143,6 +143,117 @@ class AuraAIBrain {
   Future<bool> preloadModel() async {
     final model = await _getModel();
     return !_forceRuleFallback && model['trees'] is List;
+  }
+
+  Future<AuraModelIntegrityReport> verifyModelIntegrity() async {
+    final model = await _getModel();
+    final modelVersion = _modelVersion(model);
+    final expectedLoadedDigest = _loadedModelSha256;
+    if (model.isEmpty || expectedLoadedDigest == null) {
+      return AuraModelIntegrityReport(
+        verified: false,
+        signatureVerified: false,
+        modelVersion: modelVersion,
+        sha256: expectedLoadedDigest ?? '',
+        message: 'No hay un modelo cargado y verificado.',
+      );
+    }
+
+    Uint8List? artifactBytes;
+    Uint8List? plaintextBytes;
+    Uint8List? signatureBytes;
+    try {
+      final supportDirectory = await getApplicationSupportDirectory();
+      final installedModel = File(
+        '${supportDirectory.path}/$_installedModelFileName',
+      );
+      if (await installedModel.exists()) {
+        artifactBytes = await installedModel.readAsBytes();
+        if (artifactBytes.isEmpty ||
+            artifactBytes.length > _maxEncryptedModelHexBytes) {
+          throw const FormatException('Tamaño de modelo instalado no válido.');
+        }
+        final installedDigest = File('${installedModel.path}.sha256');
+        if (!await installedDigest.exists()) {
+          throw const FormatException('Falta el digest local del modelo.');
+        }
+        final expectedArtifactDigest =
+            (await installedDigest.readAsString()).trim();
+        final actualArtifactDigest = sha256.convert(artifactBytes).toString();
+        if (!_isSha256(expectedArtifactDigest) ||
+            actualArtifactDigest != expectedArtifactDigest.toLowerCase()) {
+          throw const FormatException(
+            'El SHA-256 del modelo cifrado instalado no coincide.',
+          );
+        }
+
+        final secureKey = await _secureVault.getOrCreateModelMasterKey();
+        final plaintext = await AuraCryptoLayer.decryptModelSecure(
+          utf8.decode(artifactBytes),
+          secureKey,
+        );
+        plaintextBytes = Uint8List.fromList(utf8.encode(plaintext));
+        final installedSignature = File('${installedModel.path}.sig');
+        if (!await installedSignature.exists()) {
+          throw const FormatException('Falta la firma RSA del modelo.');
+        }
+        signatureBytes = await installedSignature.readAsBytes();
+        if (!AuraCryptoLayer.verifySignature(plaintextBytes, signatureBytes)) {
+          throw const FormatException('La firma RSA del modelo no es válida.');
+        }
+        final modelDigest = sha256.convert(plaintextBytes).toString();
+        if (modelDigest != expectedLoadedDigest) {
+          throw const FormatException(
+            'El contenido del modelo cargado cambió desde la verificación.',
+          );
+        }
+        return AuraModelIntegrityReport(
+          verified: true,
+          signatureVerified: true,
+          modelVersion: modelVersion,
+          sha256: modelDigest,
+          message: 'Digest local y firma RSA verificados.',
+        );
+      }
+
+      final assetData = await rootBundle.load(_modelAssetPath);
+      artifactBytes = Uint8List.fromList(
+        assetData.buffer.asUint8List(
+          assetData.offsetInBytes,
+          assetData.lengthInBytes,
+        ),
+      );
+      final expectedAssetDigest =
+          (await rootBundle.loadString(_modelDigestAssetPath)).trim();
+      final actualAssetDigest = sha256.convert(artifactBytes).toString();
+      if (!_isSha256(expectedAssetDigest) ||
+          actualAssetDigest != expectedAssetDigest.toLowerCase() ||
+          actualAssetDigest != expectedLoadedDigest) {
+        throw const FormatException(
+          'El SHA-256 del modelo base no coincide con su sidecar.',
+        );
+      }
+      return AuraModelIntegrityReport(
+        verified: true,
+        signatureVerified: false,
+        modelVersion: modelVersion,
+        sha256: actualAssetDigest,
+        message:
+            'SHA-256 del asset y sidecar verificados; asset sin firma RSA.',
+      );
+    } on Object catch (error) {
+      return AuraModelIntegrityReport(
+        verified: false,
+        signatureVerified: false,
+        modelVersion: modelVersion,
+        sha256: expectedLoadedDigest,
+        message: 'No se pudo verificar la integridad del modelo: $error',
+      );
+    } finally {
+      artifactBytes?.fillRange(0, artifactBytes.length, 0);
+      plaintextBytes?.fillRange(0, plaintextBytes.length, 0);
+      signatureBytes?.fillRange(0, signatureBytes.length, 0);
+    }
   }
 
   static Future<void> purgeAllInMemoryModels() async {
@@ -222,6 +333,8 @@ class AuraAIBrain {
             Map<String, dynamic>.from(jsonDecode(jsonEncode(decoded)) as Map);
         brain._modelCache = cachedModel;
         brain._modelLoad = Future<Map<String, dynamic>>.value(cachedModel);
+        brain._loadedModelSha256 = actualDigest;
+        brain._loadedModelSignatureVerified = true;
       }
     } finally {
       if (decoded != null) _clearModelValue(decoded);
@@ -243,6 +356,8 @@ class AuraAIBrain {
       brain._modelLoad = Future<Map<String, dynamic>>.value(
         <String, dynamic>{},
       );
+      brain._loadedModelSha256 = null;
+      brain._loadedModelSignatureVerified = false;
     }
     if (notifyHud) onModelIntegrityFailure?.call(reason);
   }
@@ -343,6 +458,8 @@ class AuraAIBrain {
     _modelLoad = null;
     _clearModelValue(_modelCache);
     _modelCache = null;
+    _loadedModelSha256 = null;
+    _loadedModelSignatureVerified = false;
     if (cachedLoad != null) _clearModelValue(await cachedLoad);
   }
 
@@ -363,8 +480,9 @@ class AuraAIBrain {
   Future<String> analyzeThreatPayload(String payload) async {
     try {
       final extractedDomains = _extractDomains(payload);
-      final blocklistedDomains = await shared_features.AuraAIInference
-          .findBlocklistedDomains(extractedDomains);
+      final blocklistedDomains =
+          await shared_features.AuraAIInference.findBlocklistedDomains(
+              extractedDomains);
       for (final domain in blocklistedDomains) {
         await _recordDomainOutcome(
           domain,
@@ -439,10 +557,9 @@ class AuraAIBrain {
 
       final results = <String>[
         ...blocklistResults,
-        ...protectedDomains
-          .map(
-            (domain) => 'Dominio protegido por el Escudo Allowlist: $domain.',
-          ),
+        ...protectedDomains.map(
+          (domain) => 'Dominio protegido por el Escudo Allowlist: $domain.',
+        ),
       ];
       for (final inference in inferenceResults) {
         final domain = inference.host;
@@ -471,6 +588,24 @@ class AuraAIBrain {
               : null,
         );
         _stateProvider?.recordLocalForestEvaluation();
+
+        final modelDigest = _loadedModelSha256;
+        if (modelDigest != null &&
+            inference.featureVector.length == inference.featureOrder.length &&
+            inference.featureVector.isNotEmpty) {
+          _stateProvider?.addExplanation(
+            AuraSignalBuilder.buildExplanation(
+              host: domain,
+              esThreat: isThreat,
+              features: inference.featureVector,
+              featureOrder: inference.featureOrder,
+              modelVersion: _modelVersion(model),
+              modelSha256: modelDigest,
+              source: 'ml',
+              signatureVerified: _loadedModelSignatureVerified,
+            ),
+          );
+        }
 
         if (isThreat) {
           _stateProvider?.setSecurityLevel(AuraSecurityLevel.critical);
@@ -579,6 +714,8 @@ class AuraAIBrain {
   Future<Map<String, dynamic>> _loadModel() async {
     Uint8List? artifactBytes;
     Map<String, dynamic>? decoded;
+    _loadedModelSha256 = null;
+    _loadedModelSignatureVerified = false;
     try {
       final supportDirectory = await getApplicationSupportDirectory();
       final installedModel = File(
@@ -590,7 +727,7 @@ class AuraAIBrain {
       if (await installedModel.exists()) {
         artifactBytes = await installedModel.readAsBytes();
         if (artifactBytes.isEmpty ||
-          artifactBytes.length > _maxEncryptedModelHexBytes) {
+            artifactBytes.length > _maxEncryptedModelHexBytes) {
           throw const FormatException(
             'El modelo cifrado local está vacío o supera el tamaño permitido.',
           );
@@ -615,6 +752,7 @@ class AuraAIBrain {
         final plaintextBytes = Uint8List.fromList(
           utf8.encode(plaintext),
         );
+        late final String plaintextDigest;
         try {
           if (!await installedSignature.exists()) {
             throw const FormatException(
@@ -631,6 +769,7 @@ class AuraAIBrain {
                 'La firma RSA del modelo instalado no es válida.',
               );
             }
+            plaintextDigest = sha256.convert(plaintextBytes).toString();
           } finally {
             signatureBytes.fillRange(0, signatureBytes.length, 0);
           }
@@ -638,6 +777,8 @@ class AuraAIBrain {
           plaintextBytes.fillRange(0, plaintextBytes.length, 0);
         }
         decoded = _decodeAndValidateModel(plaintext);
+        _loadedModelSha256 = plaintextDigest;
+        _loadedModelSignatureVerified = true;
       } else {
         final sourceData = await rootBundle.load(_modelAssetPath);
         artifactBytes = Uint8List.fromList(
@@ -661,10 +802,13 @@ class AuraAIBrain {
           );
         }
         decoded = _decodeAndValidateModel(utf8.decode(artifactBytes));
+        _loadedModelSha256 = actualDigest;
       }
       return decoded;
     } on Object catch (error) {
       if (decoded != null) _clearModelValue(decoded);
+      _loadedModelSha256 = null;
+      _loadedModelSignatureVerified = false;
       await useSafeRuleFallback(
         'Integridad del modelo no verificada; se activaron las reglas locales: $error',
       );
@@ -674,6 +818,16 @@ class AuraAIBrain {
         artifactBytes.fillRange(0, artifactBytes.length, 0);
       }
     }
+  }
+
+  static String _modelVersion(Map<String, dynamic> model) {
+    final version = model['model_version'];
+    if (version is String && version.isNotEmpty) return version;
+    final metadata = model['metadata'];
+    if (metadata is Map && metadata['version'] is String) {
+      return metadata['version'] as String;
+    }
+    return 'desconocida';
   }
 
   String _analyzeWithDefaultRules(Iterable<String> domains) {

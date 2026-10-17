@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - '.github/workflows/deploy-model-pages.yml'
+      - 'docs/model_card.md'
       - 'assets/model/aura_brain_model.json'
       - 'assets/model/aura_brain_model.json.sha256'
       - 'assets/model/aura_brain_model.json.sig'
@@ -35,6 +36,7 @@ jobs:
           cp assets/model/aura_brain_model.json _site/model/
           cp assets/model/aura_brain_model.json.sha256 _site/model/
           cp assets/model/aura_brain_model.json.sig _site/model/
+          cp docs/model_card.md _site/model-card.md
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
