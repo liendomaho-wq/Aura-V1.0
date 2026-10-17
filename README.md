@@ -679,7 +679,7 @@ workflows:
       groups:
         - production_keys # Puedes dejarlo o quitarlo, ya no fallará si está vacío
       vars:
-        PACKAGE_NAME: "com.aura.cyberdefense"
+        # applicationId real definido en android/app/build.gradle: com.ciberdefensa.aura
         AURA_BUILD_FORMAT: "apk"
       flutter: stable
       java: 17
