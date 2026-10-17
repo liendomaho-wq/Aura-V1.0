@@ -4,7 +4,7 @@
 
 Aura Mobile Defens es una aplicación Android de ciberdefensa local construida con Flutter/Dart y componentes nativos Kotlin, JNI y C. Su núcleo combina un `VpnService` autorizado por la persona usuaria, un túnel TUN basado en `hev-socks5-tunnel`, inspección DNS/SNI, una allowlist y un clasificador local de dominios. No requiere root. No es una solución certificada ni garantiza cobertura integral: el alcance depende del dispositivo, permisos, conectividad y protocolos observables.
 
-![Build de release signing](https://img.shields.io/github/actions/workflow/status/yovanymoreno001-glitch/Aura-V1.0/release-signing-integrity.yml?branch=main&label=release%20signing)
+![Build de release signing](https://img.shields.io/github/actions/workflow/status/yojamm16-boop/Aura-V1.0/release-signing-integrity.yml?branch=main&label=release%20signing)
 ![Cobertura](https://img.shields.io/badge/cobertura-no%20medida-lightgrey)
 ![Modelo](https://img.shields.io/badge/modelo-3.0.0-blue)
 
@@ -196,7 +196,7 @@ Runner Linux `x86_64`, kernel `6.8.0-1064-azure`, glibc 2.39, 2 CPUs lógicas. N
 | Warm, modelo residente | 10,000 | 1.980 ms | 4.085 ms | 7.300 ms | 434.22 dominios/s |
 | Cold, incluye recarga JSON | 500 | 56.011 ms | 97.569 ms | 136.403 ms | 16.08 dominios/s |
 
-La orden `actualizar` descarga el JSON, el sidecar `.sha256` y la firma `.sig` desde <https://yovanymoreno001-glitch.github.io/Aura-V1.0/model/>. La firma se verificó localmente con RSA-2048, PKCS#1 v1.5 y SHA-256. El cliente valida firma y digest antes de cifrar/instalar; un fallo activa reglas conservadoras sin bloqueo automático.
+La orden `actualizar` descarga el JSON, el sidecar `.sha256` y la firma `.sig` desde <https://yojamm16-boop.github.io/Aura-V1.0/model/>. La firma se verificó localmente con RSA-2048, PKCS#1 v1.5 y SHA-256. El cliente valida firma y digest antes de cifrar/instalar; un fallo activa reglas conservadoras sin bloqueo automático.
 
 ## Configuración de Codemagic para Producción
 
