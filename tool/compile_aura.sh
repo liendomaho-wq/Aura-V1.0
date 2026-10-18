@@ -46,9 +46,11 @@ esac
 temporary_files=()
 cleanup_temporary_files() {
     local temporary_file
-    for temporary_file in "${temporary_files[@]}"; do
-        rm -f -- "$temporary_file"
-    done
+    if (( ${#temporary_files[@]} )); then
+        for temporary_file in "${temporary_files[@]}"; do
+            rm -f -- "$temporary_file"
+        done
+    fi
 }
 trap cleanup_temporary_files EXIT
 
