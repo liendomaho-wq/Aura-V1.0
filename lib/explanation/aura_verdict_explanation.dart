@@ -21,6 +21,7 @@ class AuraVerdictExplanation {
     required this.timestamp,
     required this.modelVersion,
     required this.modelSha256,
+    this.decisionThreshold = 0.5,
     required List<AuraSignal> signals,
     this.signatureVerified = false,
     this.reportedFalsePositive = false,
@@ -33,6 +34,7 @@ class AuraVerdictExplanation {
   final int timestamp;
   final String modelVersion;
   final String modelSha256;
+  final double decisionThreshold;
   final List<AuraSignal> signals;
   final bool signatureVerified;
   final bool reportedFalsePositive;
@@ -46,6 +48,7 @@ class AuraVerdictExplanation {
         timestamp: timestamp,
         modelVersion: modelVersion,
         modelSha256: modelSha256,
+        decisionThreshold: decisionThreshold,
         signals: signals,
         signatureVerified: signatureVerified,
         reportedFalsePositive:

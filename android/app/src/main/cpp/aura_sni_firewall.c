@@ -261,6 +261,20 @@ inspect_client_hello (const uint8_t *hello, size_t hello_length, char *sni,
             return AURA_TLS_SNI_MALFORMED;
         extension_end = cursor + extension_length;
 
+        if (extension_type == 0xFE0D) {
+            static const char encrypted_sni_marker[] = "[ECH]";
+            if (sni && sni_capacity) {
+                const size_t marker_length = sizeof (encrypted_sni_marker) - 1;
+                const size_t copy_length =
+                    marker_length < sni_capacity - 1
+                        ? marker_length
+                        : sni_capacity - 1;
+                memcpy (sni, encrypted_sni_marker, copy_length);
+                sni[copy_length] = '\0';
+            }
+            return AURA_TLS_SNI_ECH;
+        }
+
         if (extension_type == 0x0000) {
             size_t name_cursor;
             size_t name_list_length;

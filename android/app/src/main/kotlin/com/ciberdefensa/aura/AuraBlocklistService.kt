@@ -32,6 +32,19 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 object AuraBlocklistService {
+    private val encryptedDnsEndpoints = setOf(
+        "cloudflare-dns.com",
+        "mozilla.cloudflare-dns.com",
+        "chrome.cloudflare-dns.com",
+        "dns.google",
+        "dns.quad9.net",
+        "dns.adguard.com",
+        "doh.opendns.com",
+        "doh.cleanbrowsing.org",
+        "doh.dns.sb",
+        "dns.sse.cisco.com",
+    )
+
     private const val TAG = "AuraBlocklist"
     private const val WORK_NAME = "aura-daily-blocklist-update"
     private const val INITIAL_WORK_NAME = "aura-initial-blocklist-update"
@@ -97,6 +110,7 @@ object AuraBlocklistService {
     fun isDomainBlocked(domain: String): Boolean {
         val host = normalizeDomain(domain)
             ?: throw IllegalArgumentException("A valid domain is required.")
+        if (isEncryptedDnsEndpoint(host)) return true
         ensureCacheLoaded()
         val snapshot = blockedDomains
         if (snapshot.isEmpty()) {
@@ -113,6 +127,12 @@ object AuraBlocklistService {
             candidate = candidate.substring(separator + 1)
         }
     }
+
+    fun isEncryptedDnsEndpoint(domain: String): Boolean =
+        normalizeDomain(domain) in encryptedDnsEndpoints
+
+    fun knownEncryptedDnsEndpoints(): List<String> =
+        encryptedDnsEndpoints.toList()
 
     suspend fun updateBlocklists(): Boolean = updateMutex.withLock {
         val manifestUrl = BuildConfig.AURA_BLOCKLIST_MANIFEST_URL

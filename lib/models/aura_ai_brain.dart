@@ -10,6 +10,7 @@ class AuraInferenceResult {
     required this.computedFeatures,
     this.featureVector = const <double>[],
     this.featureOrder = const <String>[],
+    this.decisionThreshold = 0.5,
   });
 
   final String host;
@@ -18,11 +19,16 @@ class AuraInferenceResult {
   final Map<String, double> computedFeatures;
   final List<double> featureVector;
   final List<String> featureOrder;
+  final double decisionThreshold;
 }
 
 abstract final class AuraAIInference {
   static const int _expectedTreeCount = 500;
   static const int _maximumTreeDepth = 32;
+
+  static double decisionThresholdForModel(Map<String, dynamic> model) =>
+      shared_features.AuraAIInference.decisionThresholdForModel(model);
+
   static Future<List<AuraInferenceResult>> analyzeThreatPayload({
     required String rawData,
     required Map<String, dynamic> modelStructure,
@@ -34,12 +40,14 @@ abstract final class AuraAIInference {
     final blockedDomains = blocklistChecked
         ? <String>{}
         : await shared_features.AuraAIInference.findBlocklistedDomains(domains);
+    final decisionThreshold = decisionThresholdForModel(modelStructure);
     final serializedResult = await Isolate.run<Map<String, Object?>>(
       () => _processInBackground(
         rawData,
         modelStructure,
         suspiciousTlds,
         blockedDomains.toList(growable: false),
+        decisionThreshold,
       ),
     );
     final rawResults = serializedResult['results'];
@@ -57,12 +65,14 @@ abstract final class AuraAIInference {
       final rawFeatures = result['features'];
       final rawFeatureVector = result['feature_vector'];
       final rawFeatureOrder = result['feature_order'];
+      final rawDecisionThreshold = result['decision_threshold'];
       if (host is! String ||
           score is! num ||
           threat is! bool ||
           rawFeatures is! Map ||
           rawFeatureVector is! List ||
-          rawFeatureOrder is! List) {
+          rawFeatureOrder is! List ||
+          rawDecisionThreshold is! num) {
         throw const FormatException('Campos de inferencia incompletos.');
       }
       final features = <String, double>{};
@@ -91,6 +101,7 @@ abstract final class AuraAIInference {
         featureOrder: List<String>.unmodifiable(
           rawFeatureOrder.cast<String>(),
         ),
+        decisionThreshold: rawDecisionThreshold.toDouble(),
       );
     }).toList(growable: false);
   }
@@ -100,6 +111,7 @@ abstract final class AuraAIInference {
     Map<String, dynamic> modelStructure,
     List<String> suspiciousTlds,
     List<String> blockedDomains,
+    double decisionThreshold,
   ) {
     final hosts =
         shared_features.AuraAIInference.extractDomainsForBlocklist(rawData);
@@ -131,6 +143,7 @@ abstract final class AuraAIInference {
           'features': <String, double>{'blocklist_match': 1.0},
           'feature_vector': <double>[],
           'feature_order': <String>[],
+          'decision_threshold': decisionThreshold,
         });
         continue;
       }
@@ -157,7 +170,8 @@ abstract final class AuraAIInference {
       results.add(<String, Object?>{
         'host': host,
         'threat_score': threatScore,
-        'is_threat': threatScore >= 0.5,
+        'is_threat': threatScore >= decisionThreshold,
+        'decision_threshold': decisionThreshold,
         'features': <String, double>{
           'length': features[0],
           'entropy': features[1],

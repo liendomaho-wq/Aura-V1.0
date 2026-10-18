@@ -21,7 +21,7 @@ class AuraCore {
         return 'DISPOSITIVO SEGURO: No se detectaron permisos abusivos en aplicaciones de terceros.';
       }
 
-      final List<Map<String, dynamic>> telemetry = rawTelemetry.map((entry) {
+      final decoded = rawTelemetry.map((entry) {
         if (entry is! Map) {
           throw const FormatException('La telemetría nativa tiene un formato inválido.');
         }
@@ -30,11 +30,23 @@ class AuraCore {
           (key, value) => MapEntry(key.toString(), value),
         );
       }).toList();
+      final inventoryWarnings = decoded
+          .map((entry) => entry['inventory_warning'])
+          .whereType<String>()
+          .toList(growable: false);
+      final List<Map<String, dynamic>> telemetry = decoded
+          .where((entry) => !entry.containsKey('inventory_warning'))
+          .toList(growable: false);
 
-      return await _aiBrain.analizarAmenazaReal(
+      if (telemetry.isEmpty && inventoryWarnings.isNotEmpty) {
+        return inventoryWarnings.join('\n');
+      }
+
+      final analysis = await _aiBrain.analizarAmenazaReal(
         tipoEvento: _privacyAuditEvent,
         logsDispositivo: telemetry,
       );
+      return <String>[...inventoryWarnings, analysis].join('\n');
     } on PlatformException catch (exception) {
       return 'ERROR DE TELEMETRÍA: ${exception.message ?? 'No se pudo consultar el hardware Android.'}';
     } catch (_) {

@@ -25,9 +25,13 @@ class AuraStateProvider extends ChangeNotifier {
   bool _isVoiceListening = false;
   AuraSecurityLevel _securityLevel = AuraSecurityLevel.safe;
   int _tunnelBytesProcessed = 0;
+  double? _activeDecisionThreshold;
+  int _quicBlocked = 0;
   int _localForestEvaluations = 0;
   int _encryptedDnsBlocks = 0;
   int _sniObservedEvents = 0;
+  int _encryptedSniEvents = 0;
+  int _directIpEvents = 0;
   int _blockedEvents = 0;
   int _dgaAlertEvents = 0;
   String? _lastNetworkAction;
@@ -42,9 +46,13 @@ class AuraStateProvider extends ChangeNotifier {
   String get liveConsoleLogs => _liveConsoleLogs;
   AuraSecurityLevel get securityLevel => _securityLevel;
   int get tunnelBytesProcessed => _tunnelBytesProcessed;
+  double? get activeDecisionThreshold => _activeDecisionThreshold;
+  int get quicBlocked => _quicBlocked;
   int get localForestEvaluations => _localForestEvaluations;
   int get encryptedDnsBlocks => _encryptedDnsBlocks;
   int get sniObservedEvents => _sniObservedEvents;
+  int get encryptedSniEvents => _encryptedSniEvents;
+  int get directIpEvents => _directIpEvents;
   int get blockedEvents => _blockedEvents;
   int get dgaAlertEvents => _dgaAlertEvents;
   String? get lastNetworkAction => _lastNetworkAction;
@@ -116,7 +124,10 @@ class AuraStateProvider extends ChangeNotifier {
     if (event['action'] == 'ENCRYPTED_DNS_BLOCKED') {
       _encryptedDnsBlocks++;
     }
+    if (event['action'] == 'QUIC_BLOCKED') _quicBlocked++;
     if (event['action'] == 'SNI_OBSERVED') _sniObservedEvents++;
+    if (event['action'] == 'SNI_ENCRYPTED') _encryptedSniEvents++;
+    if (event['action'] == 'DIRECT_IP') _directIpEvents++;
     if (event['action'] == 'BLOCKED') _blockedEvents++;
     if (event['action'] == 'DGA_ALERT') _dgaAlertEvents++;
     if (_telemetryEvents.length > maxTelemetryEvents) {
@@ -168,16 +179,33 @@ class AuraStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setActiveDecisionThreshold(double threshold) {
+    if (!threshold.isFinite || threshold < 0 || threshold > 1) {
+      throw ArgumentError.value(
+        threshold,
+        'threshold',
+        'El umbral debe estar entre 0.0 y 1.0.',
+      );
+    }
+    if (_activeDecisionThreshold == threshold) return;
+    _activeDecisionThreshold = threshold;
+    notifyListeners();
+  }
+
   void clearTelemetryHistory() {
     _telemetryEvents.clear();
     _explanationHistory.clear();
     _lastNetworkAction = null;
     _localForestEvaluations = 0;
+    _quicBlocked = 0;
     _encryptedDnsBlocks = 0;
     _sniObservedEvents = 0;
+    _encryptedSniEvents = 0;
+    _directIpEvents = 0;
     _blockedEvents = 0;
     _dgaAlertEvents = 0;
     _tunnelBytesProcessed = 0;
+    _activeDecisionThreshold = null;
     _liveConsoleLogs = '';
     notifyListeners();
   }

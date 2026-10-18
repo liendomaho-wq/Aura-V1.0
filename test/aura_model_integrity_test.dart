@@ -14,6 +14,22 @@ class _TestSecureVault extends AuraSecureVault {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('compara versiones semver por tripletas numéricas', () {
+    expect(compareSemverTriplets('3.0.10', '3.0.2'), greaterThan(0));
+    expect(compareSemverTriplets('3.0.0', '3.0.0'), 0);
+    expect(compareSemverTriplets('2.99.99', '3.0.0'), lessThan(0));
+    expect(modelVersionRollbackMessage('3.0.0'), isNull);
+    expect(
+      modelVersionRollbackMessage('2.9.9'),
+      '[CRIT] Downgrade de modelo rechazado '
+      '(2.9.9 < 3.0.0): firma válida pero versión inferior a la mínima soportada.',
+    );
+    expect(
+      () => compareSemverTriplets('3.0', '3.0.0'),
+      throwsFormatException,
+    );
+  });
+
   test('verifies the published model asset against its SHA-256 sidecar',
       () async {
     const pathProviderChannel =
@@ -50,11 +66,11 @@ void main() {
 
     final report = await brain.verifyModelIntegrity();
     expect(report.verified, isTrue);
-    expect(report.signatureVerified, isFalse);
+    expect(report.signatureVerified, isTrue);
     expect(
       report.sha256,
       'd190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2',
     );
-    expect(report.message, contains('sidecar verificados'));
+    expect(report.message, contains('firma RSA verificados'));
   });
 }

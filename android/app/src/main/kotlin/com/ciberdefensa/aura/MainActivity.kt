@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Debug
 import android.provider.Settings
+import android.view.accessibility.AccessibilityManager
 import android.speech.RecognizerIntent
 import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
@@ -31,6 +32,9 @@ import com.aura.cyberdefense.AuraCryptoSecure
 import com.aura.cyberdefense.AuraNotificationService
 import java.util.concurrent.Executors
 import java.util.Locale
+
+internal fun isPackageVisibilityLimited(apiLevel: Int, visibleAppCount: Int): Boolean =
+    apiLevel >= Build.VERSION_CODES.R && visibleAppCount < 5
 
 object AuraAntiTampering {
     private const val ANDROIDX_MASTER_KEY_ALIAS = "_androidx_security_master_key_"
@@ -58,6 +62,7 @@ object AuraAntiTampering {
         } catch (_: Exception) {
             false to false
         }
+
         val mapsInspectionSucceeded = mapsResult.first
         val fridaDetected = mapsResult.second
 
@@ -192,8 +197,12 @@ class MainActivity: FlutterFragmentActivity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val started = intent?.getBooleanExtra("started", false) ?: false
             val message = intent?.getStringExtra("message") ?: "Sin respuesta del servicio VPN."
+            val revoked = intent?.getBooleanExtra("revoked", false) ?: false
             pendingShieldResult?.success(started)
             pendingShieldResult = null
+            if (revoked) {
+                AuraNetworkStream.emitVpnRevokedEvent(message)
+            }
             if (!started) android.util.Log.e("AuraVPN", message)
         }
     }
@@ -628,6 +637,20 @@ class MainActivity: FlutterFragmentActivity() {
                     }
                 }
 
+                "openAccessibilitySettings" -> {
+                    try {
+                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        result.success(true)
+                    } catch (error: ActivityNotFoundException) {
+                        result.error(
+                            "ACCESSIBILITY_SETTINGS_UNAVAILABLE",
+                            "Android no ofrece los ajustes de accesibilidad. " +
+                                "Remedio: ábralos manualmente desde Ajustes.",
+                            null,
+                        )
+                    }
+                }
+
                 "scanActiveSensitiveServices" -> {
                     genomeScannerExecutor.execute {
                         try {
@@ -830,6 +853,16 @@ class MainActivity: FlutterFragmentActivity() {
                     val appRiskList = mutableListOf<Map<String, Any>>()
                     val pm = packageManager
                     val installedPackages = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
+                    if (isPackageVisibilityLimited(Build.VERSION.SDK_INT, installedPackages.size)) {
+                        appRiskList.add(
+                            mapOf(
+                                "inventory_warning" to
+                                    "VISIBILIDAD DE PAQUETES LIMITADA POR ANDROID; " +
+                                    "el inventario de apps puede estar incompleto. " +
+                                    "Remedio: revise la declaración QUERY_ALL_PACKAGES.",
+                            ),
+                        )
+                    }
                     val permisosCriticos = listOf(
                         "android.permission.READ_SMS",
                         "android.permission.RECEIVE_SMS",

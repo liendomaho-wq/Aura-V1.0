@@ -88,5 +88,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(calls, <String>['startShield', 'stopShield']);
     expect(state.isVpnActive, isFalse);
+
+    await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
+    await tester.pumpAndSettle();
+    expect(state.isVpnActive, isTrue);
+    networkEventSink!.success(<String, Object>{
+      'timestamp': 2,
+      'source_app': 'android',
+      'requested_domain':
+          '[CRIT] TÚNEL REVOCADO POR ANDROID O POR EL OPERADOR — '
+          'LAS DEFENSAS ESTÁN INACTIVAS. Remedio: reactive la defensa.',
+      'action': 'VPN_REVOKED',
+    });
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(state.isVpnActive, isFalse);
+    expect(find.text('DEFENSA: OFF'), findsOneWidget);
+    expect(
+      find.textContaining(
+        '[CRIT] TÚNEL REVOCADO POR ANDROID O POR EL OPERADOR',
+      ),
+      findsOneWidget,
+    );
   });
 }

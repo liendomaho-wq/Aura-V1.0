@@ -18,14 +18,14 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import _tree
 
 ROOT = Path(__file__).resolve().parents[1]
-COMMON_DOMAINS_PATH = ROOT / "tool/domain_lists/tranco_top_1000_20261012.txt"
-TRANCO_TOP_1000 = tuple(
+COMMON_DOMAINS_PATH = ROOT / "tool/domain_lists/majestic_top_5000_20261018.txt"
+MAJESTIC_TOP_5000 = tuple(
     COMMON_DOMAINS_PATH.read_text(encoding="ascii").splitlines()
 )
-if len(TRANCO_TOP_1000) != 1000 or len(set(TRANCO_TOP_1000)) != 1000:
-    raise ValueError(f"{COMMON_DOMAINS_PATH} must contain 1000 unique domains")
-COMMON_DOMAINS = TRANCO_TOP_1000
-MODEL_VERSION = "4.0.0"
+if len(MAJESTIC_TOP_5000) != 5000 or len(set(MAJESTIC_TOP_5000)) != 5000:
+    raise ValueError(f"{COMMON_DOMAINS_PATH} must contain 5000 unique domains")
+COMMON_DOMAINS = MAJESTIC_TOP_5000
+MODEL_VERSION = "3.1.0"
 FEATURE_ORDER = [
     "length",
     "shannon_entropy",
@@ -149,7 +149,7 @@ _RARE_CHARACTERS = frozenset("qxzk")
 @lru_cache(maxsize=65536)
 def _minimum_top_domain_distance(host):
     closest_distance = math.inf
-    for common_domain in TRANCO_TOP_1000:
+    for common_domain in MAJESTIC_TOP_5000:
         length_difference = abs(len(host) - len(common_domain))
         if length_difference >= closest_distance:
             continue
@@ -363,6 +363,57 @@ def evaluate_metrics(labels, predictions):
     }
 
 
+def choose_decision_threshold(scores, labels):
+    candidates = []
+    for threshold_step in range(5, 96):
+        threshold = threshold_step / 100
+        predictions = [int(score >= threshold) for score in scores]
+        metrics = evaluate_metrics(labels, predictions)
+        metrics["threshold"] = threshold
+        precision = metrics["precision"]
+        recall = metrics["recall"]
+        metrics["f2"] = (
+            5 * precision * recall / (4 * precision + recall)
+            if 4 * precision + recall
+            else 0.0
+        )
+        candidates.append(metrics)
+
+    constrained = [
+        metrics for metrics in candidates
+        if metrics["false_positive_rate"] <= 0.05
+    ]
+    if constrained:
+        selected = max(
+            constrained,
+            key=lambda metrics: (
+                metrics["recall"],
+                -metrics["false_positive_rate"],
+                metrics["threshold"],
+            ),
+        )
+        rule = "max_recall_with_fpr_at_most_0.05"
+    else:
+        selected = max(
+            candidates,
+            key=lambda metrics: (
+                metrics["f2"],
+                metrics["recall"],
+                -metrics["false_positive_rate"],
+                metrics["threshold"],
+            ),
+        )
+        rule = "max_f2_no_threshold_met_fpr_at_most_0.05"
+    return float(selected["threshold"]), rule, selected
+
+
+def score_serialized_model(model, rows):
+    return [
+        predict_serialized_model(model, domain)
+        for domain, _ in rows
+    ]
+
+
 def evaluate_serialized_node(node, features, depth=0):
     if not isinstance(node, dict) or depth > 32:
         raise ValueError("Invalid or too-deep serialized model node")
@@ -473,9 +524,10 @@ def atomic_write(path, content):
 
 
 def train_mobile_preset():
-    train_rows = read_split(DATASET_DIR / "splits/train.csv")
+    train_rows = read_split(DATASET_DIR / "splits/train_adversarial.csv")
     val_rows = read_split(DATASET_DIR / "splits/val.csv")
     test_rows = read_split(DATASET_DIR / "splits/test.csv")
+    adversarial_test_rows = read_split(DATASET_DIR / "splits/test_adversarial.csv")
     for split_name, rows in (("train", train_rows), ("val", val_rows), ("test", test_rows)):
         counts = {label: sum(row_label == label for _, row_label in rows) for label in EXPECTED_CLASSES}
         if any(counts[label] < MIN_TEST_ROWS_PER_CLASS for label in EXPECTED_CLASSES):
@@ -488,11 +540,7 @@ def train_mobile_preset():
         [extract_maximum_features(domain) for domain, _ in train_rows]
     )
     training_labels = np.asarray([label for _, label in train_rows], dtype=np.int64)
-    configurations = [
-        (10, 8), (10, 32), (10, 128), (10, 512), (10, 2048),
-        (9, 4096), (9, 8192), (9, 16384),
-        (8, 32768), (8, 65536), (8, 131072),
-    ]
+    configurations = [(10, 512)]
     trials = []
     selected = None
     for max_depth, min_samples_leaf in configurations:
@@ -517,15 +565,18 @@ def train_mobile_preset():
             "model_version": MODEL_VERSION,
             "metadata": build_model_metadata(),
             "model_type": "random_forest",
-            "training_status": "heuristic_seed_with_csv",
+            "training_status": "adversarial_csv",
             "training_samples": len(train_rows),
-            "csv_files": [str((DATASET_DIR / "splits/train.csv").relative_to(ROOT))],
+            "csv_files": [
+                str((DATASET_DIR / "splits/train_adversarial.csv").relative_to(ROOT))
+            ],
             "training_config": {
                 "n_estimators": 500,
                 "max_depth": max_depth,
                 "min_samples_leaf": min_samples_leaf,
                 "n_jobs": -1,
                 "random_state": 42,
+                "class_weight": "balanced_subsample",
             },
             "feature_order": FEATURE_ORDER,
             "classes": {"0": "safe", "1": "threat"},
@@ -536,6 +587,17 @@ def train_mobile_preset():
         }
         if len(model["trees"]) != 500:
             raise RuntimeError("El preset móvil debe conservar exactamente 500 árboles.")
+        validation_scores = score_serialized_model(model, val_rows)
+        decision_threshold, decision_rule, validation_threshold_metrics = (
+            choose_decision_threshold(
+                validation_scores,
+                [label for _, label in val_rows],
+            )
+        )
+        model["decision_threshold"] = decision_threshold
+        model["decision_rule"] = (
+            "threat if threatVotes/trees.length >= decision_threshold"
+        )
         model_bytes = (
             json.dumps(model, ensure_ascii=False, separators=(",", ":")) + "\n"
         ).encode("utf-8")
@@ -579,17 +641,19 @@ def train_mobile_preset():
 
     model, model_bytes, trial, training_seconds = selected
     atomic_write(MOBILE_MODEL_OUTPUT, model_bytes.decode("utf-8"))
-    evaluation_domains = [domain for domain, _ in test_rows]
     evaluation_labels = [label for _, label in test_rows]
-    validation_domains = [domain for domain, _ in val_rows]
     validation_labels = [label for _, label in val_rows]
+    adversarial_test_labels = [label for _, label in adversarial_test_rows]
+    test_scores = score_serialized_model(model, test_rows)
+    adversarial_test_scores = score_serialized_model(model, adversarial_test_rows)
     test_predictions = [
-        int(predict_serialized_model(model, domain) >= 0.5)
-        for domain in evaluation_domains
+        int(score >= decision_threshold) for score in test_scores
     ]
     validation_predictions = [
-        int(predict_serialized_model(model, domain) >= 0.5)
-        for domain in validation_domains
+        int(score >= decision_threshold) for score in validation_scores
+    ]
+    adversarial_test_predictions = [
+        int(score >= decision_threshold) for score in adversarial_test_scores
     ]
     manifest_path = DATASET_DIR / "dataset_manifest.json"
     if not manifest_path.is_file():
@@ -619,12 +683,24 @@ def train_mobile_preset():
             "class_weight": "balanced_subsample",
             "feature_order": FEATURE_ORDER,
             "threshold_precision_decimals": 4,
+            "decision_threshold": decision_threshold,
+            "decision_rule": model["decision_rule"],
         },
         "training_seconds": training_seconds,
         "dataset_manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
         "metrics_model_file": str(MOBILE_MODEL_OUTPUT.relative_to(ROOT)),
         "validation_metrics": evaluate_metrics(validation_labels, validation_predictions),
         "test_metrics": evaluate_metrics(evaluation_labels, test_predictions),
+        "validation_threshold_metrics": validation_threshold_metrics,
+        "adversarial_test_rows": len(adversarial_test_rows),
+        "adversarial_test_class_counts": {
+            "safe": sum(label == 0 for label in adversarial_test_labels),
+            "threat": sum(label == 1 for label in adversarial_test_labels),
+        },
+        "adversarial_test_metrics": evaluate_metrics(
+            adversarial_test_labels,
+            adversarial_test_predictions,
+        ),
     }
     write_metrics(metrics, MOBILE_METRICS_JSON, MOBILE_METRICS_MARKDOWN)
     print(f"MODEL_PRESET={MOBILE_MODEL_OUTPUT.relative_to(ROOT)}")
@@ -654,9 +730,10 @@ def main():
         train_mobile_preset()
         return
     try:
-        train_rows = read_split(DATASET_DIR / "splits/train.csv")
+        train_rows = read_split(DATASET_DIR / "splits/train_adversarial.csv")
         val_rows = read_split(DATASET_DIR / "splits/val.csv")
         test_rows = read_split(DATASET_DIR / "splits/test.csv")
+        adversarial_test_rows = read_split(DATASET_DIR / "splits/test_adversarial.csv")
     except FileNotFoundError as error:
         if not args.allow_seed_only:
             raise SystemExit(
@@ -691,12 +768,13 @@ def main():
     validation_domains = [domain for domain, _ in validation_rows]
     validation_labels = [label for _, label in validation_rows]
     print(
-        f"Training Aura forest: 500 trees, max_depth=12, "
+        f"Training Aura forest: 500 trees, max_depth=10, min_samples_leaf=512, "
         f"train={len(training_rows)}, val={len(val_rows)}, test={len(test_rows)}."
     )
     forest = RandomForestClassifier(
         n_estimators=500,
-        max_depth=12,
+        max_depth=10,
+        min_samples_leaf=512,
         n_jobs=-1,
         random_state=42,
         class_weight="balanced_subsample",
@@ -708,12 +786,35 @@ def main():
     evaluation_features = np.asarray(
         [extract_maximum_features(domain) for domain in evaluation_domains]
     )
-    predictions = forest.predict(evaluation_features).astype(int).tolist()
-    test_metrics = evaluate_metrics(evaluation_labels, predictions)
     validation_features = np.asarray(
         [extract_maximum_features(domain) for domain in validation_domains]
     )
-    validation_predictions = forest.predict(validation_features).astype(int).tolist()
+    validation_scores = forest.predict_proba(validation_features)[:, 1].tolist()
+    decision_threshold, decision_rule, validation_threshold_metrics = (
+        choose_decision_threshold(
+            validation_scores,
+            validation_labels,
+        )
+    )
+    predictions = (
+        forest.predict_proba(evaluation_features)[:, 1] >= decision_threshold
+    ).astype(int).tolist()
+    test_metrics = evaluate_metrics(evaluation_labels, predictions)
+    adversarial_test_domains = [domain for domain, _ in adversarial_test_rows]
+    adversarial_test_labels = [label for _, label in adversarial_test_rows]
+    adversarial_test_features = np.asarray(
+        [extract_maximum_features(domain) for domain in adversarial_test_domains]
+    )
+    adversarial_test_predictions = (
+        forest.predict_proba(adversarial_test_features)[:, 1] >= decision_threshold
+    ).astype(int).tolist()
+    adversarial_test_metrics = evaluate_metrics(
+        adversarial_test_labels,
+        adversarial_test_predictions,
+    )
+    validation_predictions = (
+        np.asarray(validation_scores) >= decision_threshold
+    ).astype(int).tolist()
     validation_metrics = evaluate_metrics(validation_labels, validation_predictions)
 
     model = {
@@ -726,11 +827,14 @@ def main():
         "csv_files": [str((DATASET_DIR / "splits/train.csv").relative_to(ROOT))],
         "training_config": {
             "n_estimators": 500,
-            "max_depth": 12,
+            "max_depth": 10,
+            "min_samples_leaf": 512,
             "n_jobs": -1,
             "random_state": 42,
         },
         "feature_order": FEATURE_ORDER,
+        "decision_threshold": decision_threshold,
+        "decision_rule": "threat if threatVotes/trees.length >= decision_threshold",
         "classes": {"0": "safe", "1": "threat"},
         "trees": [
             serialize_tree(estimator, threshold_decimals=4)
@@ -759,17 +863,27 @@ def main():
         },
         "hyperparameters": {
             "n_estimators": 500,
-            "max_depth": 12,
+            "max_depth": 10,
+            "min_samples_leaf": 512,
             "n_jobs": -1,
             "random_state": 42,
             "class_weight": "balanced_subsample",
             "feature_order": FEATURE_ORDER,
+            "decision_threshold": decision_threshold,
+            "decision_rule": decision_rule,
         },
         "training_seconds": training_seconds,
         "dataset_manifest_sha256": manifest_digest,
         "metrics_model_file": str(MODEL_OUTPUT.relative_to(ROOT)),
         "validation_metrics": validation_metrics,
         "test_metrics": test_metrics,
+        "validation_threshold_metrics": validation_threshold_metrics,
+        "adversarial_test_rows": len(adversarial_test_rows),
+        "adversarial_test_class_counts": {
+            "safe": sum(label == 0 for label in adversarial_test_labels),
+            "threat": sum(label == 1 for label in adversarial_test_labels),
+        },
+        "adversarial_test_metrics": adversarial_test_metrics,
     }
     write_metrics(metrics)
     print(f"MODEL_CANDIDATE={MODEL_OUTPUT.relative_to(ROOT)}")

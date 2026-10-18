@@ -29,6 +29,7 @@ class AuraSignalBuilder {
     required List<String> featureOrder,
     required String modelVersion,
     required String modelSha256,
+    double decisionThreshold = 0.5,
     String source = 'ml',
     bool signatureVerified = false,
   }) {
@@ -223,6 +224,7 @@ class AuraSignalBuilder {
       timestamp: timestamp,
       modelVersion: modelVersion,
       modelSha256: modelSha256.toLowerCase(),
+      decisionThreshold: decisionThreshold,
       signals: selectedSignals,
       signatureVerified: signatureVerified,
     );

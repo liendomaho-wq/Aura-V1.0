@@ -18,7 +18,7 @@ class AgentController {
 
   static final AgentController instance = AgentController._();
 
-  static const int maxHistoryLength = 500;
+  static const int historyCapacity = 400;
   static const MethodChannel _biometricChannel =
       MethodChannel('com.aura.cyberdefense/biometrics');
   static const MethodChannel _notificationChannel =
@@ -517,8 +517,8 @@ class AgentController {
 
   void _emit(AgentEvent event) {
     history.add(event);
-    if (history.length > maxHistoryLength) {
-      history.removeRange(0, history.length - maxHistoryLength);
+    if (history.length > historyCapacity) {
+      history.removeRange(0, history.length - historyCapacity);
     }
     _eventController.add(event);
   }

@@ -84,5 +84,30 @@ void main() {
       expect(provider.observedPublicDnsResolvers, isEmpty);
       provider.dispose();
     });
+
+    test('counts blocked QUIC events and clears the session counter', () {
+      final provider = AuraStateProvider();
+      provider.addTelemetryEvent(<String, dynamic>{
+        'action': 'QUIC_BLOCKED',
+        'destination_port': 443,
+        'transport_protocol': 'UDP',
+      });
+
+      expect(provider.quicBlocked, 1);
+      provider.clearTelemetryHistory();
+      expect(provider.quicBlocked, 0);
+      provider.dispose();
+    });
+
+    test('retains the active model threshold and clears it with session data',
+        () {
+      final provider = AuraStateProvider();
+      provider.setActiveDecisionThreshold(0.62);
+
+      expect(provider.activeDecisionThreshold, 0.62);
+      provider.clearTelemetryHistory();
+      expect(provider.activeDecisionThreshold, isNull);
+      provider.dispose();
+    });
   });
 }

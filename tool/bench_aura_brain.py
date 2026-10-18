@@ -72,7 +72,10 @@ def predict_threat(model: dict, domain: str) -> bool:
         else extract_legacy_features(domain)
     )
     votes = sum(evaluate_node(tree.get("root"), features) for tree in model["trees"])
-    return votes / len(model["trees"]) >= 0.5
+    threshold = model.get("decision_threshold", 0.5)
+    if not isinstance(threshold, (int, float)) or not math.isfinite(threshold) or not 0 <= threshold <= 1:
+        threshold = 0.5
+    return votes / len(model["trees"]) >= threshold
 
 
 def percentiles_ms(durations_seconds: list[float]) -> dict[str, float]:

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -100,6 +101,7 @@ class AuraAIInference {
     'requested_domain',
   };
   static const int _maximumTreeDepth = 32;
+  static bool _warnedInvalidDecisionThreshold = false;
   static const MethodChannel _blocklistChannel =
       MethodChannel('com.ciberdefensa.aura/blocklist');
   static const int _binaryHeaderLength = 8;
@@ -108,6 +110,15 @@ class AuraAIInference {
   static const int _maximumBinaryModelBytes = 5 * 1024 * 1024;
   static final Map<String, (int, double, String)> _levenshteinCache =
       <String, (int, double, String)>{};
+  static final List<(String, List<int>)> _commonDomainCharacters =
+      auraCommonDomains
+          .map(
+            (domain) => (
+              domain,
+              domain.runes.toList(growable: false),
+            ),
+          )
+          .toList(growable: false);
 
   /// Returns true for allowlisted hosts or hosts classified as safe by the model.
   static bool analyzeHostSecure(
@@ -120,6 +131,25 @@ class AuraAIInference {
 
     final features = _featuresForModel(host, trainedModelJson['feature_order']);
     return _evaluateEnsemble(Float64List.fromList(features), trainedModelJson);
+  }
+
+  static double decisionThresholdForModel(Map<String, dynamic> model) {
+    final candidate = model['decision_threshold'];
+    if (candidate is num &&
+        candidate.toDouble().isFinite &&
+        candidate >= 0 &&
+        candidate <= 1) {
+      return candidate.toDouble();
+    }
+    if (!_warnedInvalidDecisionThreshold) {
+      _warnedInvalidDecisionThreshold = true;
+      developer.log(
+        '[WARN] Umbral de decisión ausente o inválido; se usa 0.50. '
+        'Remedio: valide decision_threshold en el modelo cargado.',
+        name: 'AuraAIInference',
+      );
+    }
+    return 0.5;
   }
 
   /// Retains the original six unscaled values for legacy diagnostics.
@@ -467,8 +497,7 @@ class AuraAIInference {
     final hostCharacters = host.runes.toList(growable: false);
     var minimumDistance = math.max(hostCharacters.length, 253).toInt();
     var closestDomain = '';
-    for (final commonDomain in auraCommonDomains) {
-      final domainCharacters = commonDomain.runes.toList(growable: false);
+    for (final (commonDomain, domainCharacters) in _commonDomainCharacters) {
       final lengthDifference =
           (hostCharacters.length - domainCharacters.length).abs();
       if (lengthDifference >= minimumDistance) continue;
@@ -826,7 +855,7 @@ class AuraAIInference {
       }
       threatVotes += _evaluateNode(tree['root'], features);
     }
-    return threatVotes / trees.length < 0.5;
+    return threatVotes / trees.length < decisionThresholdForModel(model);
   }
 
   static int _evaluateNode(

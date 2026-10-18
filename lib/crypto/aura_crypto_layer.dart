@@ -30,7 +30,8 @@ abstract final class AuraCryptoLayer {
   /// Raw Base64 SubjectPublicKeyInfo DER; verification fails closed when unset.
   static const String _auraPublicKeyEnv = String.fromEnvironment(
     'AURA_PUBLIC_KEY',
-    defaultValue: '',
+    defaultValue:
+        'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuG7nFF0UbTjT6Y8Ju0p31nVPiqx3aq6yg7+g/JtRJ+Y9WDAY504WdCnACplCVwju/5tnJhkvD3kWbsmfX45t9ZqMyCBo4stXbvRdbpe2WwMmxR/9ZHGGQQ1vjKyE4klsQ03aC836GW8l5y1IV/jknU4C03GRRMjfhkwTKpMjqq3kZAgQ62Yo2Prw0fB2c7b/2RjN5yiUZLtjh8FEQBhe8aW+4lrxEVkRJZxPrkbYdQoqBQKm2hQq1AUHurXx+HwHqDplb6mTcNttbnFtrkS0IDqXrhDSAHjaMLY8k6zyCutL7kTPBrAb44KaYvTRhMRBeUyOXHIb9YfxgAA0cCNs5wIDAQAB',
   );
   static const List<int> _sha256DigestInfoPrefix = <int>[
     0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65,

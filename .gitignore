@@ -33,6 +33,8 @@ android/local.properties
 
 # Android signing material and local signing configuration
 /tool/private_key.pem
+*.pem
+/tool/*.key
 *.jks
 *.keystore
 *.keystores

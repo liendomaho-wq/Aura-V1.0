@@ -19,4 +19,19 @@ void main() {
       contains(expected),
     );
   });
+
+  test('descarta eventos antiguos al superar 400 entradas', () {
+    final controller = AgentController.instance;
+    controller.history.clear();
+
+    for (var index = 0; index < 405; index++) {
+      controller.reportWarning('evento-$index');
+    }
+
+    expect(AgentController.historyCapacity, 400);
+    expect(controller.history, hasLength(400));
+    expect(controller.history.first.message, 'evento-5');
+    expect(controller.history.last.message, 'evento-404');
+    controller.history.clear();
+  });
 }

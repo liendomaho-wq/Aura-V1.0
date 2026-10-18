@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'agent/aura_crypto_layer.dart';
 import 'agent/aura_whitelist.dart';
 import 'explanation/aura_signal_builder.dart';
+import 'inference/aura_evasion_endpoints.dart';
 import 'inference/aura_ai_inference.dart' as shared_features;
 import 'infrastructure/security/aura_dynamic_whitelist.dart';
 import 'models/aura_ai_brain.dart';
@@ -31,6 +32,39 @@ typedef AuraToolCompletedCallback = void Function(
 );
 typedef AuraDnsBlockRuleHandler = Future<bool> Function(String domain);
 typedef AuraModelIntegrityFailureHandler = void Function(String message);
+
+const String minSupportedModelVersion = '3.0.0';
+
+int compareSemverTriplets(String left, String right) {
+  final leftParts = _parseSemverTriplet(left);
+  final rightParts = _parseSemverTriplet(right);
+  for (var index = 0; index < 3; index++) {
+    final comparison = leftParts[index].compareTo(rightParts[index]);
+    if (comparison != 0) return comparison;
+  }
+  return 0;
+}
+
+List<int> _parseSemverTriplet(String version) {
+  final match = RegExp(r'^(\d+)\.(\d+)\.(\d+)$').firstMatch(version);
+  if (match == null) {
+    throw FormatException('Versión de modelo semver inválida: $version');
+  }
+  return <int>[
+    int.parse(match[1]!),
+    int.parse(match[2]!),
+    int.parse(match[3]!),
+  ];
+}
+
+String? modelVersionRollbackMessage(String version) {
+  if (compareSemverTriplets(version, minSupportedModelVersion) >= 0) {
+    return null;
+  }
+  return '[CRIT] Downgrade de modelo rechazado '
+      '($version < $minSupportedModelVersion): firma válida pero versión '
+      'inferior a la mínima soportada.';
+}
 
 const Set<String> _suspiciousTlds = {
   'cam',
@@ -79,6 +113,8 @@ class AuraAIBrain {
   static const String _modelAssetPath = 'assets/model/aura_brain_model.json';
   static const String _modelDigestAssetPath =
       'assets/model/aura_brain_model.json.sha256';
+  static const String _modelSignatureAssetPath =
+      'assets/model/aura_brain_model.json.sig';
   static const String _installedModelFileName = 'aura_brain_model.enc';
   static const int _maxModelBytes = 5 * 1024 * 1024;
   static const int _maxEncryptedModelHexBytes = 2 * (_maxModelBytes + 2 * 16);
@@ -234,13 +270,24 @@ class AuraAIBrain {
           'El SHA-256 del modelo base no coincide con su sidecar.',
         );
       }
+      final signatureData = await rootBundle.load(_modelSignatureAssetPath);
+      signatureBytes = Uint8List.fromList(
+        signatureData.buffer.asUint8List(
+          signatureData.offsetInBytes,
+          signatureData.lengthInBytes,
+        ),
+      );
+      if (!AuraCryptoLayer.verifySignature(artifactBytes, signatureBytes)) {
+        throw const FormatException(
+          'La firma RSA del modelo base no es válida.',
+        );
+      }
       return AuraModelIntegrityReport(
         verified: true,
-        signatureVerified: false,
+        signatureVerified: true,
         modelVersion: modelVersion,
         sha256: actualAssetDigest,
-        message:
-            'SHA-256 del asset y sidecar verificados; asset sin firma RSA.',
+        message: 'Digest local y firma RSA verificados.',
       );
     } on Object catch (error) {
       return AuraModelIntegrityReport(
@@ -308,6 +355,12 @@ class AuraAIBrain {
     Map<String, dynamic>? decoded;
     try {
       decoded = _decodeAndValidateModel(utf8.decode(modelBytes));
+      final rollbackMessage =
+          modelVersionRollbackMessage(_modelVersion(decoded));
+      if (rollbackMessage != null) {
+        onModelIntegrityFailure?.call(rollbackMessage);
+        throw FormatException(rollbackMessage);
+      }
       final brains = _instances
           .map((reference) => reference.target)
           .whereType<AuraAIBrain>()
@@ -451,6 +504,11 @@ class AuraAIBrain {
       return <String, dynamic>{};
     }
     _modelCache = loadedModel;
+    if (loadedModel['trees'] is List) {
+      _stateProvider?.setActiveDecisionThreshold(
+        shared_features.AuraAIInference.decisionThresholdForModel(loadedModel),
+      );
+    }
     return loadedModel;
   }
 
@@ -509,14 +567,14 @@ class AuraAIBrain {
           source: 'allowlist',
         );
         developer.log(
-          'Dominio protegido por el Escudo Allowlist: $domain',
+          'Dominio protegido por allowlist local: $domain',
           name: 'AuraAIInference',
           level: 800,
         );
       }
       if (extractedDomains.isNotEmpty && analyzableDomains.isEmpty) {
         final protectedResults = protectedDomains.map(
-          (domain) => 'Dominio protegido por el Escudo Allowlist: $domain.',
+          (domain) => 'Dominio protegido por allowlist local: $domain.',
         );
         return <String>[...blocklistResults, ...protectedResults].join('\n');
       }
@@ -559,7 +617,7 @@ class AuraAIBrain {
       final results = <String>[
         ...blocklistResults,
         ...protectedDomains.map(
-          (domain) => 'Dominio protegido por el Escudo Allowlist: $domain.',
+          (domain) => 'Dominio protegido por allowlist local: $domain.',
         ),
       ];
       for (final inference in inferenceResults) {
@@ -602,6 +660,7 @@ class AuraAIBrain {
               featureOrder: inference.featureOrder,
               modelVersion: _modelVersion(model),
               modelSha256: modelDigest,
+              decisionThreshold: inference.decisionThreshold,
               source: 'ml',
               signatureVerified: _loadedModelSignatureVerified,
             ),
@@ -676,9 +735,12 @@ class AuraAIBrain {
         arguments,
         toolResult,
       );
+      final reason = knownEncryptedDnsEndpoints.contains(domain)
+          ? ' RESOLUTOR CIFRADO EXTERNO — EVASIÓN DE FILTRO.'
+          : '';
       results.add(
         'AMENAZA: $domain (blocklist verificada; no se ejecutó ML); '
-        '${blocked ? 'bloqueo confirmado' : 'bloqueo no confirmado'}.',
+        '${blocked ? 'bloqueo confirmado' : 'bloqueo no confirmado'}.$reason',
       );
     }
     return results;
@@ -808,8 +870,26 @@ class AuraAIBrain {
             'El SHA-256 del modelo base empaquetado no coincide.',
           );
         }
+        final signatureData =
+            await rootBundle.load(_modelSignatureAssetPath);
+        final signatureBytes = Uint8List.fromList(
+          signatureData.buffer.asUint8List(
+            signatureData.offsetInBytes,
+            signatureData.lengthInBytes,
+          ),
+        );
+        try {
+          if (!AuraCryptoLayer.verifySignature(artifactBytes, signatureBytes)) {
+            throw const FormatException(
+              'La firma RSA del modelo base empaquetado no es válida.',
+            );
+          }
+        } finally {
+          signatureBytes.fillRange(0, signatureBytes.length, 0);
+        }
         decoded = _decodeAndValidateModel(utf8.decode(artifactBytes));
         _loadedModelSha256 = actualDigest;
+        _loadedModelSignatureVerified = true;
       }
       return decoded;
     } on Object catch (error) {

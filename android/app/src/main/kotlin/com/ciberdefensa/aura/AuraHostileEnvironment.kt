@@ -8,6 +8,7 @@ import android.os.Debug
 import android.provider.Settings
 import android.util.Log
 import android.view.MotionEvent
+import android.view.accessibility.AccessibilityManager
 import java.io.File
 import java.io.IOException
 import java.net.ConnectException
@@ -18,6 +19,20 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+
+internal val trustedAccessibilityServicePackages = setOf(
+    "com.google.android.marvin.talkback",
+    "com.android.talkback",
+    "com.google.android.accessibility.talkback",
+    "com.android.inputmethod.latin",
+    "com.google.android.inputmethod.latin",
+)
+
+internal fun untrustedAccessibilityPackages(
+    enabledPackages: Iterable<String>,
+): List<String> = enabledPackages
+    .distinct()
+    .filterNot(trustedAccessibilityServicePackages::contains)
 
 object AuraHostileEnvironment {
     private const val LOG_TAG = "AuraHostileEnvironment"
@@ -119,6 +134,25 @@ object AuraHostileEnvironment {
         checkErrors.addAll(instrumentation.errors)
         val overlayReport = inspectScreenOverlay(context)
         checkErrors.addAll(overlayReport.errors)
+        val accessibilityPackages = try {
+            val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE)
+                as? AccessibilityManager
+            if (manager == null) {
+                checkErrors.add("accessibility_manager_unavailable")
+                emptyList()
+            } else {
+                manager.getEnabledAccessibilityServiceList(
+                    android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK,
+                ).mapNotNull { it.resolveInfo?.serviceInfo?.packageName }
+            }
+        } catch (_: SecurityException) {
+            checkErrors.add("accessibility_service_list_denied")
+            emptyList()
+        }
+        val untrustedServices = untrustedAccessibilityPackages(accessibilityPackages)
+        if (untrustedServices.isNotEmpty()) {
+            indicators.add("untrusted_accessibility_services")
+        }
 
         indicators.addAll(rootIndicators)
         indicators.addAll(instrumentationIndicators)
@@ -139,6 +173,8 @@ object AuraHostileEnvironment {
             "instrumentationIndicators" to instrumentationIndicators,
             "isScreenOverlayDetected" to overlayReport.isDetected,
             "screenOverlayIndicators" to overlayReport.indicators,
+            "enabledAccessibilityServicePackages" to accessibilityPackages,
+            "untrustedAccessibilityServicePackages" to untrustedServices,
             "auraCanDrawOverlays" to overlayReport.auraCanDrawOverlays,
             "environmentCheckErrors" to checkErrors,
             "isHostile" to hostile,

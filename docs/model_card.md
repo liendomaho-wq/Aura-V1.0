@@ -7,7 +7,8 @@ El clasificador local estima si un nombre de dominio debe tratarse como `safe` o
 ## Versiones y esquema
 
 - **Modelo publicado:** versión `3.0.0`, tipo `random_forest`, 500 árboles, profundidad máxima 10 y `min_samples_leaf` 2048. Usa las seis características históricas.
-- **Candidato del entrenador:** versión `4.0.0`, con `feature_order` explícito y 18 características (seis históricas y doce añadidas). Es un candidato de entrenamiento; no sustituye automáticamente al modelo publicado.
+- **Candidato del entrenador:** versión `3.1.0`, configurada con `feature_order` explícito y 18 características (seis históricas y doce añadidas). El entrenamiento y la calibración de este candidato están pendientes; no sustituye automáticamente al modelo publicado.
+- **Estado de la evaluación 3.1.0:** pendiente de reentrenamiento real. Las cifras de la sección siguiente son únicamente las métricas previas del candidato móvil 3.0.0; no describen v3.1.0.
 
 Las características describen señales de dominio —por ejemplo, longitud, entropía, proporción de dígitos, TLD, distancia de edición, n-gramas, estructura e indicadores IDN—, no contenido de páginas web. Los votos del bosque no son probabilidades calibradas.
 
@@ -34,7 +35,7 @@ El manifiesto del dataset registra 484,685 dominios: 384,775 `threat` y 99,910 `
 
 - El modelo clasifica nombres de dominio; no inspecciona contenido, formularios ni reputación completa de páginas, y no es un detector de phishing basado en contenido.
 - Las puntuaciones representan votos del bosque, no probabilidades calibradas.
-- La inspección SNI no extrae SNI de QUIC/DoQ. ECH y resolutores no conocidos pueden reducir la detección de red.
+- No hay un filtro UDP por puerto ni una regla TCP/853 verificada; QUIC/DoQ y DoT no se presentan como bloqueados. El parser y callback existentes propagan una señal para ECH, que no se descifra ni tiene una política configurable de bloqueo. ECH y resolutores no conocidos pueden reducir la detección de red.
 - Las métricas holdout no garantizan el rendimiento en producción ni sustituyen una revisión humana.
 - La visibilidad y el bloqueo dependen de Android, del consentimiento y del alcance observable del `VpnService`.
 

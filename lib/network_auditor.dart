@@ -13,7 +13,11 @@ enum NetworkAuditAction {
   dgaAlert,
   allowed,
   sniObserved,
+  sniEncrypted,
+  directIp,
   encryptedDnsBlocked,
+  quicBlocked,
+  vpnRevoked,
 }
 
 class NetworkAuditEvent {
@@ -54,9 +58,16 @@ class NetworkAuditEvent {
         ? _normalizeIpAddress(destinationAddress)
         : null;
     if (timestamp is! num || sourceApp is! String ||
-      requestedDomain is! String ||
-      (action != 'BLOCKED' && action != 'DGA_ALERT' && action != 'ALLOWED' &&
-          action != 'SNI_OBSERVED' && action != 'ENCRYPTED_DNS_BLOCKED') ||
+        requestedDomain is! String ||
+        (action != 'BLOCKED' &&
+            action != 'DGA_ALERT' &&
+            action != 'ALLOWED' &&
+            action != 'SNI_OBSERVED' &&
+            action != 'SNI_ENCRYPTED' &&
+            action != 'DIRECT_IP' &&
+            action != 'ENCRYPTED_DNS_BLOCKED' &&
+            action != 'QUIC_BLOCKED' &&
+            action != 'VPN_REVOKED') ||
         (destinationAddress != null && destinationAddress is! String) ||
         (destinationAddress is String && normalizedDestination == null) ||
         (destinationPort != null &&
@@ -82,7 +93,11 @@ class NetworkAuditEvent {
         'BLOCKED' => NetworkAuditAction.blocked,
         'DGA_ALERT' => NetworkAuditAction.dgaAlert,
         'SNI_OBSERVED' => NetworkAuditAction.sniObserved,
+        'SNI_ENCRYPTED' => NetworkAuditAction.sniEncrypted,
+        'DIRECT_IP' => NetworkAuditAction.directIp,
         'ENCRYPTED_DNS_BLOCKED' => NetworkAuditAction.encryptedDnsBlocked,
+        'QUIC_BLOCKED' => NetworkAuditAction.quicBlocked,
+        'VPN_REVOKED' => NetworkAuditAction.vpnRevoked,
         _ => NetworkAuditAction.allowed,
       },
     );
@@ -98,7 +113,11 @@ class NetworkAuditEvent {
         NetworkAuditAction.dgaAlert => 'DGA_ALERT',
         NetworkAuditAction.allowed => 'ALLOWED',
         NetworkAuditAction.sniObserved => 'SNI_OBSERVED',
+        NetworkAuditAction.sniEncrypted => 'SNI_ENCRYPTED',
+        NetworkAuditAction.directIp => 'DIRECT_IP',
         NetworkAuditAction.encryptedDnsBlocked => 'ENCRYPTED_DNS_BLOCKED',
+        NetworkAuditAction.quicBlocked => 'QUIC_BLOCKED',
+        NetworkAuditAction.vpnRevoked => 'VPN_REVOKED',
       },
       'public_dns_resolver': publicDnsResolver,
     };
@@ -265,7 +284,8 @@ class AuraNetworkAuditor {
 
     if (event.action == NetworkAuditAction.blocked ||
         event.action == NetworkAuditAction.dgaAlert ||
-        event.action == NetworkAuditAction.sniObserved) {
+      event.action == NetworkAuditAction.sniObserved ||
+      event.action == NetworkAuditAction.sniEncrypted) {
       if (_pendingThreatEvents.length < 64) {
         _pendingThreatEvents.addLast(event);
       }

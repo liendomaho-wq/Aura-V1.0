@@ -40,3 +40,4 @@ flutter:
     - assets/images/
     - assets/model/aura_brain_model.json
     - assets/model/aura_brain_model.json.sha256
+    - assets/model/aura_brain_model.json.sig

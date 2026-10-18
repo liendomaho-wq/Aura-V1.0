@@ -10,7 +10,8 @@ typedef enum
     AURA_TLS_SNI_INCOMPLETE = 0,
     AURA_TLS_SNI_ALLOWED = 1,
     AURA_TLS_SNI_BLOCKED = 2,
-    AURA_TLS_SNI_MALFORMED = 3
+    AURA_TLS_SNI_MALFORMED = 3,
+    AURA_TLS_SNI_ECH = 4
 } AuraTlsSniResult;
 
 AuraTlsSniResult aura_inspect_tls_sni (const uint8_t *payload,

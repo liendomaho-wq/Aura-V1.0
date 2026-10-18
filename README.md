@@ -41,7 +41,7 @@ El estado se marca **En desarrollo**: el repositorio tiene workflows de validaci
 
 ```text
 ┌──────────────────────────────────── Android ────────────────────────────────────┐
-│ Persona usuaria → consola autenticada → control Escudo VPN                       │
+│ Operador → consola autenticada → control de defensa VPN                         │
 │                                           │ MainActivity solicita consentimiento │
 │                                           ▼                                       │
 │                           AuraVpnService (Kotlin, VpnService) → TUN               │
@@ -65,7 +65,7 @@ Flujo de análisis: tras autenticar la consola, `AuraNetworkAuditor` escucha el 
 
 | Componente | Responsabilidad observada |
 |---|---|
-| `MainActivity` | Expone el control Escudo VPN, solicita el consentimiento del sistema y comunica el resultado del servicio a Flutter. |
+| `MainActivity` | Expone el control de defensa VPN, solicita el consentimiento del sistema y comunica el resultado del servicio a Flutter. |
 | `AuraVpnService` | Mantiene la interfaz VPN foreground y coordina el túnel mientras está activo. |
 | `hev-socks5-tunnel` | Procesa tráfico encaminado por TUN; incluye la ruta DNS mapeada y código C/JNI. |
 | Firewall C / SNI | Reglas nativas de red y reporte de hosts/eventos al lado Flutter. |
@@ -81,8 +81,8 @@ Flujo de análisis: tras autenticar la consola, `AuraNetworkAuditor` escucha el 
 |---|---|---|
 | 1. Entorno hostil | Detecciones nativas de root, gestores como Magisk/KernelSU, instrumentación, emuladores y señales de integridad. | Son heurísticas de defensa en dispositivo; no constituyen garantía contra evasión o manipulación del sistema. |
 | 2. Inventario de apps | `AuraAppGenomeScanner` evalúa aplicaciones instaladas, permisos sensibles, firmas y señales de ofuscación. | La visibilidad de paquetes depende de las políticas de visibilidad de Android y permisos disponibles. |
-| 3. Clasificación ML | Vector sincronizado Python/Dart de 18 características: seis valores históricos sin reescalar y doce características nuevas normalizadas, incluyendo typosquatting, n-gramas, estructura e indicadores IDN. | El modelo publicado (`3.0.0`) conserva el esquema entrenado de seis características; el entrenador produce candidatos compatibles con el nuevo vector (`4.0.0`). Para usarlo en producción se requiere reentrenar, validar y publicar el modelo. Las puntuaciones del bosque son votos, no probabilidades calibradas. |
-| 4. Red | Rutas TUN completas IPv4/IPv6, inspección TCP SNI, eventos para inferencia en Dart y bloqueo de UDP DNS cifrado hacia resolutores conocidos. | QUIC/DoQ no tiene extracción SNI; la cobertura depende de las IP conocidas y puede verse reducida por ECH u otros resolutores. La inspección se implementa en userspace, no con `iptables`/`ip6tables`. |
+| 3. Clasificación ML | Vector sincronizado Python/Dart de 18 características: seis valores históricos sin reescalar y doce características nuevas normalizadas, incluyendo typosquatting, n-gramas, estructura e indicadores IDN. | El modelo publicado (`3.0.0`) conserva el esquema entrenado de seis características. El reentrenamiento `3.1.0` con threshold calibrado y evaluación adversarial está pendiente; no se atribuyen cifras nuevas. |
+| 4. Red | Rutas TUN completas IPv4/IPv6, inspección TCP SNI y reglas SNI para nombres conocidos de resolutores cifrados. | No hay filtro UDP por puerto ni regla TCP/853 verificada; QUIC/DoQ y DoT no se presentan como bloqueados. ECH/IP directa no tienen política nativa demostrada. |
 | 5. Cadena de suministro | Workflow de SBOM CycloneDX y generación de provenance SLSA firmada mediante OIDC para artefactos Android. | El generador genérico de provenance no demuestra por sí solo todos los requisitos de construcción y fuente necesarios para afirmar conformidad SLSA Level 3 integral. |
 
 ### Contrato de características
@@ -97,7 +97,7 @@ El vector mejorado contiene 18 valores. Los primeros seis conservan sin reescala
 | 3 | `vowel_ratio` | Vocales ASCII (`a,e,i,o,u`) divididas por letras. |
 | 4 | `consonant_sequence_ratio` | Caracteres de rachas consonánticas de longitud ≥3, divididos por letras. |
 | 5 | `suspicious_tld` | `1.0` si el TLD pertenece al conjunto sospechoso del entrenador; si no, `0.0`. |
-| 6 | `min_normalized_levenshtein` | Menor distancia de Levenshtein frente al snapshot Tranco Top 1000 incluido, dividida por la longitud del host y limitada a `[0, 1]`. |
+| 6 | `min_normalized_levenshtein` | Menor distancia de Levenshtein frente al snapshot Majestic Million Top 5.000 incluido, dividida por la longitud del host y limitada a `[0, 1]`. |
 | 7 | `bigram_repeat_ratio` | N-gramas de dos caracteres repetidos, más allá de su primera aparición, divididos por el total de bigramas. |
 | 8 | `trigram_repeat_ratio` | N-gramas de tres caracteres repetidos, más allá de su primera aparición, divididos por el total de trigramas. |
 | 9 | `subdomain_depth` | Cantidad de puntos del host dividida por 126. |
@@ -112,9 +112,34 @@ El vector mejorado contiene 18 valores. Los primeros seis conservan sin reescala
 
 La función `detect_idn_homoglyphs` en Python y `AuraAIInference.detectIdnHomoglyphs` en Dart usan el mismo mapa de siete confusables cirílicos. El valor es un indicador limitado a 1 (`confusables / 2`); las etiquetas Punycode ASCII no se decodifican en esta característica.
 
-Para typosquatting, `levenshtein_distance_to_top_domains` en Python y `AuraAIInference.levenshteinDistanceToTopDomains` en Dart retornan la mínima distancia de edición dividida por la longitud del host y limitada a 1 (`0.0` idéntico). Ambos usan exactamente el snapshot de 1000 dominios citado arriba. `is_probable_typosquatting` / `AuraAIInference.isProbableTyposquatting` aplica el umbral de 1–2 ediciones; dominios idénticos no se clasifican como typosquatting. Ejemplo: `goggle.com` obtiene `0.1` frente a `google.com` y activa el umbral.
+Para typosquatting, `levenshtein_distance_to_top_domains` en Python y `AuraAIInference.levenshteinDistanceToTopDomains` en Dart retornan la mínima distancia de edición dividida por la longitud del host y limitada a 1 (`0.0` idéntico). Ambos usan exactamente el snapshot de 5.000 dominios citado arriba. `is_probable_typosquatting` / `AuraAIInference.isProbableTyposquatting` aplica el umbral de 1–2 ediciones; dominios idénticos no se clasifican como typosquatting. Ejemplo: `goggle.com` obtiene `0.1` frente a `google.com` y activa el umbral.
 
-Lista diaria de Tranco generada el 11/10/2026 y versionada el 12/10/2026 como `tool/domain_lists/tranco_top_1000_20261012.txt`. El snapshot `4672X` se incorpora a Dart desde `lib/inference/aura_common_domains.dart`. Los modelos identifican su orden mediante `feature_order`: las inferencias mantienen el vector legado para el modelo publicado y seleccionan el nuevo vector solo para un candidato entrenado con las 18 características.
+Majestic Million (CC BY 3.0) Top 5.000, descargado el 18/10/2026 desde `https://downloads.majestic.com/majestic_million.csv`, normalizado en `tool/domain_lists/majestic_top_5000_20261018.txt` e incorporado a Dart desde `lib/inference/aura_common_domains.dart`. Los modelos identifican su orden mediante `feature_order`: las inferencias mantienen el vector legado para el modelo publicado y seleccionan el nuevo vector solo para un modelo entrenado con las 18 características.
+
+### Declaración QUERY_ALL_PACKAGES para Google Play
+
+Justificación para el formulario de Google Play: “Aura Mobile Defens necesita consultar el inventario de aplicaciones instaladas para ejecutar un escáner de seguridad on-device que identifica permisos sensibles, servicios activos, firmas y señales de ofuscación. El inventario se procesa localmente, no sale del teléfono ni se utiliza para publicidad o analítica.”
+
+La visibilidad de paquetes está sujeta a Android y puede ser limitada incluso con la declaración. Aura avisa cuando ve menos de cinco aplicaciones en Android 11/API 30 o posterior; ese resultado no se presenta como inventario completo.
+
+### Endurecimiento aplicado (red-team)
+
+| # | Vector | Corrección / estado |
+|---:|---|---|
+| 1 | Órdenes `toggle_defenses` y ayuda en consola | **Cerrado en iteración anterior:** comandos de activación y ayuda en español. |
+| 2 | Estado visible de defensa | **Cerrado en iteración anterior:** píldora `DEFENSA: ON/OFF`. |
+| 3 | Estado operativo | **Cerrado en iteración anterior:** barra de estado y chips rápidos. |
+| 4 | Privacidad de sesión e interfaz | **Cerrado en iteración anterior:** telemetría LOCAL, sin radar, sin cierre automático de consola y `feature_order`. |
+| 5 | QUIC/HTTP3 y UDP | **Pendiente:** el transporte actual no ofrece un filtro aplicado por puerto antes del reenvío; el contador no equivale a un descarte confirmado. |
+| 6 | DoH por SNI | **Parcial:** endpoints conocidos añadidos al bloqueo SNI; DoT/TCP 853 y el conteo integral aún requieren una regla de transporte verificable. |
+| 7 | Umbral ML y rollback | El runtime lee y aplica el umbral del JSON (fallback `0.50`); el rollback semver inferior a `3.0.0` se rechaza. La calibración 3.1.0 está pendiente de evaluación y firma. |
+| 8 | Visibilidad de paquetes | Aviso ante inventarios con menos de cinco apps en Android 11/API 30+. |
+| 9 | Revocación VPN | Broadcast crítico, evento en consola y notificación persistente al revocarse. |
+| 10 | Órdenes/historial no acotados | Historial limitado a 400; la consola recorta órdenes a 240 caracteres y avisa. |
+| 11 | ECH | El parser devuelve `AURA_TLS_SNI_ECH` y escribe una marca que llega por el callback SNI existente; Kotlin la convierte en señal visible. La política configurable de bloqueo sigue pendiente. |
+| 12 | IP directa y accesibilidad | El adaptador Kotlin puede mapear una llamada con SNI vacío y destino IP a una señal, pero esa ruta no está demostrada en el callback protegido; aviso de accesibilidad implementado. Política IP y prueba nativa pendientes. |
+
+El entrenamiento v3.1.0 usa un set adversarial determinista con semilla 42, pero no se publican métricas ni se sustituye el modelo 3.0.0 hasta completar y verificar el run real, la firma y `verifyModelIntegrity()`.
 
 ## Blocklists de dominios
 
@@ -171,9 +196,9 @@ No se incluye una URL de producción en el código. Si el endpoint falta o no es
 
 ### Inspección de DoH/DoQ e IPv6
 
-`AuraVpnService` instala rutas predeterminadas para IPv4 (`0.0.0.0/0`) e IPv6 (`::/0`), así que TCP y UDP ya atraviesan la interfaz TUN; `VpnService.Builder` no ofrece `addAllowedProtocol()`. El túnel inspecciona ClientHello TLS en TCP/443 y TCP/853 y remite el SNI observado, junto con la dirección y puerto de destino, a Dart por `EventChannel` como `SNI_OBSERVED`. Los hosts asociados a resolutores no se bloquean solo por aparecer en una lista fija: Dart los analiza con el modelo. El evento incluye `public_dns_resolver` para las direcciones públicas IPv4/IPv6 reconocidas.
+`AuraVpnService` instala rutas predeterminadas para IPv4 (`0.0.0.0/0`) e IPv6 (`::/0`), así que TCP y UDP atraviesan la interfaz TUN; `VpnService.Builder` no ofrece `addAllowedProtocol()`. Se instalan reglas SNI para los nombres conocidos de resolutores cifrados y la lista nativa los clasifica como bloqueables. La implementación actual no demuestra un filtro por puerto UDP, ni una regla completa de denegación para TCP/853: no se afirma que QUIC/HTTP3 o DoT queden bloqueados. El contador QUIC solo refleja eventos de descarte recibidos; no hay hoy una ruta que genere ese evento al reenviar UDP sin filtrar.
 
-Como el parser TLS no puede leer SNI de QUIC, el firewall bloquea UDP/853 y UDP/443 dirigido a las IP conocidas de resolutores DoH, y emite `ENCRYPTED_DNS_BLOCKED` con el endpoint y protocolo. No se afirma inspección SNI de QUIC/DoQ; resolutores DoH por direcciones IP no incluidas en la lista y técnicas TLS como ECH pueden limitar la detección.
+El parser C detecta la extensión TLS `encrypted_client_hello`, devuelve `AURA_TLS_SNI_ECH` y escribe una marca que el camino observado del callback SNI propaga; Kotlin la convierte en `SNI_ENCRYPTED`. No descifra ECH y no hay una política configurable de bloqueo. La señal de conexión IP directa está preparada en el adaptador de eventos cuando recibe un SNI vacío con destino literal, pero el callback nativo descarta nombres vacíos; esa ruta no genera hoy la señal. No se afirma que la señal IP directa ni una política configurable sean efectivas en el túnel. Las direcciones IP se normalizan en Dart para el registro, pero no se puntúan como nombres de dominio en el modelo ML.
 
 El transporte HEV procesa ambos tipos de paquete IP, prefiere resolver destinos mediante `AF_INET6` y recurre a `AF_INET` si no hay resultado IPv6. El feed de bloqueo y el filtro nativo admiten direcciones IPv4 e IPv6. El firewall es userspace sobre paquetes TUN; no invoca `iptables`/`ip6tables`, que requieren privilegios de sistema y no forman parte de un `VpnService` ordinario. SNI observado desde destinos IPv6 conserva la dirección IPv6 numérica en el evento. Las direcciones IP se normalizan en Dart para el registro, pero no se puntúan como nombres de dominio en el modelo ML.
 
@@ -331,9 +356,9 @@ assets/model/          modelo JSON, SHA-256 y firma
 lib/                   Flutter/Dart: agent, crypto, inference, providers, screens, services, theme
 android/app/           Gradle, manifest, Kotlin/Java, JNI y C
   src/main/cpp/        aura_crypto_secure, aura_sni_firewall, hev-socks5-tunnel
-tool/                  dataset, snapshot Tranco, entrenamiento, benchmark, firma, build y pruebas
+tool/                  dataset, snapshot Majestic, entrenamiento, benchmark, firma, build y pruebas
   dataset/             fuentes licenciadas, parser y fixture offline
-  domain_lists/        snapshot Tranco Top 1000 versionado
+  domain_lists/        snapshot Majestic Million Top 5.000 versionado
   reports/             métricas locales ignoradas por Git
 .github/workflows/     release-signing-integrity, model-training, deploy-model-pages
 data/                  fuentes crudas, CSV, manifiesto y splits (NO versionado; regenerable con tool/dataset/build_dataset.py)

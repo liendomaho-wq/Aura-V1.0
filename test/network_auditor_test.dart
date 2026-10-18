@@ -24,6 +24,43 @@ void main() {
       expect(event.toJson()['action'], 'SNI_OBSERVED');
     });
 
+    test('maps encrypted SNI and direct IP signals from the native tunnel', () {
+      final encryptedSni = NetworkAuditEvent.fromPlatform(<String, Object>{
+        'timestamp': 124,
+        'source_app': 'uid-unavailable',
+        'requested_domain': 'SNI cifrado (contenido no analizable)',
+        'action': 'SNI_ENCRYPTED',
+        'destination_address': '203.0.113.8',
+        'destination_port': 443,
+        'transport_protocol': 'TCP',
+      });
+
+      test('maps VPN revocation through the existing native event stream', () {
+        final event = NetworkAuditEvent.fromPlatform(<String, Object>{
+          'timestamp': 1,
+          'source_app': 'android',
+          'requested_domain':
+              '[CRIT] TÚNEL REVOCADO POR ANDROID O POR EL OPERADOR',
+          'action': 'VPN_REVOKED',
+        });
+
+        expect(event.action, NetworkAuditAction.vpnRevoked);
+        expect(event.toJson()['action'], 'VPN_REVOKED');
+      });
+      final directIp = NetworkAuditEvent.fromPlatform(<String, Object>{
+        'timestamp': 125,
+        'source_app': 'uid-unavailable',
+        'requested_domain': 'Conexión IP directa (sin dominio que evaluar)',
+        'action': 'DIRECT_IP',
+        'destination_address': '203.0.113.9',
+        'destination_port': 443,
+        'transport_protocol': 'TCP',
+      });
+
+      expect(encryptedSni.action, NetworkAuditAction.sniEncrypted);
+      expect(directIp.action, NetworkAuditAction.directIp);
+    });
+
     test('preserves blocked encrypted DNS endpoint metadata', () {
       final event = NetworkAuditEvent.fromPlatform(<String, Object>{
         'timestamp': 123,

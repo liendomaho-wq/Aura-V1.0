@@ -20,6 +20,7 @@ const Color _terminalGreen = Color(0xFF00FF00);
 const Color _terminalYellow = Color(0xFFFFFF00);
 const Color _terminalCyan = Color(0xFF00FFFF);
 const int _maxLocalTelemetryEvents = 500;
+const int maxInstructionLength = 240;
 
 class AuraCoreScreen extends StatefulWidget {
   const AuraCoreScreen({super.key});
@@ -33,6 +34,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
       MethodChannel('com.ciberdefensa.aura/voice');
   static const MethodChannel _telemetryChannel =
       MethodChannel('com.ciberdefensa.aura/telemetry');
+  static const MethodChannel _securityChannel =
+      MethodChannel('com.ciberdefensa.aura/security');
 
   final TextEditingController _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -46,6 +49,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
   bool _showCoverageAudit = false;
   bool _telemetryEndpointConfigured = false;
   bool _localTelemetryEnabled = true;
+  bool _accessibilityCheckFailed = false;
+  List<String> _untrustedAccessibilityPackages = const <String>[];
   List<Map<String, dynamic>> _localTelemetryEvents =
       const <Map<String, dynamic>>[];
   String? _coverageAutotestStatus;
@@ -64,6 +69,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
     controller.bindSecurityState(context.read<AuraStateProvider>());
     final authenticated = await controller.authenticateBiometricDevice();
     if (!mounted) return;
+    unawaited(_refreshAccessibilityServices());
     await _initializeTelemetryMode();
     if (!mounted) return;
     if (authenticated) {
@@ -81,6 +87,54 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
     controller.initGreeting();
     _startNetworkAuditor();
     setState(() => _isAuthenticated = true);
+  }
+
+  Future<void> _refreshAccessibilityServices() async {
+    try {
+      final report = await _securityChannel
+          .invokeMapMethod<Object?, Object?>('checkHostileEnvironment');
+      final rawPackages = report?['untrustedAccessibilityServicePackages'];
+      if (rawPackages is! List || rawPackages.any((value) => value is! String)) {
+        throw const FormatException(
+          'Android devolvió una lista de accesibilidad inválida.',
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _untrustedAccessibilityPackages = rawPackages.cast<String>();
+        _accessibilityCheckFailed = false;
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _accessibilityCheckFailed = true);
+      AgentController.instance.reportWarning(
+        'No se pudieron verificar los servicios de accesibilidad: $error. '
+        'Remedio: revise manualmente Ajustes > Accesibilidad.',
+      );
+    }
+  }
+
+  Future<void> _openAccessibilitySettings() async {
+    try {
+      final opened =
+          await _securityChannel.invokeMethod<bool>('openAccessibilitySettings');
+      if (opened != true) {
+        AgentController.instance.reportError(
+          'Android no confirmó la apertura de accesibilidad. '
+          'Remedio: ábrala manualmente desde Ajustes.',
+        );
+      }
+    } on PlatformException catch (error) {
+      AgentController.instance.reportError(
+        'No se pudieron abrir los ajustes de accesibilidad: '
+        '${error.message}. Remedio: ábralos manualmente desde Ajustes.',
+      );
+    } on MissingPluginException {
+      AgentController.instance.reportError(
+        'El canal de ajustes de accesibilidad no está disponible. '
+        'Remedio: ábralos manualmente desde Ajustes.',
+      );
+    }
   }
 
   @override
@@ -101,6 +155,11 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
     _networkEventSubscription = auditor.eventStream.listen(
       (event) {
         state.addTelemetryEvent(event.toJson());
+        if (event.action == NetworkAuditAction.vpnRevoked) {
+          state.setVpnActive(false);
+          state.setSecurityLevel(AuraSecurityLevel.critical);
+          AgentController.instance.reportError(event.requestedDomain);
+        }
         unawaited(_recordLocalNetworkEvent(event));
       },
       onError: (Object error, StackTrace stackTrace) {
@@ -210,12 +269,19 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
   void _runCoverageAutotest() {
     final state = context.read<AuraStateProvider>();
     setState(() {
-      _coverageAutotestStatus = 'Diagnóstico local completado. Escudo VPN: '
+      final latestExplanation = state.explanationHistory.isEmpty
+          ? null
+          : state.explanationHistory.last;
+      final threshold = latestExplanation == null
+          ? state.activeDecisionThreshold?.toStringAsFixed(2) ?? 'sin inferencia'
+          : latestExplanation.decisionThreshold.toStringAsFixed(2);
+      _coverageAutotestStatus = 'Diagnóstico local completado. Túnel VPN: '
           '${state.isVpnActive ? 'activo' : 'inactivo'}. '
           'Eventos de sesión: ${state.sniObservedEvents} SNI, '
           '${state.blockedEvents} bloqueos, ${state.dgaAlertEvents} alertas DGA '
-          'y ${state.encryptedDnsBlocks} bloqueos de DNS cifrado. '
-          'No se generó tráfico de prueba.';
+          'y ${state.encryptedDnsBlocks} bloqueos de DNS cifrado; '
+          '${state.quicBlocked} paquetes QUIC descartados. '
+          'UMBRAL DE DECISIÓN: $threshold. No se generó tráfico de prueba.';
     });
   }
 
@@ -266,8 +332,18 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
   }
 
   Future<void> _dispatch(String text) async {
-    final instruction = text.trim();
+    var instruction = text.trim();
     if (instruction.isEmpty || _isRunning) return;
+    final instructionRunes = instruction.runes.toList(growable: false);
+    if (instructionRunes.length > maxInstructionLength) {
+      instruction = String.fromCharCodes(
+        instructionRunes.take(maxInstructionLength),
+      );
+      AgentController.instance.reportWarning(
+        'Orden truncada a $maxInstructionLength caracteres. '
+        'Remedio: divida la orden en consultas más breves.',
+      );
+    }
     _inputController.clear();
     setState(() => _isRunning = true);
     try {
@@ -725,9 +801,71 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                         ? _terminalYellow
                         : _terminalGreen,
                   ),
+                  statusTile(
+                    'QUIC',
+                    '${state.quicBlocked}',
+                    state.quicBlocked > 0 ? _terminalYellow : _terminalGreen,
+                  ),
                 ],
               ),
             ),
+            if (_untrustedAccessibilityPackages.isNotEmpty)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A00),
+                  border: Border.all(color: _terminalYellow),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'SERVICIOS DE ACCESIBILIDAD ACTIVOS PODRÍAN MANIPULAR LA APP',
+                      style: TextStyle(
+                        color: _terminalYellow,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      'Paquetes: ${_untrustedAccessibilityPackages.join(', ')}',
+                      style: const TextStyle(
+                        color: _terminalYellow,
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                      ),
+                    ),
+                    Wrap(
+                      children: [
+                        TextButton(
+                          onPressed: _openAccessibilitySettings,
+                          child: const Text('ABRIR AJUSTES'),
+                        ),
+                        TextButton(
+                          onPressed: _refreshAccessibilityServices,
+                          child: const Text('VERIFICAR DE NUEVO'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              )
+            else if (_accessibilityCheckFailed)
+              Padding(
+                padding: const EdgeInsets.all(10),
+                child: TextButton(
+                  onPressed: _refreshAccessibilityServices,
+                  child: const Text(
+                    '[WARN] No se pudo verificar accesibilidad · REINTENTAR',
+                    style: TextStyle(
+                      color: _terminalYellow,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+              ),
             const SizedBox(height: 16),
             Expanded(
               child: _isAuthenticated
@@ -749,9 +887,14 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                               _CoverageAuditCard(
                                 isVpnActive: state.isVpnActive,
                                 sniObserved: state.sniObservedEvents,
+                                encryptedSni: state.encryptedSniEvents,
+                                directIp: state.directIpEvents,
                                 blocked: state.blockedEvents,
                                 dgaAlerts: state.dgaAlertEvents,
                                 encryptedDnsBlocked: state.encryptedDnsBlocks,
+                                quicBlocked: state.quicBlocked,
+                                decisionThreshold:
+                                    state.activeDecisionThreshold,
                                 observedResolvers:
                                     state.observedPublicDnsResolvers,
                                 autotestStatus: _coverageAutotestStatus,
@@ -971,13 +1114,13 @@ class _ExplanationCardState extends State<_ExplanationCard> {
     final explanation = widget.explanation;
     final signatureStatus = _integrityReport == null
         ? explanation.signatureVerified
-            ? '✅ Firma RSA verificada al cargar'
-            : '⚠️ Firma RSA sin verificación (asset base)'
+            ? '[OK] Firma RSA verificada al cargar'
+            : '[WARN] Firma RSA sin verificación (asset base)'
         : _integrityReport!.signatureVerified
-            ? '✅ Firma RSA verificada'
+            ? '[OK] Firma RSA verificada'
             : _integrityReport!.verified
-                ? '⚠️ Sin firma RSA; SHA-256 verificado'
-                : '⚠️ Sin verificación de integridad';
+                ? '[WARN] Sin firma RSA; SHA-256 verificado'
+                : '[WARN] Sin verificación de integridad';
     final digestPrefix = explanation.modelSha256.length >= 8
         ? explanation.modelSha256.substring(0, 8)
         : explanation.modelSha256;
@@ -1052,6 +1195,17 @@ class _ExplanationCardState extends State<_ExplanationCard> {
               ),
             ),
           const SizedBox(height: AuraTokens.s1),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'UMBRAL DE DECISIÓN: '
+              '${explanation.decisionThreshold.toStringAsFixed(2)}',
+              style: const TextStyle(
+                color: _terminalCyan,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
@@ -1163,9 +1317,13 @@ class _CoverageAuditCard extends StatelessWidget {
   const _CoverageAuditCard({
     required this.isVpnActive,
     required this.sniObserved,
+    required this.encryptedSni,
+    required this.directIp,
     required this.blocked,
     required this.dgaAlerts,
     required this.encryptedDnsBlocked,
+    required this.quicBlocked,
+    required this.decisionThreshold,
     required this.observedResolvers,
     required this.autotestStatus,
     required this.onRunAutotest,
@@ -1173,9 +1331,13 @@ class _CoverageAuditCard extends StatelessWidget {
 
   final bool isVpnActive;
   final int sniObserved;
+  final int encryptedSni;
+  final int directIp;
   final int blocked;
   final int dgaAlerts;
   final int encryptedDnsBlocked;
+  final int quicBlocked;
+  final double? decisionThreshold;
   final List<String> observedResolvers;
   final String? autotestStatus;
   final VoidCallback onRunAutotest;
@@ -1207,8 +1369,19 @@ class _CoverageAuditCard extends StatelessWidget {
                 '$dgaAlerts ${dgaAlerts == 1 ? 'alerta' : 'alertas'} DGA y '
                 '$encryptedDnsBlocked '
                 '${encryptedDnsBlocked == 1 ? 'bloqueo' : 'bloqueos'} '
-                'de DNS cifrado.',
+                'de DNS cifrado y $quicBlocked paquetes QUIC descartados. '
+                'UMBRAL DE DECISIÓN: '
+                '${decisionThreshold?.toStringAsFixed(2) ?? 'sin inferencia'}.',
                 style: const TextStyle(color: AuraTokens.textPrimary),
+              ),
+              const SizedBox(height: AuraTokens.s2),
+              Text(
+                'SNI cifrado (contenido no analizable): $encryptedSni · '
+                'Conexión IP directa (sin dominio que evaluar): $directIp',
+                style: const TextStyle(
+                  color: AuraTokens.textPrimary,
+                  fontFamily: 'monospace',
+                ),
               ),
               const SizedBox(height: AuraTokens.s2),
               const Text(

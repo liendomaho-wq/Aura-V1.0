@@ -140,7 +140,7 @@ class AuraVpnService : VpnService() {
             return Service.START_STICKY
         }
         if (tunnelStarted) {
-            reportState(true, "El escudo VPN ya estaba activo.")
+            reportState(true, "El túnel VPN ya estaba activo.")
         } else if (startRequested.compareAndSet(false, true)) {
             worker.execute { startTunnel() }
         }
@@ -163,6 +163,21 @@ class AuraVpnService : VpnService() {
         super.onDestroy()
     }
 
+    override fun onRevoke() {
+        val message =
+            "[CRIT] TÚNEL REVOCADO POR ANDROID O POR EL OPERADOR — " +
+                "LAS DEFENSAS ESTÁN INACTIVAS. " +
+                "Remedio: revise el consentimiento VPN y reactive la defensa."
+        reportState(false, message, revoked = true)
+        AuraNotificationService.triggerPersistentAlert(
+            this,
+            "Túnel VPN revocado",
+            message,
+        )
+        stopSelf()
+        super.onRevoke()
+    }
+
     private fun verifyIntegrityOrStop(): Boolean {
         val report = try {
             AuraAntiTampering.inspect(this)
@@ -177,7 +192,7 @@ class AuraVpnService : VpnService() {
             TProxyService.TProxyStopService()
             tunnelStarted = false
         }
-        reportState(false, "Escudo detenido por fallo de integridad.")
+        reportState(false, "Túnel detenido por fallo de integridad.")
         stopSelf()
         return false
     }
@@ -222,8 +237,15 @@ mapdns:
                 throw IOException("El motor tun2socks no pudo iniciar.")
             }
             tunnelStarted = true
+            for (endpoint in AuraBlocklistService.knownEncryptedDnsEndpoints()) {
+                if (!TProxyService.TProxyAddDynamicSniRule(endpoint)) {
+                    throw IOException(
+                        "El firewall SNI no confirmó el bloqueo de $endpoint.",
+                    )
+                }
+            }
             scheduleFeedRefresh()
-            reportState(true, "Escudo VPN iniciado.")
+            reportState(true, "Túnel VPN iniciado.")
             Log.i("AuraVPN", "Hev tun2socks conectado al proxy SOCKS5.")
         } catch (e: Exception) {
             Log.e("AuraVPN", "No se pudo iniciar el escudo VPN.", e)
@@ -232,7 +254,7 @@ mapdns:
             established?.close()
             vpnInterface = null
             startRequested.set(false)
-            reportState(false, e.message ?: "No se pudo iniciar el escudo.")
+            reportState(false, e.message ?: "No se pudo iniciar el túnel.")
             stopSelf()
         }
     }
@@ -430,12 +452,17 @@ mapdns:
         }, 1, 60, TimeUnit.MINUTES)
     }
 
-    private fun reportState(started: Boolean, message: String) {
+    private fun reportState(
+        started: Boolean,
+        message: String,
+        revoked: Boolean = false,
+    ) {
         sendBroadcast(
             android.content.Intent(ACTION_STATE)
                 .setPackage(packageName)
                 .putExtra("started", started)
-                .putExtra("message", message),
+                .putExtra("message", message)
+                .putExtra("revoked", revoked),
         )
     }
 

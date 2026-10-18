@@ -216,12 +216,12 @@ void main() {
       expect(AuraAIInference.detectIdnHomoglyphs(''), 0);
     });
 
-    test('uses the pinned 1000-domain corpus shared with Python training', () {
+    test('uses the pinned 5000-domain corpus shared with Python training', () {
       final source = File(
-        'tool/domain_lists/tranco_top_1000_20261012.txt',
+        'tool/domain_lists/majestic_top_5000_20261018.txt',
       ).readAsLinesSync();
 
-      expect(auraCommonDomains, hasLength(1000));
+      expect(auraCommonDomains, hasLength(5000));
       expect(auraCommonDomains, source);
       expect(
         AuraAIInference.extractEnhancedFeatures('google.com')[6],
@@ -246,6 +246,26 @@ void main() {
         isFalse,
       );
       expect(AuraAIInference.levenshteinDistanceToTopDomains(''), 1);
+    });
+
+    test('promedia menos de 2 ms por distancia a dominios de marca', () {
+      final domains = List<String>.generate(
+        100,
+        (index) => '${'x' * (index + 1)}google.com',
+      );
+      final stopwatch = Stopwatch()..start();
+      for (final domain in domains) {
+        AuraAIInference.levenshteinDistanceToTopDomains(domain);
+      }
+      stopwatch.stop();
+      final averageMilliseconds =
+          stopwatch.elapsedMicroseconds / domains.length / 1000;
+
+      print(
+        'MAJESTIC_DISTANCE_BENCHMARK calls=${domains.length} '
+        'average_ms=${averageMilliseconds.toStringAsFixed(3)}',
+      );
+      expect(averageMilliseconds, lessThan(2));
     });
 
     test('does not treat a suspicious-looking substring as the TLD', () {
@@ -341,6 +361,24 @@ void main() {
             'ordinary.example', safeMajorityModel),
         isTrue,
       );
+    });
+
+    test('uses the loaded model decision threshold', () async {
+      final model = _forest(<int>[
+        ...List<int>.filled(300, 1),
+        ...List<int>.filled(200, 0),
+      ])
+        ..['decision_threshold'] = 0.62;
+      final results = await model_inference.AuraAIInference.analyzeThreatPayload(
+        rawData: '{"host":"ordinary.example"}',
+        modelStructure: model,
+        suspiciousTlds: <String>[],
+        blocklistChecked: true,
+      );
+
+      expect(results.single.threatScore, 0.6);
+      expect(results.single.decisionThreshold, 0.62);
+      expect(results.single.isThreat, isFalse);
     });
 
     test('rejects unverified hosts when no model is loaded', () {

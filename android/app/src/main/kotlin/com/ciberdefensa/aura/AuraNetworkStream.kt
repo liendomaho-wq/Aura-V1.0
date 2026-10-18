@@ -82,9 +82,11 @@ object AuraNetworkStream : EventChannel.StreamHandler {
         sourceAddress: String,
         sourcePort: Int,
     ) {
-        val action = when (actionCode) {
-            2 -> "DGA_ALERT"
-            1, 3 -> "BLOCKED"
+        val action = when {
+            actionCode == 3 && AuraBlocklistService.isEncryptedDnsEndpoint(domain) ->
+                "ENCRYPTED_DNS_BLOCKED"
+            actionCode == 2 -> "DGA_ALERT"
+            actionCode == 1 || actionCode == 3 -> "BLOCKED"
             else -> "ALLOWED"
         }
         synchronized(lock) {
@@ -104,7 +106,7 @@ object AuraNetworkStream : EventChannel.StreamHandler {
                 uidResolver.execute(::resolveQueuedEvents)
             }
         }
-        if (actionCode == 3) {
+        if (actionCode == 2) {
             val context = synchronized(lock) { applicationContext }
             if (context != null) {
                 com.aura.cyberdefense.AuraNotificationService.triggerDgaAlert(
@@ -116,11 +118,27 @@ object AuraNetworkStream : EventChannel.StreamHandler {
     }
 
     fun emitSniEvent(domain: String, destinationAddress: String, destinationPort: Int) {
+        val eventDomain: String
+        val action: String
+        when {
+            domain == "[ECH]" -> {
+                eventDomain = "SNI cifrado (contenido no analizable)"
+                action = "SNI_ENCRYPTED"
+            }
+            domain.isBlank() && isIpAddressLiteral(destinationAddress) -> {
+                eventDomain = "Conexión IP directa (sin dominio que evaluar)"
+                action = "DIRECT_IP"
+            }
+            else -> {
+                eventDomain = domain
+                action = "SNI_OBSERVED"
+            }
+        }
         enqueueEvent(
             PendingDnsEvent(
                 timestamp = System.currentTimeMillis(),
-                domain = domain,
-                action = "SNI_OBSERVED",
+                domain = eventDomain,
+                action = action,
                 sourceAddress = "",
                 sourcePort = 0,
                 destinationAddress = destinationAddress,
@@ -131,6 +149,9 @@ object AuraNetworkStream : EventChannel.StreamHandler {
             ),
         )
     }
+
+    private fun isIpAddressLiteral(value: String): Boolean =
+        value.contains(':') || IPV4_ADDRESS_PATTERN.matches(value)
 
     fun emitEncryptedDnsEvent(
         destinationAddress: String,
@@ -148,6 +169,19 @@ object AuraNetworkStream : EventChannel.StreamHandler {
                 destinationPort = destinationPort,
                 transportProtocol = transportProtocol,
                 publicDnsResolver = isPublicDnsResolver(destinationAddress),
+                generation = synchronized(lock) { eventGeneration },
+            ),
+        )
+    }
+
+    fun emitVpnRevokedEvent(message: String) {
+        enqueueEvent(
+            PendingDnsEvent(
+                timestamp = System.currentTimeMillis(),
+                domain = message,
+                action = "VPN_REVOKED",
+                sourceAddress = "",
+                sourcePort = 0,
                 generation = synchronized(lock) { eventGeneration },
             ),
         )
@@ -258,6 +292,8 @@ object AuraNetworkStream : EventChannel.StreamHandler {
         "2001:4860:4860::8844", "2620:fe::fe", "2620:fe::9",
         "2620:119:35::35", "2620:119:35::53",
     ).map { InetAddress.getByName(it).address }
+
+    private val IPV4_ADDRESS_PATTERN = Regex("^(?:\\d{1,3}\\.){3}\\d{1,3}$")
 
     private fun drainOne() {
         val sink: EventChannel.EventSink?

@@ -209,10 +209,10 @@ abstract class AuraTools {
   ) async {
     try {
       onProgress?.call(
-        'Conectando por HTTPS al repositorio público de modelos... 📡',
+        'Conectando por HTTPS al repositorio público de modelos...',
       );
       onProgress?.call(
-        'Buscando la firma RSA y el digest SHA-256 publicados... 🔍',
+        'Buscando la firma RSA y el digest SHA-256 publicados...',
       );
       final digestResponse = await http.get(
         _modelDigestUri,
