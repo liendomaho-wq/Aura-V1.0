@@ -13,8 +13,9 @@ import 'inference/aura_ai_inference.dart' as shared_features;
 import 'infrastructure/security/aura_dynamic_whitelist.dart';
 import 'models/aura_ai_brain.dart';
 import 'models/aura_model_integrity_report.dart';
-import 'secure_vault.dart';
 import 'providers/aura_state_provider.dart';
+import 'secure_vault.dart';
+import 'services/aura_local_telemetry.dart';
 import 'security/shannon_entropy.dart';
 
 export 'security/shannon_entropy.dart';
@@ -691,6 +692,12 @@ class AuraAIBrain {
   }) async {
     if (!Platform.isAndroid) return;
     try {
+      await AuraLocalTelemetry.recordDomainOutcome(
+        domain: domain,
+        outcome: outcome,
+        source: source,
+        modelVersion: modelVersion,
+      );
       await _telemetryChannel.invokeMethod<bool>(
         'recordDomainOutcome',
         <String, Object>{

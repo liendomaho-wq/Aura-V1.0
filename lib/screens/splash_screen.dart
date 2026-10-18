@@ -282,7 +282,7 @@ class _SplashScreenState extends State<SplashScreen>
                           ),
                           child: Center(
                             child: Icon(
-                              Icons.shield_moon_rounded,
+                              Icons.security_rounded,
                               size: 72,
                               color: (_isAuthFailed
                                       ? AuraTokens.danger

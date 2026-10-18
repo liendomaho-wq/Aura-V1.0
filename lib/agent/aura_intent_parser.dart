@@ -101,15 +101,15 @@ class AuraIntentParser {
     caseSensitive: false,
   );
   static final RegExp _activateDefensesCommand = RegExp(
-    r'\b(?:activar|activa|activad|encender|enciende|habilitar|habilita|conectar|conecta)\s*(?:las?\s+|el\s+|los\s+)?(?:defensas|defensa|escudo|vpn|protecci[oó]n|t[uú]nel)\b',
+    r'\b(activar|activa|enciende|encender|habilitar|habilita|conectar|conecta)\s+(las?\s+|el\s+|los?\s+)?(defensas|defensa|escudo|vpn|protecci[oó]n|t[uú]nel)\b',
     caseSensitive: false,
   );
   static final RegExp _deactivateDefensesCommand = RegExp(
-    r'\b(?:desactivar|desactiva|apagar|apaga|deshabilitar|deshabilita|desconectar|desconecta|detener|deten)\s*(?:las?\s+|el\s+|los\s+)?(?:defensas|defensa|escudo|vpn|protecci[oó]n|t[uú]nel)\b',
+    r'\b(desactivar|desactiva|apagar|apaga|desconectar|desconecta)\s+(las?\s+|el\s+|los?\s+)?(defensas|defensa|escudo|vpn|protecci[oó]n|t[uú]nel)\b',
     caseSensitive: false,
   );
   static final RegExp _helpCommand = RegExp(
-    r'^\s*(?:ayuda|help|comandos|o[ró]rdenes|lista de comandos)\s*[?.!]*$',
+    r'\b(ayuda|help|comandos|[oó]rdenes|que puedes hacer|qué puedes hacer)\b',
     caseSensitive: false,
   );
   static final RegExp _updateDefensesCommand = RegExp(

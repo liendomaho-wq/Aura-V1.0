@@ -13,10 +13,13 @@ import '../infrastructure/agent/aura_intent_parser.dart';
 import '../models/aura_model_integrity_report.dart';
 import '../network_auditor.dart';
 import '../providers/aura_state_provider.dart';
+import '../services/aura_local_telemetry.dart';
 import '../theme/aura_tokens.dart';
 
 const Color _terminalGreen = Color(0xFF00FF00);
 const Color _terminalYellow = Color(0xFFFFFF00);
+const Color _terminalCyan = Color(0xFF00FFFF);
+const int _maxLocalTelemetryEvents = 500;
 
 class AuraCoreScreen extends StatefulWidget {
   const AuraCoreScreen({super.key});
@@ -28,8 +31,6 @@ class AuraCoreScreen extends StatefulWidget {
 class _AuraCoreScreenState extends State<AuraCoreScreen> {
   static const MethodChannel _voiceChannel =
       MethodChannel('com.ciberdefensa.aura/voice');
-  static const MethodChannel _shieldChannel =
-      MethodChannel('com.ciberdefensa.aura/shield');
   static const MethodChannel _telemetryChannel =
       MethodChannel('com.ciberdefensa.aura/telemetry');
 
@@ -43,6 +44,10 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
   bool _isShieldBusy = false;
   bool _isAuthenticated = false;
   bool _showCoverageAudit = false;
+  bool _telemetryEndpointConfigured = false;
+  bool _localTelemetryEnabled = true;
+  List<Map<String, dynamic>> _localTelemetryEvents =
+      const <Map<String, dynamic>>[];
   String? _coverageAutotestStatus;
   int _lastRenderedEventCount = -1;
 
@@ -59,6 +64,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
     controller.bindSecurityState(context.read<AuraStateProvider>());
     final authenticated = await controller.authenticateBiometricDevice();
     if (!mounted) return;
+    await _initializeTelemetryMode();
+    if (!mounted) return;
     if (authenticated) {
       controller.initGreeting();
       _startNetworkAuditor();
@@ -69,6 +76,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
     controller.reportWarning(
       'Consola iniciada sin verificación local confirmada; el modo degradado registra este evento.',
     );
+    controller.allowUnsecuredLocalSession();
     // El cierre automático está prohibido desde la versión 3.8.
     controller.initGreeting();
     _startNetworkAuditor();
@@ -91,13 +99,104 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
     _aiBrain = aiBrain;
     _networkAuditor = auditor;
     _networkEventSubscription = auditor.eventStream.listen(
-      (event) => state.addTelemetryEvent(event.toJson()),
+      (event) {
+        state.addTelemetryEvent(event.toJson());
+        unawaited(_recordLocalNetworkEvent(event));
+      },
       onError: (Object error, StackTrace stackTrace) {
         AgentController.instance.reportWarning(
           'No se pudo leer la telemetría DNS local: $error',
         );
       },
     );
+  }
+
+  Future<void> _initializeTelemetryMode() async {
+    try {
+      final rawStatus = await _telemetryChannel.invokeMethod<Object?>(
+        'domainTelemetryStatus',
+      );
+      if (rawStatus is! Map || rawStatus['endpointConfigured'] is! bool) {
+        throw const FormatException(
+          'Android devolvió un estado de telemetría inválido.',
+        );
+      }
+      final endpointConfigured = rawStatus['endpointConfigured'] as bool;
+      AuraLocalTelemetry.configure(endpointConfigured: endpointConfigured);
+      final enabled = await AuraLocalTelemetry.isEnabled();
+      final events = endpointConfigured
+          ? const <Map<String, dynamic>>[]
+          : await AuraLocalTelemetry.loadEvents();
+      if (!mounted) return;
+      setState(() {
+        _telemetryEndpointConfigured = endpointConfigured;
+        _localTelemetryEnabled = enabled;
+        _localTelemetryEvents = events;
+      });
+    } on Object catch (error) {
+      AuraLocalTelemetry.configure(endpointConfigured: false);
+      var enabled = true;
+      var events = const <Map<String, dynamic>>[];
+      try {
+        enabled = await AuraLocalTelemetry.isEnabled();
+        events = await AuraLocalTelemetry.loadEvents();
+      } on Object catch (storageError) {
+        AgentController.instance.reportWarning(
+          'No se pudo leer la telemetría local guardada: $storageError',
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _telemetryEndpointConfigured = false;
+        _localTelemetryEnabled = enabled;
+        _localTelemetryEvents = events;
+      });
+      AgentController.instance.reportWarning(
+        'No se pudo verificar el endpoint de telemetría; se conserva el modo local: $error',
+      );
+    }
+  }
+
+  Future<void> _refreshLocalTelemetryEvents() async {
+    try {
+      final events = await AuraLocalTelemetry.loadEvents();
+      if (mounted) setState(() => _localTelemetryEvents = events);
+    } on Object catch (error) {
+      AgentController.instance.reportWarning(
+        'No se pudo actualizar el panel de telemetría local: $error',
+      );
+    }
+  }
+
+  Future<void> _recordLocalNetworkEvent(NetworkAuditEvent event) async {
+    try {
+      final stored = await AuraLocalTelemetry.recordNetworkEvent(event.toJson());
+      if (stored && mounted) {
+        final action = event.toJson()['action']!;
+        final events = <Map<String, dynamic>>[
+          ..._localTelemetryEvents,
+          <String, dynamic>{
+            'timestamp': event.timestamp,
+            'requested_domain': event.requestedDomain,
+            'action': action,
+            'type': event.action == NetworkAuditAction.blocked
+                ? 'dominio_bloqueado'
+                : 'escaneo',
+          },
+        ];
+        if (events.length > _maxLocalTelemetryEvents) {
+          events.removeRange(0, events.length - _maxLocalTelemetryEvents);
+        }
+        setState(() {
+          _localTelemetryEvents =
+              List<Map<String, dynamic>>.unmodifiable(events);
+        });
+      }
+    } on Object catch (error) {
+      AgentController.instance.reportWarning(
+        'No se pudo guardar la auditoría local de red: $error',
+      );
+    }
   }
 
   Future<void> _disposeNetworkAuditor() async {
@@ -184,6 +283,9 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
       }
 
       final result = await AuraIntentParser.executeCommand(instruction);
+      if (!_telemetryEndpointConfigured) {
+        await _refreshLocalTelemetryEvents();
+      }
       final response = result['response'];
       if (response is String) {
         final notificationSent = await controller.dispatchRealtimeNotification(
@@ -243,37 +345,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
     final wasActive = state.isVpnActive;
     setState(() => _isShieldBusy = true);
     try {
-      final confirmed = await _shieldChannel.invokeMethod<bool>(
-            wasActive ? 'stopShield' : 'startShield',
-          ) ??
-          false;
-      if (!confirmed) {
-        AgentController.instance.reportWarning(
-          wasActive
-              ? 'Android no confirmó la detención del escudo VPN.'
-              : 'El escudo VPN no se inició; no se confirmó el consentimiento o el servicio.',
-        );
-        return;
-      }
-
-      state.setVpnActive(!wasActive);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              wasActive ? 'Escudo VPN detenido.' : 'Escudo VPN activo.',
-            ),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } on PlatformException catch (error) {
-      AgentController.instance.reportError(
-        error.message ?? 'Android rechazó la operación del escudo VPN.',
-      );
-    } on MissingPluginException {
-      AgentController.instance.reportError(
-        'El canal nativo del escudo VPN no está disponible.',
+      await AgentController.instance.run(
+        wasActive ? 'desactivar defensas' : 'activar defensas',
       );
     } finally {
       if (mounted) setState(() => _isShieldBusy = false);
@@ -295,6 +368,11 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
       if (!mounted) return;
       var optedIn = rawStatus['optedIn'] as bool;
       final endpointConfigured = rawStatus['endpointConfigured'] as bool;
+      AuraLocalTelemetry.configure(endpointConfigured: endpointConfigured);
+      var localEnabled = await AuraLocalTelemetry.isEnabled();
+      final localEvents = endpointConfigured
+          ? const <Map<String, dynamic>>[]
+          : await AuraLocalTelemetry.loadEvents();
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => StatefulBuilder(
@@ -310,56 +388,124 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                 children: [
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text(
-                      'Compartir telemetría opcional',
-                      style: TextStyle(color: _terminalGreen),
+                    title: Text(
+                      endpointConfigured
+                          ? 'TELEMETRÍA: REMOTA'
+                          : 'TELEMETRÍA: LOCAL',
+                      style: const TextStyle(color: _terminalGreen),
                     ),
                     subtitle: Text(
                       endpointConfigured
-                          ? 'Opcional. Solo se envían hashes SHA-256 y la '
-                              'clasificación; nunca el dominio en claro.'
-                          : 'DESACTIVADA DE FÁBRICA: esta compilación no tiene '
-                              'endpoint de telemetría configurada. Ningún dato '
-                              'sale de tu teléfono.',
+                          ? 'Modo remoto disponible. Solo se envían eventos '
+                              'con consentimiento y por HTTPS.'
+                          : 'Modo local: escaneos, dominios bloqueados y marcas '
+                              'de tiempo permanecen en este dispositivo.',
                       style: const TextStyle(
                         color: _terminalYellow,
                         fontSize: 11,
                       ),
                     ),
-                    value: optedIn,
-                    onChanged: endpointConfigured || optedIn
-                        ? (value) async {
-                            if (value && !endpointConfigured) return;
-                            try {
-                              final persisted =
-                                  await _telemetryChannel.invokeMethod<bool>(
-                                        'setDomainTelemetryOptIn',
-                                        value,
-                                      ) ??
-                                      false;
-                              if (!dialogContext.mounted) return;
-                              setDialogState(() => optedIn = persisted);
-                            } on Object catch (error) {
-                              if (!dialogContext.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'No se pudo guardar el consentimiento: $error',
-                                  ),
-                                ),
-                              );
-                            }
+                    value: endpointConfigured ? optedIn : localEnabled,
+                    onChanged: (value) async {
+                      if (endpointConfigured) {
+                        try {
+                          final persisted =
+                              await _telemetryChannel.invokeMethod<bool>(
+                                    'setDomainTelemetryOptIn',
+                                    value,
+                                  ) ??
+                                  false;
+                          if (!dialogContext.mounted) return;
+                          setDialogState(() => optedIn = persisted);
+                        } on Object catch (error) {
+                          if (!dialogContext.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'No se pudo guardar el consentimiento: $error',
+                              ),
+                            ),
+                          );
+                        }
+                      } else {
+                        try {
+                          final persisted =
+                              await AuraLocalTelemetry.setEnabled(value);
+                          if (!dialogContext.mounted) return;
+                          setDialogState(() {
+                            localEnabled = persisted;
+                          });
+                          if (mounted) {
+                            setState(
+                              () => _localTelemetryEnabled = persisted,
+                            );
                           }
-                        : null,
+                        } on Object catch (error) {
+                          if (!dialogContext.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'No se pudo guardar el ajuste local: $error',
+                              ),
+                            ),
+                          );
+                        }
+                      }
+                    },
                   ),
+                  if (!endpointConfigured) ...[
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          'TELEMETRÍA LOCAL',
+                          style: TextStyle(
+                            color: _terminalCyan,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 180),
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: [
+                          for (final event in localEvents.reversed.take(20))
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 3),
+                              child: Text(
+                                _localTelemetryLine(event),
+                                style: const TextStyle(
+                                  color: _terminalGreen,
+                                  fontFamily: 'monospace',
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ),
+                          if (localEvents.isEmpty)
+                            const Text(
+                              'Sin eventos locales registrados.',
+                              style: TextStyle(
+                                color: _terminalYellow,
+                                fontFamily: 'monospace',
+                                fontSize: 10,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
-                  const Text(
-                    'Se incluyen versión del modelo y de la app, hora y '
-                    'resultado, fuente de decisión y modelo. Los hashes de dominios '
-                    'comunes pueden adivinarse. El servidor debe evitar guardar '
-                    'IP u otros identificadores en sus logs. Puedes retirar el '
-                    'consentimiento aquí; al desactivarlo se elimina la cola '
-                    'pendiente.',
+                  Text(
+                    endpointConfigured
+                        ? 'Se envían hashes SHA-256 y clasificación, nunca el '
+                            'dominio en claro. Puedes retirar el consentimiento; '
+                            'al desactivarlo se elimina la cola pendiente.'
+                        : 'Los eventos permanecen en el almacenamiento privado '
+                            'de este dispositivo. No se envían a ningún servidor.',
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: 11,
@@ -387,6 +533,19 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
         SnackBar(content: Text('No se pudo abrir el ajuste: $error')),
       );
     }
+
+  }
+
+  String _localTelemetryLine(Map<String, dynamic> event) {
+    final timestamp = event['timestamp'];
+    final time = timestamp is int
+        ? DateTime.fromMillisecondsSinceEpoch(timestamp).toIso8601String()
+        : 'hora desconocida';
+    final type = event['type'] is String ? event['type'] as String : 'evento';
+    final domain =
+        event['requested_domain'] ?? event['domain'] ?? 'sin dominio';
+    final action = event['action'] ?? event['outcome'] ?? '';
+    return '$time · $type · $domain · $action';
   }
 
   void _scrollToLatest(int eventCount, {bool force = false}) {
@@ -579,7 +738,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                         final explanationCount =
                             state.explanationHistory.length;
                         final leadingCardCount =
-                            _showCoverageAudit || explanationCount > 0 ? 1 : 0;
+                            (_showCoverageAudit || explanationCount > 0 ? 1 : 0) +
+                                (!_telemetryEndpointConfigured ? 1 : 0);
                         _scrollToLatest(events.length + leadingCardCount);
                         return ListView(
                           controller: _scrollController,
@@ -603,6 +763,11 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                                 onVerifyIntegrity: _verifyModelIntegrity,
                                 onReportFalsePositive: _reportFalsePositive,
                                 onOpenModelCard: _openModelCard,
+                              ),
+                            if (!_telemetryEndpointConfigured)
+                              _LocalTelemetryPanel(
+                                events: _localTelemetryEvents,
+                                enabled: _localTelemetryEnabled,
                               ),
                             for (final event in events)
                               _SyslogLine(event: event),
@@ -648,6 +813,82 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
       ),
     );
   }
+}
+
+class _LocalTelemetryPanel extends StatelessWidget {
+  const _LocalTelemetryPanel({
+    required this.events,
+    required this.enabled,
+  });
+
+  final List<Map<String, dynamic>> events;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        key: const ValueKey<String>('local-telemetry-panel'),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF07110E),
+          border: Border.all(color: _terminalGreen.withAlpha(115)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'TELEMETRÍA LOCAL',
+              style: TextStyle(
+                color: _terminalCyan,
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              enabled ? 'REGISTRO LOCAL ACTIVO' : 'REGISTRO LOCAL PAUSADO',
+              style: const TextStyle(
+                color: _terminalYellow,
+                fontFamily: 'monospace',
+                fontSize: 10,
+              ),
+            ),
+            const SizedBox(height: 6),
+            if (events.isEmpty)
+              const Text(
+                'Sin escaneos ni bloqueos registrados.',
+                style: TextStyle(
+                  color: _terminalGreen,
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                ),
+              )
+            else
+              for (final event in events.reversed.take(5))
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Text(
+                    '${_formatLocalTimestamp(event['timestamp'])} · '
+                    '${event['type'] ?? 'evento'} · '
+                    '${event['requested_domain'] ?? event['domain'] ?? 'sin dominio'}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _terminalGreen,
+                      fontFamily: 'monospace',
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
+          ],
+        ),
+      );
+
+  static String _formatLocalTimestamp(Object? timestamp) =>
+      timestamp is int
+          ? DateTime.fromMillisecondsSinceEpoch(timestamp)
+              .toIso8601String()
+              .replaceFirst('T', ' ')
+          : 'hora desconocida';
 }
 
 class _ExplanationCard extends StatefulWidget {

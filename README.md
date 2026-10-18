@@ -136,7 +136,7 @@ Las generaciones verificadas se guardan bajo `files/blocklists/` en el sandbox p
 
 ## Telemetría opcional de clasificación
 
-La telemetría de clasificación está **desactivada de forma predeterminada** y solo se activa mediante el switch **Ajustes → Telemetría de detecciones** en la consola Android. El usuario puede retirarla desde el mismo lugar en cualquier momento. Al desactivarla, Aura cancela el trabajo de envío activo o programado y borra la cola local pendiente. En plataformas distintas de Android no se envían estos eventos.
+Cuando no hay endpoint, la consola usa telemetría local: registra auditorías de red, dominios bloqueados y marcas de tiempo en `SharedPreferences` del dispositivo y los muestra en el panel **TELEMETRÍA LOCAL**. El switch permanece disponible como **TELEMETRÍA: LOCAL** y los eventos no salen del teléfono. En Android, cuando hay un endpoint HTTPS configurado, el switch ofrece **TELEMETRÍA: REMOTA**; el envío requiere consentimiento explícito. El usuario puede retirar ese consentimiento desde el mismo lugar. Al desactivarlo, Aura cancela el trabajo de envío activo o programado y borra la cola remota pendiente.
 
 Para habilitar el switch, configura un endpoint HTTPS real durante el build. También puedes especificar la versión efectiva del modelo; el valor predeterminado es `3.0.0`.
 
@@ -146,7 +146,7 @@ AURA_MODEL_VERSION="4.0.0" \
 flutter build apk
 ```
 
-No se incluye una URL de producción en el código. Si el endpoint falta o no es HTTPS, la opción de activación permanece deshabilitada. El endpoint debe aceptar `POST` HTTPS y responder con un estado HTTP exitoso; se rechazan redirecciones. El cuerpo tiene esta forma:
+No se incluye una URL de producción en el código. Si el endpoint falta o no es HTTPS, solo se usa el registro local; no se transmite telemetría. El endpoint remoto debe aceptar `POST` HTTPS y responder con un estado HTTP exitoso; se rechazan redirecciones. El cuerpo tiene esta forma:
 
 ```json
 {
@@ -358,7 +358,6 @@ lib/main.dart
 lib/models/aura_ai_brain.dart
 lib/network_auditor.dart
 lib/providers/aura_state_provider.dart
-lib/radar_waves.dart
 lib/screens/aura_core_screen.dart
 lib/screens/splash_screen.dart
 lib/secure_memory.dart

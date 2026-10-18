@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -11,6 +12,7 @@ void main() {
   testWidgets('activates and stops VPN through the native shield channel', (
     tester,
   ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
     const shieldChannel = MethodChannel('com.ciberdefensa.aura/shield');
     const telemetryChannel = MethodChannel('com.ciberdefensa.aura/telemetry');
     const biometricChannel = MethodChannel('com.aura.cyberdefense/biometrics');
@@ -67,7 +69,10 @@ void main() {
       'action': 'ALLOWED',
     });
     await tester.pump();
+    await tester.pumpAndSettle();
     expect(state.telemetryEvents.single['requested_domain'], 'example.com');
+    expect(find.text('TELEMETRÍA LOCAL'), findsOneWidget);
+    expect(find.textContaining('example.com'), findsOneWidget);
 
     expect(find.text('DEFENSA: OFF'), findsOneWidget);
     expect(find.text('TÚNEL'), findsOneWidget);

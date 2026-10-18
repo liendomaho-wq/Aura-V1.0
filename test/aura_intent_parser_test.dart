@@ -1,4 +1,5 @@
 import 'package:aura_mobile_defens/agent/aura_intent_parser.dart';
+import 'package:aura_mobile_defens/agent/agent_event.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -7,15 +8,12 @@ void main() {
   setUp(AuraIntentParser.clearHistory);
 
   test('activar defensas activa el escudo VPN', () async {
-    final intent = await AuraIntentParser.parse('activar defensas');
+    final intent = await AuraIntentParser.parse('ACTIVAR LAS DEFENSAS');
 
     expect(intent.name, 'toggle_defenses');
     expect(intent.kind, AuraIntentKind.toggleDefenses);
     expect(intent.entities['activate'], isTrue);
-
-    final joinedIntent = await AuraIntentParser.parse('activardefensas');
-    expect(joinedIntent.name, 'toggle_defenses');
-    expect(joinedIntent.entities['activate'], isTrue);
+    expect(intent.toEvent().kind, AgentEventKind.action);
   });
 
   test('desactiva el VPN detiene el escudo VPN', () async {
@@ -24,14 +22,16 @@ void main() {
     expect(intent.name, 'toggle_defenses');
     expect(intent.kind, AuraIntentKind.toggleDefenses);
     expect(intent.entities['activate'], isFalse);
+    expect(intent.toEvent().kind, AgentEventKind.action);
   });
 
   test('ayuda reconoce la orden de ayuda', () async {
-    final intent = await AuraIntentParser.parse('ayuda');
+    final intent = await AuraIntentParser.parse('Qué puedes hacer?');
 
     expect(intent.name, 'help');
     expect(intent.kind, AuraIntentKind.help);
     expect(intent.entities, isEmpty);
+    expect(intent.toEvent().kind, AgentEventKind.thought);
   });
 
   test('bloquear un dominio sigue usando block_domain', () async {

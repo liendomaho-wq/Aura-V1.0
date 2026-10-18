@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../ai_brain.dart';
 import '../infrastructure/security/aura_dynamic_whitelist.dart';
 import '../providers/aura_state_provider.dart';
+import '../services/aura_local_telemetry.dart';
 import '../voice_engine.dart';
 import 'aura_intent_parser.dart';
 import 'aura_tools.dart';
@@ -375,16 +376,11 @@ class AgentController {
       }
 
       if (intent.kind == AuraIntentKind.help) {
-        const helpMessage = 'ÓRDENES DISPONIBLES:\n'
-            '• ACTIVAR DEFENSAS — inicia el túnel VPN\n'
-            '• DESACTIVAR DEFENSAS — detiene el túnel VPN\n'
-            '• BLOQUEAR <dominio> — bloquea un dominio\n'
-            '• AISLAR <paquete> — aísla una app\n'
-            '• AISLAMIENTO DE EMERGENCIA — corta la red\n'
-            '• REANUDAR LA RED — restablece el túnel\n'
-            '• ACTUALIZAR DEFENSAS — verifica e instala el modelo\n'
-            '• ESTADO — nivel de seguridad actual\n'
-            '• PURGA CRIPTOGRÁFICA — borrado seguro de credenciales';
+        const helpMessage = 'ÓRDENES DISPONIBLES — ACTIVAR DEFENSAS · '
+            'DESACTIVAR DEFENSAS · BLOQUEAR <dominio> · AISLAR <paquete> · '
+            'AISLAMIENTO DE EMERGENCIA · REANUDAR LA RED · ACTUALIZAR '
+            'DEFENSAS · ESTADO · PURGA CRIPTOGRÁFICA';
+        _emit(intent.toEvent());
         _emit(
           AgentEvent(
             kind: AgentEventKind.success,
@@ -416,6 +412,7 @@ class AgentController {
           result.data['critical_integrity_failure'] == true ||
               result.data['security_level'] == 'critical';
       if (intent.kind == AuraIntentKind.cryptographicPurge && succeeded) {
+        await AuraLocalTelemetry.clearEvents();
         history.clear();
         AuraIntentParser.clearHistory();
         _securityState?.clearTelemetryHistory();

@@ -180,33 +180,26 @@ abstract class AuraTools {
       return ToolResult(
         summary: confirmed
             ? activate
-                ? 'Escudo VPN activado. Filtrando tráfico de red.'
-                : 'Escudo VPN detenido.'
+                ? 'DEFENSA ACTIVADA — túnel en marcha'
+                : 'DEFENSA DESACTIVADA — túnel detenido'
             : activate
                 ? 'El escudo VPN no se inició: falta el consentimiento de Android o el servicio no respondió.'
                 : 'Android no confirmó la detención del escudo VPN.',
         data: <String, dynamic>{
           'ok': confirmed,
           if (confirmed) 'vpn_active': activate,
-          'security_level': confirmed ? 'safe' : 'warning',
+          'security_level': confirmed && activate ? 'safe' : 'warning',
         },
       );
-    } on PlatformException catch (error) {
-      return ToolResult(
-        summary:
-            'Android rechazó la operación del escudo VPN: ${error.message ?? error.code}.',
-        data: const <String, dynamic>{
-          'ok': false,
-          'security_level': 'warning',
-        },
+    } on PlatformException {
+      return const ToolResult(
+        summary: 'No pude contactar el motor VPN. Revisa que Aura esté activa.',
+        data: <String, dynamic>{'ok': false, 'security_level': 'warning'},
       );
     } on MissingPluginException {
       return const ToolResult(
-        summary: 'El canal nativo del escudo VPN no está disponible.',
-        data: <String, dynamic>{
-          'ok': false,
-          'security_level': 'warning',
-        },
+        summary: 'No pude contactar el motor VPN. Revisa que Aura esté activa.',
+        data: <String, dynamic>{'ok': false, 'security_level': 'warning'},
       );
     }
   }
