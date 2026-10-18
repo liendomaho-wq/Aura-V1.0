@@ -1,5 +1,6 @@
 package com.ciberdefensa.aura
 
+import android.app.KeyguardManager
 import android.Manifest
 import android.content.Intent
 import android.content.BroadcastReceiver
@@ -158,6 +159,7 @@ class MainActivity: FlutterFragmentActivity() {
         const val VOICE_REQUEST = 1082
         const val VOICE_PERMISSION_REQUEST = 1083
         const val NOTIFICATION_PERMISSION_REQUEST = 1084
+        const val AURA_CONFIRM_CREDENTIAL_REQUEST = 4711
     }
 
     private val SHIELD_CHANNEL = "com.ciberdefensa.aura/shield"
@@ -176,6 +178,7 @@ class MainActivity: FlutterFragmentActivity() {
     private val MAX_BLOCKLIST_QUERY_DOMAINS = 10_000
     private var pendingShieldResult: MethodChannel.Result? = null
         private var pendingVoiceResult: MethodChannel.Result? = null
+    private var pendingCredentialResult: MethodChannel.Result? = null
     private var pendingNotificationResult: MethodChannel.Result? = null
     private var pendingNotificationPayload: Pair<String, String>? = null
     private var vpnReceiverRegistered = false
@@ -288,6 +291,10 @@ class MainActivity: FlutterFragmentActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "authenticateFingerprint" -> authenticateFingerprint(result)
+                "getLocalAuthStatus" -> getLocalAuthStatus(result)
+                "authenticateDeviceCredential" ->
+                    authenticateWithDeviceCredential(result)
+                "openSecuritySettings" -> openSecuritySettings(result)
                 else -> result.notImplemented()
             }
         }
@@ -937,6 +944,11 @@ class MainActivity: FlutterFragmentActivity() {
                 pendingVoiceResult?.success(transcript)
                 pendingVoiceResult = null
             }
+
+            AURA_CONFIRM_CREDENTIAL_REQUEST -> {
+                pendingCredentialResult?.success(resultCode == RESULT_OK)
+                pendingCredentialResult = null
+            }
         }
     }
 
@@ -1083,6 +1095,45 @@ class MainActivity: FlutterFragmentActivity() {
             .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
             .build()
         prompt.authenticate(promptInfo)
+    }
+
+    private fun getLocalAuthStatus(result: MethodChannel.Result) {
+        val biometricManager = BiometricManager.from(this)
+        val hasStrongBiometric = biometricManager.canAuthenticate(
+            BiometricManager.Authenticators.BIOMETRIC_STRONG,
+        ) == BiometricManager.BIOMETRIC_SUCCESS
+        val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        result.success(
+            mapOf(
+                "hasStrongBiometric" to hasStrongBiometric,
+                "deviceSecure" to keyguardManager.isDeviceSecure,
+            ),
+        )
+    }
+
+    // API obsoleta desde Android 10, pero compatible con el mínimo Android 7.
+    @Suppress("DEPRECATION")
+    private fun authenticateWithDeviceCredential(result: MethodChannel.Result) {
+        val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        if (!keyguardManager.isDeviceSecure) {
+            result.success(false)
+            return
+        }
+        pendingCredentialResult = result
+        val intent = keyguardManager.createConfirmDeviceCredentialIntent(
+            "Desbloquear Aura Mobile Defens",
+            "Confirme el bloqueo del teléfono para abrir la consola",
+        )
+        startActivityForResult(intent, AURA_CONFIRM_CREDENTIAL_REQUEST)
+    }
+
+    private fun openSecuritySettings(result: MethodChannel.Result) {
+        try {
+            startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
+            result.success(true)
+        } catch (error: Exception) {
+            result.success(false)
+        }
     }
 
     private fun registerVpnReceiver() {

@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:local_auth/local_auth.dart';
 
 import '../agent/agent_controller.dart';
 import '../ai_brain.dart';
@@ -20,13 +19,13 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _animationController;
-  final LocalAuthentication _auth = LocalAuthentication();
   late final AuraSecureVault _secureVault;
   late final AuraAIBrain _aiBrain;
   double _loadingProgress = 0;
   String _bootStatusText = 'INICIALIZANDO BÓVEDA SEGURA...';
   bool _isAuthFailed = false;
   bool _isAuthenticating = false;
+  bool _showLockDecision = false;
 
   @override
   void initState() {
@@ -52,8 +51,9 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _initializeSystem() async {
     setState(() {
       _isAuthFailed = false;
+      _showLockDecision = false;
       _loadingProgress = 0;
-      _bootStatusText = 'VERIFICANDO HARDWARE DE HUELLA...';
+      _bootStatusText = 'VERIFICANDO BLOQUEO LOCAL...';
     });
     await _authenticateUser();
   }
@@ -63,33 +63,63 @@ class _SplashScreenState extends State<SplashScreen>
     setState(() {
       _isAuthenticating = true;
       _isAuthFailed = false;
-      _bootStatusText = 'VERIFICANDO HARDWARE DE HUELLA...';
+      _showLockDecision = false;
+      _bootStatusText = 'VERIFICANDO BLOQUEO LOCAL...';
     });
 
     try {
-      final canCheckBiometrics = await _auth.canCheckBiometrics;
-      if (!canCheckBiometrics) {
-        _showAuthenticationFailure('NO HAY HARDWARE BIOMÉTRICO DISPONIBLE.');
+      final status = await AgentController.instance.getLocalAuthStatus();
+      final hasStrongBiometric = status['hasStrongBiometric'] == true;
+      final deviceSecure = status['deviceSecure'] == true;
+
+      if (hasStrongBiometric) {
+        final authenticated =
+            await AgentController.instance.authenticateBiometricDevice();
+        if (!authenticated) {
+          _showAuthenticationFailure('ACCESO DENEGADO - NÚCLEO BLOQUEADO.');
+          return;
+        }
+      } else if (deviceSecure) {
+        setState(() {
+          _bootStatusText =
+              'HUELLA NO CONFIGURADA; USANDO BLOQUEO DEL TELÉFONO...';
+        });
+        final authenticated =
+            await AgentController.instance.authenticateDeviceCredential();
+        if (!authenticated) {
+          _showAuthenticationFailure('BLOQUEO DEL TELÉFONO NO CONFIRMADO.');
+          return;
+        }
+      } else {
+        setState(() {
+          _showLockDecision = true;
+          _bootStatusText = 'SIN BLOQUEO LOCAL CONFIGURADO.';
+        });
         return;
       }
 
-      final availableBiometrics = await _auth.getAvailableBiometrics();
-      if (!availableBiometrics.contains(BiometricType.fingerprint)) {
-        _showAuthenticationFailure('NO HAY HUELLA DACTILAR REGISTRADA.');
-        return;
-      }
+      await _runPostAuthBootSequence();
+    } on PlatformException catch (error) {
+      _showAuthenticationFailure(
+        'ERROR DE ACCESO BIOMÉTRICO: ${error.message ?? error.code}',
+      );
+    } on Object catch (error) {
+      _showAuthenticationFailure('ERROR DE INICIALIZACIÓN: $error');
+    } finally {
+      if (mounted) setState(() => _isAuthenticating = false);
+    }
+  }
 
-      final authenticated =
-          await AgentController.instance.authenticateBiometricDevice();
-      if (!authenticated) {
-        _showAuthenticationFailure('ACCESO DENEGADO - NÚCLEO BLOQUEADO.');
-        return;
-      }
-
+  Future<void> _runPostAuthBootSequence() async {
+    try {
       if (!mounted) return;
       setState(() {
+        _isAuthenticating = true;
+        _showLockDecision = false;
+        _isAuthFailed = false;
         _loadingProgress = 0.35;
-        _bootStatusText = 'HUELLA VALIDADA; INICIALIZANDO BÓVEDA SEGURA...';
+        _bootStatusText =
+            'ACCESO LOCAL VALIDADO; INICIALIZANDO BÓVEDA SEGURA...';
       });
       await _secureVault.getOrCreateModelMasterKey();
       if (!mounted) return;
@@ -128,13 +158,51 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
     setState(() {
       _isAuthFailed = true;
+      _showLockDecision = false;
       _bootStatusText = message;
     });
-    AgentController.instance.reportCriticalError('PÁNICO CRÍTICO: $message');
-    unawaited(
-      Future<void>.delayed(const Duration(seconds: 2)).then((_) async {
-        if (mounted) await SystemNavigator.pop();
-      }),
+    AgentController.instance.reportError(message);
+  }
+
+  void _allowUnsecuredLocalAccess() {
+    AgentController.instance.allowUnsecuredLocalSession();
+    AgentController.instance.reportError(
+      'Acceso sin verificación local: dispositivo sin bloqueo configurado.',
+    );
+    unawaited(_runPostAuthBootSequence());
+  }
+
+  Widget _buildDecisionButton({
+    required String label,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: color.withValues(alpha: 0.08),
+          foregroundColor: color,
+          side: BorderSide(color: color),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AuraTokens.s2,
+            vertical: AuraTokens.s3,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AuraTokens.rSm),
+          ),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 9,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
     );
   }
 
@@ -249,7 +317,7 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                     const SizedBox(height: AuraTokens.s8),
                     SizedBox(
-                      width: 220,
+                      width: 280,
                       child: Column(
                         children: [
                           LinearProgressIndicator(
@@ -277,11 +345,43 @@ class _SplashScreenState extends State<SplashScreen>
                           if (_isAuthFailed && !_isAuthenticating) ...[
                             const SizedBox(height: AuraTokens.s2),
                             IconButton(
-                              tooltip: 'Reintentar autenticación biométrica',
+                              tooltip: 'REINTENTAR AUTENTICACIÓN LOCAL',
                               onPressed: _initializeSystem,
                               icon: const Icon(
                                 Icons.refresh,
                                 color: AuraTokens.warning,
+                              ),
+                            ),
+                          ],
+                          if (_showLockDecision && !_isAuthenticating) ...[
+                            const SizedBox(height: AuraTokens.s3),
+                            _buildDecisionButton(
+                              label: 'CONFIGURAR BLOQUEO DEL TELÉFONO',
+                              color: AuraTokens.accent,
+                              onPressed: () => unawaited(
+                                AgentController.instance.openSecuritySettings(),
+                              ),
+                            ),
+                            const SizedBox(height: AuraTokens.s2),
+                            _buildDecisionButton(
+                              label: 'REINTENTAR',
+                              color: AuraTokens.warning,
+                              onPressed: _initializeSystem,
+                            ),
+                            const SizedBox(height: AuraTokens.s2),
+                            _buildDecisionButton(
+                              label: 'CONTINUAR SIN BLOQUEO LOCAL (INSEGURO)',
+                              color: AuraTokens.danger,
+                              onPressed: _allowUnsecuredLocalAccess,
+                            ),
+                            const SizedBox(height: AuraTokens.s1),
+                            const Text(
+                              'ALTO RIESGO: CONFIGURA UN PIN PARA PROTEGER AURA.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: AuraTokens.danger,
+                                fontFamily: 'monospace',
+                                fontSize: 8,
                               ),
                             ),
                           ],

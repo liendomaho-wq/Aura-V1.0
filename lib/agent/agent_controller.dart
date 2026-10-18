@@ -152,7 +152,7 @@ class AgentController {
 
   final List<AgentEvent> history = <AgentEvent>[];
   AuraStateProvider? _securityState;
-  bool _biometricallyAuthenticated = false;
+  bool _locallyAuthenticated = false;
 
   Stream<AgentEvent> get events => _eventController.stream;
   Stream<AgentEvent> get stream => _eventController.stream;
@@ -172,13 +172,13 @@ class AgentController {
   }
 
   Future<bool> authenticateBiometricDevice() async {
-    if (_biometricallyAuthenticated) return true;
+    if (_locallyAuthenticated) return true;
     try {
       final authenticated = await _biometricChannel.invokeMethod<bool>(
             'authenticateFingerprint',
           ) ??
           false;
-      _biometricallyAuthenticated = authenticated;
+      _locallyAuthenticated = authenticated;
       return authenticated;
     } on PlatformException catch (error) {
       reportError(
@@ -192,6 +192,42 @@ class AgentController {
       reportError('No se pudo completar la autenticación biométrica: $error');
       return false;
     }
+  }
+
+  Future<Map<String, dynamic>> getLocalAuthStatus() async {
+    final status = await _biometricChannel.invokeMethod<Map<dynamic, dynamic>>(
+          'getLocalAuthStatus',
+        ) ??
+        const <dynamic, dynamic>{};
+    return status.map((key, value) => MapEntry(key.toString(), value));
+  }
+
+  Future<bool> authenticateDeviceCredential() async {
+    try {
+      final authenticated = await _biometricChannel.invokeMethod<bool>(
+            'authenticateDeviceCredential',
+          ) ??
+          false;
+      _locallyAuthenticated = authenticated;
+      return authenticated;
+    } on PlatformException catch (error) {
+      reportError(
+        'Fallo de credencial nativa: ${error.message ?? error.code}',
+      );
+      return false;
+    }
+  }
+
+  Future<void> openSecuritySettings() async {
+    try {
+      await _biometricChannel.invokeMethod<void>('openSecuritySettings');
+    } on PlatformException catch (error) {
+      reportError('No se pudo abrir ajustes: ${error.message ?? error.code}');
+    }
+  }
+
+  void allowUnsecuredLocalSession() {
+    _locallyAuthenticated = true;
   }
 
   Future<bool> dispatchRealtimeNotification(String title, String body) async {
