@@ -12,6 +12,7 @@ void main() {
     tester,
   ) async {
     const shieldChannel = MethodChannel('com.ciberdefensa.aura/shield');
+    const telemetryChannel = MethodChannel('com.ciberdefensa.aura/telemetry');
     const biometricChannel = MethodChannel('com.aura.cyberdefense/biometrics');
     const networkEventChannel =
         EventChannel('com.aura.cyberdefense/network_stream');
@@ -22,6 +23,7 @@ void main() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     addTearDown(() {
       messenger.setMockMethodCallHandler(shieldChannel, null);
+      messenger.setMockMethodCallHandler(telemetryChannel, null);
       messenger.setMockMethodCallHandler(biometricChannel, null);
       messenger.setMockStreamHandler(networkEventChannel, null);
       state.dispose();
@@ -29,6 +31,15 @@ void main() {
     messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);
     messenger.setMockMethodCallHandler(shieldChannel, (call) async {
       calls.add(call.method);
+      return true;
+    });
+    messenger.setMockMethodCallHandler(telemetryChannel, (call) async {
+      if (call.method == 'domainTelemetryStatus') {
+        return <String, Object>{
+          'optedIn': false,
+          'endpointConfigured': false,
+        };
+      }
       return true;
     });
     messenger.setMockStreamHandler(
@@ -58,11 +69,15 @@ void main() {
     await tester.pump();
     expect(state.telemetryEvents.single['requested_domain'], 'example.com');
 
-    expect(find.byTooltip('Activar escudo VPN'), findsOneWidget);
+    expect(find.text('DEFENSA: OFF'), findsOneWidget);
+    expect(find.text('TÚNEL'), findsOneWidget);
+    expect(find.text('OFF'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
     await tester.pumpAndSettle();
     expect(calls, <String>['startShield']);
     expect(state.isVpnActive, isTrue);
+    expect(find.text('DEFENSA: ON'), findsOneWidget);
+    expect(find.text('ON'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
     await tester.pumpAndSettle();

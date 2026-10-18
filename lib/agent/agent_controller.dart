@@ -374,6 +374,28 @@ class AgentController {
         return;
       }
 
+      if (intent.kind == AuraIntentKind.help) {
+        const helpMessage = 'ÓRDENES DISPONIBLES:\n'
+            '• ACTIVAR DEFENSAS — inicia el túnel VPN\n'
+            '• DESACTIVAR DEFENSAS — detiene el túnel VPN\n'
+            '• BLOQUEAR <dominio> — bloquea un dominio\n'
+            '• AISLAR <paquete> — aísla una app\n'
+            '• AISLAMIENTO DE EMERGENCIA — corta la red\n'
+            '• REANUDAR LA RED — restablece el túnel\n'
+            '• ACTUALIZAR DEFENSAS — verifica e instala el modelo\n'
+            '• ESTADO — nivel de seguridad actual\n'
+            '• PURGA CRIPTOGRÁFICA — borrado seguro de credenciales';
+        _emit(
+          AgentEvent(
+            kind: AgentEventKind.success,
+            message: helpMessage,
+            data: const <String, dynamic>{'intent': 'help'},
+          ),
+        );
+        await _speakResponse('Órdenes listadas en pantalla.');
+        return;
+      }
+
       _emit(intent.toEvent());
       final result = await AuraTools.execute(
         ToolStep(name: intent.name, arguments: intent.entities),
@@ -387,6 +409,8 @@ class AgentController {
                 )
             : null,
       );
+      final vpnActive = result.data['vpn_active'];
+      if (vpnActive is bool) _securityState?.setVpnActive(vpnActive);
       final succeeded = result.data['ok'] == true;
       final integrityCheckFailed =
           result.data['critical_integrity_failure'] == true ||

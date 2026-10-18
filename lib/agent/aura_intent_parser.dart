@@ -18,6 +18,8 @@ enum AuraIntentKind {
   provocation,
   humor,
   status,
+  toggleDefenses,
+  help,
   unknown,
 }
 
@@ -41,7 +43,8 @@ class AuraIntent {
           AuraIntentKind.panicIsolation ||
           AuraIntentKind.resumeNetwork ||
           AuraIntentKind.cryptographicPurge ||
-          AuraIntentKind.updateDefenses => AgentEventKind.action,
+          AuraIntentKind.updateDefenses ||
+          AuraIntentKind.toggleDefenses => AgentEventKind.action,
           AuraIntentKind.greet ||
           AuraIntentKind.identity ||
           AuraIntentKind.capabilities ||
@@ -52,7 +55,8 @@ class AuraIntent {
           AuraIntentKind.fear ||
           AuraIntentKind.provocation ||
           AuraIntentKind.humor => AgentEventKind.thought,
-          AuraIntentKind.status => AgentEventKind.thought,
+          AuraIntentKind.status ||
+          AuraIntentKind.help => AgentEventKind.thought,
           AuraIntentKind.unknown => AgentEventKind.warning,
         },
         message: name,
@@ -94,6 +98,18 @@ class AuraIntentParser {
   );
   static final RegExp _cryptographicPurgeCommand = RegExp(
     r'\b(?:purga criptográfica|purga criptografica|cryptographic purge|purga segura|borrado seguro de credenciales)\b',
+    caseSensitive: false,
+  );
+  static final RegExp _activateDefensesCommand = RegExp(
+    r'\b(?:activar|activa|activad|encender|enciende|habilitar|habilita|conectar|conecta)\s*(?:las?\s+|el\s+|los\s+)?(?:defensas|defensa|escudo|vpn|protecci[oó]n|t[uú]nel)\b',
+    caseSensitive: false,
+  );
+  static final RegExp _deactivateDefensesCommand = RegExp(
+    r'\b(?:desactivar|desactiva|apagar|apaga|deshabilitar|deshabilita|desconectar|desconecta|detener|deten)\s*(?:las?\s+|el\s+|los\s+)?(?:defensas|defensa|escudo|vpn|protecci[oó]n|t[uú]nel)\b',
+    caseSensitive: false,
+  );
+  static final RegExp _helpCommand = RegExp(
+    r'^\s*(?:ayuda|help|comandos|o[ró]rdenes|lista de comandos)\s*[?.!]*$',
     caseSensitive: false,
   );
   static final RegExp _updateDefensesCommand = RegExp(
@@ -252,6 +268,27 @@ class AuraIntentParser {
         entities: <String, dynamic>{},
         confidence: 0.96,
       );
+    } else if (_activateDefensesCommand.hasMatch(text)) {
+      intent = AuraIntent(
+        name: 'toggle_defenses',
+        kind: AuraIntentKind.toggleDefenses,
+        entities: <String, dynamic>{'activate': true},
+        confidence: 0.96,
+      );
+    } else if (_deactivateDefensesCommand.hasMatch(text)) {
+      intent = AuraIntent(
+        name: 'toggle_defenses',
+        kind: AuraIntentKind.toggleDefenses,
+        entities: <String, dynamic>{'activate': false},
+        confidence: 0.96,
+      );
+    } else if (_helpCommand.hasMatch(text)) {
+      intent = AuraIntent(
+        name: 'help',
+        kind: AuraIntentKind.help,
+        entities: <String, dynamic>{},
+        confidence: 0.9,
+      );
     } else if (_updateDefensesCommand.hasMatch(text)) {
       intent = AuraIntent(
         name: 'update_defenses',
@@ -335,6 +372,8 @@ class AuraIntentParser {
         AuraIntentKind.fear => 'fear',
         AuraIntentKind.provocation => 'provocation',
         AuraIntentKind.humor => 'humor',
+        AuraIntentKind.help => 'help',
+        AuraIntentKind.toggleDefenses => 'toggle_defenses',
         _ => 'unknown',
       };
 

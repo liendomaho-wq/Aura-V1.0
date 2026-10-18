@@ -55,6 +55,8 @@ abstract class AuraTools {
       switch (step.name) {
         case 'update_defenses':
           return await _updateDefenses(onProgress);
+        case 'toggle_defenses':
+          return await _toggleDefenses(step.arguments);
         case 'block_domain':
           final domain = step.arguments['domain'];
           final blocked = await _engineChannel.invokeMethod<bool>(
@@ -161,6 +163,50 @@ abstract class AuraTools {
       return ToolResult(
         summary: error.message ?? 'El canal nativo de Aura no está disponible.',
         data: <String, dynamic>{'ok': false, 'error': 'missing_plugin'},
+      );
+    }
+  }
+
+  static Future<ToolResult> _toggleDefenses(
+    Map<String, dynamic> arguments,
+  ) async {
+    const shieldChannel = MethodChannel('com.ciberdefensa.aura/shield');
+    final activate = arguments['activate'] == true;
+    try {
+      final confirmed = await shieldChannel.invokeMethod<bool>(
+            activate ? 'startShield' : 'stopShield',
+          ) ??
+          false;
+      return ToolResult(
+        summary: confirmed
+            ? activate
+                ? 'Escudo VPN activado. Filtrando tráfico de red.'
+                : 'Escudo VPN detenido.'
+            : activate
+                ? 'El escudo VPN no se inició: falta el consentimiento de Android o el servicio no respondió.'
+                : 'Android no confirmó la detención del escudo VPN.',
+        data: <String, dynamic>{
+          'ok': confirmed,
+          if (confirmed) 'vpn_active': activate,
+          'security_level': confirmed ? 'safe' : 'warning',
+        },
+      );
+    } on PlatformException catch (error) {
+      return ToolResult(
+        summary:
+            'Android rechazó la operación del escudo VPN: ${error.message ?? error.code}.',
+        data: const <String, dynamic>{
+          'ok': false,
+          'security_level': 'warning',
+        },
+      );
+    } on MissingPluginException {
+      return const ToolResult(
+        summary: 'El canal nativo del escudo VPN no está disponible.',
+        data: <String, dynamic>{
+          'ok': false,
+          'security_level': 'warning',
+        },
       );
     }
   }

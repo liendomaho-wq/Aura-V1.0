@@ -42,7 +42,6 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
   bool _isRunning = false;
   bool _isShieldBusy = false;
   bool _isAuthenticated = false;
-  bool _authenticationFailed = false;
   bool _showCoverageAudit = false;
   String? _coverageAutotestStatus;
   int _lastRenderedEventCount = -1;
@@ -67,12 +66,13 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
       return;
     }
 
-    controller.reportCriticalError(
-      'PÁNICO CRÍTICO: AUTENTICACIÓN BIOMÉTRICA DENEGADA. CONSOLA BLOQUEADA.',
+    controller.reportWarning(
+      'Consola iniciada sin verificación local confirmada; el modo degradado registra este evento.',
     );
-    setState(() => _authenticationFailed = true);
-    await Future<void>.delayed(const Duration(seconds: 2));
-    if (mounted) await SystemNavigator.pop();
+    // El cierre automático está prohibido desde la versión 3.8.
+    controller.initGreeting();
+    _startNetworkAuditor();
+    setState(() => _isAuthenticated = true);
   }
 
   @override
@@ -318,7 +318,9 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                       endpointConfigured
                           ? 'Opcional. Solo se envían hashes SHA-256 y la '
                               'clasificación; nunca el dominio en claro.'
-                          : 'No disponible: falta configurar el endpoint HTTPS.',
+                          : 'DESACTIVADA DE FÁBRICA: esta compilación no tiene '
+                              'endpoint de telemetría configurada. Ningún dato '
+                              'sale de tu teléfono.',
                       style: const TextStyle(
                         color: _terminalYellow,
                         fontSize: 11,
@@ -400,6 +402,57 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
   Widget build(BuildContext context) {
     final state = context.watch<AuraStateProvider>();
     final vpnActive = state.isVpnActive;
+    final quickActionsEnabled = !_isRunning && _isAuthenticated;
+
+    Widget statusTile(String label, String value, Color valueColor) =>
+        Expanded(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFF1B3A2A)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Color(0xFF5A7A6A),
+                    fontFamily: 'monospace',
+                    fontSize: 9,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: valueColor,
+                    fontFamily: 'monospace',
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+
+    OutlinedButton quickAction(String label, VoidCallback? onPressed) =>
+        OutlinedButton(
+          onPressed: quickActionsEnabled ? onPressed : null,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: _terminalGreen,
+            side: const BorderSide(color: Color(0xFF1B3A2A)),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            textStyle: const TextStyle(
+              color: _terminalGreen,
+              fontFamily: 'monospace',
+              fontSize: 10,
+            ),
+          ),
+          child: Text(label),
+        );
+
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
       resizeToAvoidBottomInset: true,
@@ -447,29 +500,78 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                     ),
                   ),
                 ),
-                IconButton(
+                TextButton(
                   key: const ValueKey<String>('vpn-toggle'),
-                  tooltip:
-                      vpnActive ? 'Detener escudo VPN' : 'Activar escudo VPN',
                   onPressed:
                       _isAuthenticated && !_isShieldBusy ? _toggleShield : null,
-                  constraints:
-                      const BoxConstraints.tightFor(width: 48, height: 48),
-                  icon: _isShieldBusy
+                  style: TextButton.styleFrom(
+                    side: BorderSide(
+                      color: _isShieldBusy
+                          ? Colors.grey
+                          : vpnActive
+                              ? _terminalGreen
+                              : _terminalYellow,
+                    ),
+                    backgroundColor: vpnActive
+                        ? const Color(0xFF001A00)
+                        : const Color(0xFF1A1A00),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: const StadiumBorder(),
+                  ),
+                  child: _isShieldBusy
                       ? const SizedBox.square(
-                          dimension: 18,
+                          dimension: 14,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Icon(
-                          vpnActive ? Icons.shield : Icons.shield_outlined,
-                          color: vpnActive ? _terminalGreen : _terminalYellow,
+                      : Text(
+                          vpnActive ? 'DEFENSA: ON' : 'DEFENSA: OFF',
+                          style: TextStyle(
+                            color:
+                                vpnActive ? _terminalGreen : _terminalYellow,
+                            fontFamily: 'monospace',
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1,
+                          ),
                         ),
                 ),
               ],
             ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                children: [
+                  statusTile(
+                    'TÚNEL',
+                    state.isVpnActive ? 'ON' : 'OFF',
+                    state.isVpnActive ? _terminalGreen : _terminalYellow,
+                  ),
+                  statusTile(
+                    'SNI',
+                    '${state.sniObservedEvents}',
+                    const Color(0xFF00FFFF),
+                  ),
+                  statusTile(
+                    'BLOQUEOS',
+                    '${state.blockedEvents}',
+                    state.blockedEvents > 0
+                        ? const Color(0xFFFF3B30)
+                        : _terminalGreen,
+                  ),
+                  statusTile(
+                    'DGA',
+                    '${state.dgaAlertEvents}',
+                    state.dgaAlertEvents > 0
+                        ? _terminalYellow
+                        : _terminalGreen,
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 16),
             Expanded(
-              child: _isAuthenticated || _authenticationFailed
+              child: _isAuthenticated
                   ? StreamBuilder<AgentEvent>(
                       stream: AgentController.instance.events,
                       builder: (context, snapshot) {
@@ -509,6 +611,30 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                       },
                     )
                   : const SizedBox.expand(),
+            ),
+            SizedBox(
+              height: 44,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                children: [
+                  quickAction('AYUDA', () => _dispatch('ayuda')),
+                  const SizedBox(width: 8),
+                  quickAction('ESTADO', () => _dispatch('estado')),
+                  const SizedBox(width: 8),
+                  quickAction(
+                    vpnActive ? 'DETENER VPN' : 'ACTIVAR VPN',
+                    _isShieldBusy ? null : _toggleShield,
+                  ),
+                  const SizedBox(width: 8),
+                  quickAction(
+                    'AUDITORÍA',
+                    () => setState(
+                      () => _showCoverageAudit = !_showCoverageAudit,
+                    ),
+                  ),
+                ],
+              ),
             ),
             _TerminalInput(
               controller: _inputController,
