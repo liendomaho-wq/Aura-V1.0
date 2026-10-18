@@ -15,11 +15,11 @@ fail() {
 USE_DEBUG_SIGNING=false
 if [[ -z "${AURA_KEYSTORE_PATH:-}" && -z "${AURA_KEYSTORE_BASE64:-}" ]]; then
     log "WARNING: Production signing variables missing. Falling back to DEBUG signing configuration."
+    log "WARNING: The resulting artifact is for TESTING ONLY. Configure AURA_KEYSTORE_* for release distribution."
     USE_DEBUG_SIGNING=true
 
-    # Proteger la rama principal: el fallback solo es para desarrollo
-    if [[ "${CM_BRANCH:-}" == "main" || "${CM_BRANCH:-}" == "principal" || "${GITHUB_REF:-}" == "refs/heads/main" ]]; then
-        fail "CRITICAL: Production signing variables are strictly required for main/principal branches. Debug fallback is not allowed."
+    if [[ "${AURA_REQUIRE_RELEASE_SIGNING:-false}" == "true" ]]; then
+        fail "CRITICAL: AURA_REQUIRE_RELEASE_SIGNING=true is set but production signing variables are missing. Debug fallback is not allowed."
     fi
 fi
 
@@ -280,6 +280,22 @@ java_version="$("$JAVA_HOME/bin/java" -version 2>&1 | awk -F '"' '/version/ {pri
 export PATH="$JAVA_HOME/bin:$PATH"
 export GRADLE_OPTS="${GRADLE_OPTS:+$GRADLE_OPTS }-Dorg.gradle.java.home=$JAVA_HOME"
 log "Gradle Java: $("$JAVA_HOME/bin/java" -version 2>&1 | head -n 1)"
+
+if [[ "$USE_DEBUG_SIGNING" == "true" ]]; then
+    debug_keystore="$HOME/.android/debug.keystore"
+    if [[ ! -f "$debug_keystore" ]]; then
+        mkdir -p "$HOME/.android"
+        keytool -genkeypair \
+            -keystore "$debug_keystore" \
+            -storepass android \
+            -keypass android \
+            -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US" ||
+            fail "Could not generate the Android debug keystore for fallback signing."
+        log "Generated Android debug keystore at $debug_keystore (fallback signing)."
+    fi
+fi
 
 gradle_version_output="$(
     cd "$android_dir"

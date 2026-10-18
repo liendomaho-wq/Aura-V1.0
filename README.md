@@ -431,7 +431,11 @@ El build debug se verificó con las cuatro ABI configuradas (`armeabi-v7a`, `arm
 
 La compilación release del pipeline se ejecuta con `bash tool/compile_aura.sh`. Esta ruta compila el APK, verifica su firma y usa Gradle/R8 con un heap de 3 GB. El proyecto fija NDK `28.2.13676358` para mantenerlo alineado con Flutter stable y sus plugins Android. Las correcciones de compilación incluyen el límite de direcciones en el puente JNI y compatibilidad del scanner y del servicio de blocklist con Kotlin 2.2.
 
-Validación local completada: `bash tool/compile_aura.sh`, `bash tool/compile_aura.sh --verify-artifact`, `flutter analyze` y `flutter test` (63 pruebas pasaron y una fue omitida). Sin las variables del keystore de producción, el script firma la APK con la clave Android Debug únicamente como fallback de desarrollo; configura las credenciales de release antes de distribuirla. Codemagic recoge la APK de `build/app/outputs/flutter-apk/*.apk` y los AAB de `build/app/outputs/bundle/release/*.aab`.
+Validación local completada: `bash tool/compile_aura.sh`, `bash tool/compile_aura.sh --verify-artifact`, `flutter analyze` y `flutter test` (63 pruebas pasaron y una fue omitida). Codemagic recoge la APK de `build/app/outputs/flutter-apk/*.apk` y los AAB de `build/app/outputs/bundle/release/*.aab`. La firma de producción tiene prioridad cuando se configuran sus credenciales; sin ellas, el script permite fallback a firma Android Debug para pruebas, no para distribución.
+
+- En CI (Codemagic y GitHub Actions), si faltan claves de producción, el build continúa con la clave Android Debug de la máquina (generada si no existe); el artefacto es **solo de prueba** y no debe distribuirse ni publicarse.
+- Define `AURA_REQUIRE_RELEASE_SIGNING=true` para exigir claves de producción y abortar si faltan; este modo estricto es recomendable cuando se publica.
+- Configura `AURA_KEYSTORE_PATH` o `AURA_KEYSTORE_BASE64`, junto con `AURA_STORE_PASSWORD`, `AURA_KEY_ALIAS` y `AURA_KEY_PASSWORD`, para que el script firme automáticamente con el keystore de producción.
 
 Un build release directo de Gradle sin variables de firmado produce un artefacto sin firma, solo apto para diagnóstico local:
 
