@@ -523,7 +523,7 @@ object AuraBlocklistService {
             .digest(bytes)
             .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
 
-    class BlocklistException(message: String, cause: Throwable? = null) :
+    open class BlocklistException(message: String, cause: Throwable? = null) :
         IOException(message, cause)
 
     class BlocklistConfigurationException(message: String) :

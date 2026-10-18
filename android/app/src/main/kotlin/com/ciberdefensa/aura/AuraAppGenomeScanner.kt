@@ -163,11 +163,11 @@ object AuraAppGenomeScanner {
             "count" to applications.size,
             "applications" to applications,
             "suspicious_app_count" to suspiciousApps.size,
-            "suspicious_apps" to suspiciousApps.map(SuspiciousApp::toMap),
+            "suspicious_apps" to suspiciousApps.map { it.toMap() },
             "signature_issue_count" to signatureIssues.size,
-            "signature_issues" to signatureIssues.map(AppSignatureIssue::toMap),
+            "signature_issues" to signatureIssues.map { it.toMap() },
             "obfuscated_app_count" to obfuscatedApps.size,
-            "obfuscated_apps" to obfuscatedApps.map(ObfuscatedApp::toMap),
+            "obfuscated_apps" to obfuscatedApps.map { it.toMap() },
         )
     }
 
@@ -230,7 +230,7 @@ object AuraAppGenomeScanner {
         val packageManager = context.packageManager
         return packageManager.getInstalledPackages(PackageManager.GET_SIGNATURES)
             .mapNotNull { packageInfo ->
-                val signatures: Array<Signature> = packageInfo.signatures.orEmpty()
+                val signatures = packageInfo.signatures.orEmpty()
                 val problems = mutableListOf<String>()
                 if (signatures.isEmpty()) {
                     problems.add("MISSING_SIGNATURES")

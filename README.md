@@ -279,7 +279,7 @@ Reproducción: `python -m pip install -r tool/requirements-train.txt`, `python t
 
 ## 5. Firma y seguridad Android
 
-La configuración Android usa `compileSdk 36`, `targetSdk 36` y NDK `26.3.11579264` (versión estable con parches de seguridad actualizados).
+La configuración Android usa `compileSdk 36`, `targetSdk 36` y NDK `28.2.13676358`, alineado con Flutter stable y los plugins Android actuales.
 
 ### Permisos y justificación
 
@@ -417,10 +417,10 @@ tool/train_max_aura_brain.py
 
 ## 9. Build y validación
 
-Para un build local se requiere Flutter stable, JDK 17, Android SDK Platform 36, Build Tools 36.0.0, NDK 26.3.11579264 y CMake 3.22.1. El build debug no necesita credenciales de release. Instala los componentes Android con `sdkmanager` y ejecuta:
+Para un build local se requiere Flutter stable, JDK 17, Android SDK Platform 36, Build Tools 36.0.0, NDK 28.2.13676358 y CMake 3.22.1. El build debug no necesita credenciales de release. Instala los componentes Android con `sdkmanager` y ejecuta:
 
 ```sh
-sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;26.3.11579264" "cmake;3.22.1"
+sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358" "cmake;3.22.1"
 flutter pub get
 flutter analyze
 flutter test
@@ -428,6 +428,10 @@ flutter build apk --debug
 ```
 
 El build debug se verificó con las cuatro ABI configuradas (`armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64`). El proyecto usa AndroidX con Jetifier desactivado.
+
+La compilación release del pipeline se ejecuta con `bash tool/compile_aura.sh`. Esta ruta compila el APK, verifica su firma y usa Gradle/R8 con un heap de 3 GB. El proyecto fija NDK `28.2.13676358` para mantenerlo alineado con Flutter stable y sus plugins Android. Las correcciones de compilación incluyen el límite de direcciones en el puente JNI y compatibilidad del scanner y del servicio de blocklist con Kotlin 2.2.
+
+Validación local completada: `bash tool/compile_aura.sh`, `bash tool/compile_aura.sh --verify-artifact`, `flutter analyze` y `flutter test` (63 pruebas pasaron y una fue omitida). Sin las variables del keystore de producción, el script firma la APK con la clave Android Debug únicamente como fallback de desarrollo; configura las credenciales de release antes de distribuirla. Codemagic recoge la APK de `build/app/outputs/flutter-apk/*.apk` y los AAB de `build/app/outputs/bundle/release/*.aab`.
 
 Un build release directo de Gradle sin variables de firmado produce un artefacto sin firma, solo apto para diagnóstico local:
 
@@ -491,8 +495,8 @@ android {
     namespace "com.ciberdefensa.aura"
     compileSdk 36
 
-    // ✅ SOLUCIÓN: Forzar una versión de NDK estable y disponible en los repositorios de Android
-    ndkVersion "26.3.11579264"
+    // Keep the app, Flutter plugins, and Flutter stable SDK on the same NDK version.
+    ndkVersion "28.2.13676358"
 
     buildFeatures {
         buildConfig true
