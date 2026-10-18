@@ -78,4 +78,23 @@ void main() {
     );
     expect(result.data['ok'], isFalse);
   });
+
+  test('toggle_defenses informa errores del motor VPN en español', () async {
+    messenger.setMockMethodCallHandler(shieldChannel, (_) async {
+      throw PlatformException(code: 'vpn_unavailable');
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(
+        name: 'toggle_defenses',
+        arguments: <String, dynamic>{'activate': true},
+      ),
+    );
+
+    expect(
+      result.summary,
+      'No pude contactar el motor VPN. Revisa que Aura esté activa.',
+    );
+    expect(result.data['ok'], isFalse);
+  });
 }

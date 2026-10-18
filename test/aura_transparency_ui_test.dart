@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -14,7 +15,9 @@ void main() {
   testWidgets('muestra explicación, marca localmente y abre auditoría', (
     tester,
   ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
     const biometricChannel = MethodChannel('com.aura.cyberdefense/biometrics');
+    const telemetryChannel = MethodChannel('com.ciberdefensa.aura/telemetry');
     const networkEventChannel =
         EventChannel('com.aura.cyberdefense/network_stream');
     final state = AuraStateProvider()
@@ -57,10 +60,20 @@ void main() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     addTearDown(() {
       messenger.setMockMethodCallHandler(biometricChannel, null);
+      messenger.setMockMethodCallHandler(telemetryChannel, null);
       messenger.setMockStreamHandler(networkEventChannel, null);
       state.dispose();
     });
     messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);
+    messenger.setMockMethodCallHandler(telemetryChannel, (call) async {
+      if (call.method == 'domainTelemetryStatus') {
+        return <String, Object>{
+          'optedIn': false,
+          'endpointConfigured': false,
+        };
+      }
+      return true;
+    });
     messenger.setMockStreamHandler(
       networkEventChannel,
       MockStreamHandler.inline(onListen: (_, __) {}),
@@ -74,6 +87,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(
+      find.text('¿Por qué se bloqueó?'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('¿Por qué se bloqueó?'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey<String>(
       'verdict-explanation-card-verdict-1',

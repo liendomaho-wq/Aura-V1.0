@@ -15,7 +15,7 @@ void main() {
     () async {
       final stored = await AuraLocalTelemetry.recordNetworkEvent(
         <String, Object>{
-          'timestamp': 1_800_000_000_000,
+          'timestamp': 1800000000000,
           'requested_domain': 'malicioso.example',
           'action': 'BLOCKED',
           'destination_address': '203.0.113.5',
@@ -23,7 +23,7 @@ void main() {
       );
       await AuraLocalTelemetry.recordNetworkEvent(
         <String, Object>{
-          'timestamp': 1_800_000_000_001,
+          'timestamp': 1800000000001,
           'requested_domain': 'example.com',
           'action': 'ALLOWED',
         },
@@ -34,7 +34,7 @@ void main() {
       expect(events, hasLength(2));
       expect(events.first['type'], 'dominio_bloqueado');
       expect(events.first['requested_domain'], 'malicioso.example');
-      expect(events.first['timestamp'], 1_800_000_000_000);
+      expect(events.first['timestamp'], 1800000000000);
       expect(events.first.containsKey('destination_address'), isFalse);
       expect(events.last['type'], 'escaneo');
     },
