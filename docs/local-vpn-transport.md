@@ -51,3 +51,20 @@ cd android
 A successful JVM unit test run does not replace testing on a physical Android device. Keep
 this branch unmerged until CI is green and VPN activation, DNS, TCP, UDP, pause/resume, and
 network handoff are verified on-device.
+
+## Release-gate checklist for a physical Android device
+
+Do not interpret the VPN notification or the “active” indicator as proof that all traffic is inspected. Record the device model, Android version, build SHA, and result for each case before promoting a release.
+
+- [ ] Start and stop the VPN repeatedly; verify Android's system VPN indicator follows the actual service state.
+- [ ] Load an HTTPS site and a plain DNS test endpoint; verify normal TCP and DNS connectivity while the tunnel is active.
+- [ ] Exercise a UDP application and confirm it remains functional; repeat with IPv4 and IPv6 where the network supports both.
+- [ ] Confirm a threat-feed outage does not erase the cached list, and that a successful refresh replaces it with validated entries.
+- [ ] Pause/resume forwarding and activate/deactivate panic isolation; verify no stale “protected” state remains in the UI.
+- [ ] Switch Wi-Fi to mobile data, reverse the switch, and repeat with airplane mode. Record whether Android recreates the network and whether Aura recovers without a force-stop.
+- [ ] Test captive portal sign-in and networks that block public DNS resolvers. Document expected limitations rather than bypassing user or network policy.
+- [ ] Verify app-private config and per-session credentials are cleared after stop, failed startup, and service revocation.
+- [ ] Check battery use and stability during a sustained session, including several reconnect cycles.
+
+Current implementation boundaries: the local relay rejects SOCKS domain destinations and fragmented UDP; DNS domain classification is not provided by this transport. DoH, DoT/Android Private DNS, QUIC/DoQ, ECH, and direct-IP traffic must not be described as comprehensively filtered without independent detection/blocking and test evidence. A test should be considered a pass only when the observed network behavior and the UI/event log agree.
+
