@@ -269,11 +269,10 @@ static void
 local_socks5_stop (void)
 {
     AuraLocalSocks5Session *session;
+    int was_running = atomic_exchange_explicit (
+        &local_socks5_running, 0, memory_order_acq_rel);
 
-    if (!atomic_exchange_explicit (&local_socks5_running, 0, memory_order_acq_rel))
-        return;
-
-    if (local_socks5_accept_task) {
+    if (was_running && local_socks5_accept_task) {
         if (!atomic_load_explicit (&local_socks5_accept_started, memory_order_acquire)) {
             int fd = atomic_exchange_explicit (
                 &local_socks5_listener_fd, -1, memory_order_acq_rel);
