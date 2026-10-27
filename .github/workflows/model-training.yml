@@ -18,6 +18,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: aura-model-pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   model-pipeline:
     runs-on: ubuntu-latest
