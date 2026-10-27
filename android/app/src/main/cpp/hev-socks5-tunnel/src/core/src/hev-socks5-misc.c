@@ -24,6 +24,10 @@
 #include "hev-socks5-misc.h"
 #include "hev-socks5-misc-priv.h"
 
+#ifdef __ANDROID__
+extern int hev_jni_protect_socket (int socket_fd);
+#endif
+
 static int connect_timeout = 10000;
 static int tcp_timeout = 300000;
 static int udp_timeout = 60000;
@@ -65,6 +69,13 @@ hev_socks5_socket (int type)
     fd = hev_task_io_socket_socket (AF_INET6, type, 0);
     if (fd < 0)
         return -1;
+
+#ifdef __ANDROID__
+    if (!hev_jni_protect_socket (fd)) {
+        close (fd);
+        return -1;
+    }
+#endif
 
     res = setsockopt (fd, IPPROTO_IPV6, IPV6_V6ONLY, &zero, sizeof (zero));
     if (res < 0) {
