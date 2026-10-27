@@ -48,7 +48,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
   bool _isAuthenticated = false;
   bool _showCoverageAudit = false;
   bool _telemetryEndpointConfigured = false;
-  bool _localTelemetryEnabled = true;
+  bool _localTelemetryEnabled = false;
   bool _accessibilityCheckFailed = false;
   List<String> _untrustedAccessibilityPackages = const <String>[];
   List<Map<String, dynamic>> _localTelemetryEvents =
@@ -194,7 +194,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
       });
     } on Object catch (error) {
       AuraLocalTelemetry.configure(endpointConfigured: false);
-      var enabled = true;
+      // Fail closed if the persisted preference cannot be read.
+      var enabled = false;
       var events = const <Map<String, dynamic>>[];
       try {
         enabled = await AuraLocalTelemetry.isEnabled();
