@@ -41,6 +41,65 @@ class LocalSocks5ProxyTest {
     }
 
     @Test
+    fun invalidCredentialsAreRejected() {
+        val loopback = InetAddress.getByName("127.0.0.1")
+        val proxy = LocalSocks5Proxy(
+            requestedPort = 0,
+            username = testUsername,
+            password = testPassword,
+            protectTcpSocket = { true },
+            protectUdpSocket = { true },
+        )
+        try {
+            Socket(loopback, proxy.start()).use { client ->
+                client.soTimeout = 3000
+                val output = client.getOutputStream()
+                val input = client.getInputStream()
+                output.write(byteArrayOf(5, 1, 2))
+                output.flush()
+                assertArrayEquals(byteArrayOf(5, 2), readExactly(input, 2))
+                val wrongUsername = "wrong-user".toByteArray(Charsets.UTF_8)
+                val wrongPassword = "wrong-password".toByteArray(Charsets.UTF_8)
+                output.write(
+                    byteArrayOf(1, wrongUsername.size.toByte()) + wrongUsername +
+                        byteArrayOf(wrongPassword.size.toByte()) + wrongPassword,
+                )
+                output.flush()
+                assertArrayEquals(byteArrayOf(1, 1), readExactly(input, 2))
+            }
+        } finally {
+            proxy.close()
+        }
+    }
+
+    @Test
+    fun udpAssociationReportsFailureWhenSocketProtectionFails() {
+        val loopback = InetAddress.getByName("127.0.0.1")
+        val proxy = LocalSocks5Proxy(
+            requestedPort = 0,
+            username = testUsername,
+            password = testPassword,
+            protectTcpSocket = { true },
+            protectUdpSocket = { false },
+        )
+        try {
+            Socket(loopback, proxy.start()).use { control ->
+                control.soTimeout = 3000
+                val output = control.getOutputStream()
+                val input = control.getInputStream()
+                authenticate(output, input)
+                output.write(byteArrayOf(5, 3, 0, 1, 0, 0, 0, 0, 0, 0))
+                output.flush()
+                val reply = readExactly(input, 10)
+                assertEquals(5, reply[0].toInt())
+                assertEquals(1, reply[1].toInt())
+            }
+        } finally {
+            proxy.close()
+        }
+    }
+
+    @Test
     fun tcpConnectUsesLocalProxyAndRelaysBytes() {
         val loopback = InetAddress.getByName("127.0.0.1")
         ServerSocket(0, 1, loopback).use { echoServer ->
