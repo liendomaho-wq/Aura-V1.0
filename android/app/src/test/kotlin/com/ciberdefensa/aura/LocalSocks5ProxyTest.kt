@@ -73,7 +73,7 @@ class LocalSocks5ProxyTest {
     }
 
     @Test
-    fun udpAssociateRelaysDatagramsAndRejectsUntrackedSources() {
+    fun udpAssociateRelaysDatagrams() {
         val loopback = InetAddress.getByName("127.0.0.1")
         DatagramSocket(null).use { echoServer ->
             echoServer.bind(InetSocketAddress(loopback, 0))
