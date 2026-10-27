@@ -3,7 +3,11 @@ name: Aura Model Dataset, Training and Benchmark
 on:
   pull_request:
     paths:
-      - 'tool/**'
+      - 'tool/dataset/**'
+      - 'tool/train_max_aura_brain.py'
+      - 'tool/bench_aura_brain.py'
+      - 'tool/test_aura_brain.py'
+      - 'tool/requirements-train.txt'
       - 'data/**'
       - '.github/workflows/model-training.yml'
   push:
