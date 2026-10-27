@@ -114,6 +114,8 @@ class LocalSocks5ProxyTest {
 
             val proxy = LocalSocks5Proxy(
                 requestedPort = 0,
+                username = testUsername,
+                password = testPassword,
                 protectTcpSocket = { true },
                 protectUdpSocket = { true },
             )
