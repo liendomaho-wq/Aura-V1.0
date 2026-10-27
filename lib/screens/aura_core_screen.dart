@@ -764,7 +764,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : Text(
-                          vpnActive ? 'DEFENSA: ON' : 'DEFENSA: OFF',
+                          vpnActive ? 'VPN: ACTIVA' : 'VPN: INACTIVA',
                           style: TextStyle(
                             color:
                                 vpnActive ? _terminalGreen : _terminalYellow,
