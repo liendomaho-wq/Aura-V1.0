@@ -22,9 +22,11 @@ class AuraLocalTelemetry {
     _endpointCheck = Future<bool>.value(endpointConfigured);
   }
 
+  /// Local telemetry is opt-in: a fresh installation records nothing until
+  /// the user explicitly enables it.
   static Future<bool> isEnabled() async {
     final preferences = await SharedPreferences.getInstance();
-    return preferences.getBool(_enabledKey) ?? true;
+    return preferences.getBool(_enabledKey) ?? false;
   }
 
   static Future<bool> setEnabled(bool enabled) async {
@@ -55,9 +57,7 @@ class AuraLocalTelemetry {
 
   static Future<void> clearEvents() => _serializeWrites(() async {
         final preferences = await SharedPreferences.getInstance();
-        if (!await preferences.remove(_eventsKey)) {
-          throw StateError('No se pudo eliminar la telemetría local.');
-        }
+        await preferences.remove(_eventsKey);
       });
 
   static Future<bool> recordNetworkEvent(Map<String, Object> event) async {
