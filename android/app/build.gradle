@@ -10,6 +10,8 @@ plugins {
 def blocklistManifestUrl = System.getenv("AURA_BLOCKLIST_MANIFEST_URL") ?: ""
 def phishTankAppKey = System.getenv("PHISHTANK_APP_KEY") ?: ""
 def telemetryEndpoint = System.getenv("AURA_TELEMETRY_ENDPOINT") ?: ""
+def socks5Host = System.getenv("AURA_SOCKS5_HOST") ?: ""
+def socks5Port = System.getenv("AURA_SOCKS5_PORT") ?: ""
 def modelVersion = System.getenv("AURA_MODEL_VERSION") ?: "3.0.0"
 def buildConfigString = { value ->
     '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
@@ -55,6 +57,16 @@ android {
             "String",
             "AURA_TELEMETRY_ENDPOINT",
             buildConfigString(telemetryEndpoint),
+        )
+        buildConfigField(
+            "String",
+            "AURA_SOCKS5_HOST",
+            buildConfigString(socks5Host),
+        )
+        buildConfigField(
+            "String",
+            "AURA_SOCKS5_PORT",
+            buildConfigString(socks5Port),
         )
         buildConfigField(
             "String",
