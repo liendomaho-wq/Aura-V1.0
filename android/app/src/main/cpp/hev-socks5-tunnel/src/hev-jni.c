@@ -54,6 +54,7 @@ static jmethodID dns_event_method;
 static jmethodID sni_event_method;
 static jmethodID encrypted_dns_event_method;
 static jmethodID protect_socket_method;
+static jmethodID resolve_host_method;
 static pthread_t work_thread;
 static pthread_mutex_t mutex;
 static pthread_key_t current_jni_env;
@@ -120,11 +121,15 @@ JNI_OnLoad (JavaVM *vm, void *reserved)
         "(Ljava/lang/String;ILjava/lang/String;)V");
     protect_socket_method = (*env)->GetStaticMethodID (
         env, klass, "protectSocket", "(I)Z");
+    resolve_host_method = (*env)->GetStaticMethodID (
+        env, klass, "resolveHostForTunnel",
+        "(Ljava/lang/String;)Ljava/lang/String;");
     res = (*env)->RegisterNatives (env, klass, native_methods,
                                    N_ELEMENTS (native_methods));
     (*env)->DeleteLocalRef (env, klass);
     if (res < 0 || !tproxy_class || !dns_event_method || !sni_event_method ||
-        !encrypted_dns_event_method || !protect_socket_method)
+        !encrypted_dns_event_method || !protect_socket_method ||
+        !resolve_host_method)
         return JNI_ERR;
 
     pthread_key_create (&current_jni_env, detach_current_thread);
@@ -163,6 +168,59 @@ hev_jni_protect_socket (int socket_fd)
         (*java_vm)->DetachCurrentThread (java_vm);
 
     return protected == JNI_TRUE;
+}
+
+int
+hev_jni_resolve_host (const char *hostname, char *address, size_t address_size)
+{
+    JNIEnv *env = NULL;
+    jstring java_hostname = NULL;
+    jstring java_address = NULL;
+    const char *resolved = NULL;
+    int attached = 0;
+    jint status;
+    int result = 0;
+
+    if (!hostname || !address || address_size == 0 || !java_vm ||
+        !tproxy_class || !resolve_host_method)
+        return 0;
+
+    address[0] = '\0';
+    status = (*java_vm)->GetEnv (java_vm, (void **)&env, JNI_VERSION_1_4);
+    if (status == JNI_EDETACHED) {
+        if ((*java_vm)->AttachCurrentThread (java_vm, (void **)&env, NULL) != JNI_OK)
+            return 0;
+        attached = 1;
+    } else if (status != JNI_OK) {
+        return 0;
+    }
+
+    java_hostname = (*env)->NewStringUTF (env, hostname);
+    if (java_hostname) {
+        java_address = (jstring)(*env)->CallStaticObjectMethod (
+            env, tproxy_class, resolve_host_method, java_hostname);
+        if (!(*env)->ExceptionCheck (env) && java_address) {
+            resolved = (*env)->GetStringUTFChars (env, java_address, NULL);
+            if (resolved && resolved[0] != '\0' &&
+                strlen (resolved) < address_size) {
+                memcpy (address, resolved, strlen (resolved) + 1);
+                result = 1;
+            }
+        }
+    }
+
+    if ((*env)->ExceptionCheck (env))
+        (*env)->ExceptionClear (env);
+    if (resolved)
+        (*env)->ReleaseStringUTFChars (env, java_address, resolved);
+    if (java_address)
+        (*env)->DeleteLocalRef (env, java_address);
+    if (java_hostname)
+        (*env)->DeleteLocalRef (env, java_hostname);
+    if (attached)
+        (*java_vm)->DetachCurrentThread (java_vm);
+
+    return result;
 }
 
 void
