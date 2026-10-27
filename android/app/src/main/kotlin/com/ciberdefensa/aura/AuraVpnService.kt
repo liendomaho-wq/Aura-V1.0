@@ -32,8 +32,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 class AuraVpnService : VpnService() {
     companion object {
         const val ACTION_STATE = "com.ciberdefensa.aura.VPN_STATE"
-        private const val SOCKS5_HOST = "socks5.tun2socks.local"
-        private const val SOCKS5_PORT = 1080
+        private val SOCKS5_HOST = BuildConfig.AURA_SOCKS5_HOST.trim()
+        private val SOCKS5_PORT = BuildConfig.AURA_SOCKS5_PORT.toIntOrNull() ?: 0
         private const val THREAT_FEED_URL =
             "https://feodotracker.abuse.ch/downloads/ipblocklist.txt"
         private const val NOTIFICATION_CHANNEL = "com.aura.mobile.defens.vpn"
@@ -200,6 +200,17 @@ class AuraVpnService : VpnService() {
     private fun startTunnel() {
         var established: ParcelFileDescriptor? = null
         try {
+            if (SOCKS5_HOST.isBlank()) {
+                throw IOException(
+                    "No se configuró el servidor SOCKS5 upstream. " +
+                        "Defina AURA_SOCKS5_HOST y AURA_SOCKS5_PORT al compilar.",
+                )
+            }
+            if (SOCKS5_PORT !in 1..65535) {
+                throw IOException(
+                    "AURA_SOCKS5_PORT debe ser un puerto válido entre 1 y 65535.",
+                )
+            }
             val proxyAddress = resolveProxyAddress()
             verifySocks5(proxyAddress)
             replaceBlockedIps(downloadThreatFeed())
