@@ -16,11 +16,8 @@ import hev.htproxy.TProxyService
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
-import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
-import java.net.InetSocketAddress
-import java.net.Socket
 import java.net.URL
 import java.util.Collections
 import java.util.HashSet
@@ -32,8 +29,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 class AuraVpnService : VpnService() {
     companion object {
         const val ACTION_STATE = "com.ciberdefensa.aura.VPN_STATE"
-        private const val SOCKS5_HOST = "socks5.tun2socks.local"
-        private const val SOCKS5_PORT = 1080
+        private const val DNS_PRIMARY = "1.1.1.1"
+        private const val DNS_SECONDARY = "1.0.0.1"
+        private const val BLOCKLIST_CACHE_PREFERENCES = "aura_blocklist_cache"
+        private const val BLOCKLIST_CACHE_KEY = "blocked_ips"
         private const val THREAT_FEED_URL =
             "https://feodotracker.abuse.ch/downloads/ipblocklist.txt"
         private const val NOTIFICATION_CHANNEL = "com.aura.mobile.defens.vpn"
@@ -98,6 +97,7 @@ class AuraVpnService : VpnService() {
     private val notificationHandler = Handler(Looper.getMainLooper())
     private var notificationUpdatePending = false
     private var vpnInterface: ParcelFileDescriptor? = null
+    @Volatile private var localSocks5Proxy: LocalSocks5Proxy? = null
     private var integrityCheckScheduled = false
     private var feedRefreshScheduled = false
     @Volatile private var panicIsolationActive = false
@@ -155,6 +155,8 @@ class AuraVpnService : VpnService() {
             TProxyService.TProxyStopService()
             tunnelStarted = false
         }
+        localSocks5Proxy?.close()
+        localSocks5Proxy = null
         if (activeService === this) activeService = null
         notificationHandler.removeCallbacksAndMessages(null)
         vpnInterface?.close()
@@ -200,9 +202,17 @@ class AuraVpnService : VpnService() {
     private fun startTunnel() {
         var established: ParcelFileDescriptor? = null
         try {
-            val proxyAddress = resolveProxyAddress()
-            verifySocks5(proxyAddress)
-            replaceBlockedIps(downloadThreatFeed())
+            // The threat feed is defense-in-depth, not a prerequisite for bringing up VPN.
+            loadCachedBlocklist()
+            try {
+                replaceBlockedIps(downloadThreatFeed())
+            } catch (feedError: Exception) {
+                Log.w("AuraVPN", "Feed no disponible; se conserva la última lista válida.", feedError)
+            }
+
+            val localProxy = createLocalProxy()
+            localProxy.start()
+            localSocks5Proxy = localProxy
 
             established = createVpnBuilder().establish()
                 ?: throw IOException("Android no estableció la interfaz VPN.")
@@ -217,17 +227,11 @@ class AuraVpnService : VpnService() {
                   ipv6: 'fd00::2'
                   icmp: 'off'
                 socks5:
-                  port: $SOCKS5_PORT
-                  address: $proxyAddress
+                  port: ${localProxy.port}
+                  address: 127.0.0.1
                   udp: 'udp'
-misc:
-    log-level: error
-mapdns:
-    address: 10.0.0.3
-    port: 53
-    network: 100.64.0.0
-    netmask: 255.192.0.0
-    cache-size: 8192
+                misc:
+                  log-level: error
                 """.trimIndent(),
             )
 
@@ -245,18 +249,36 @@ mapdns:
                 }
             }
             scheduleFeedRefresh()
-            reportState(true, "Túnel VPN iniciado.")
-            Log.i("AuraVPN", "Hev tun2socks conectado al proxy SOCKS5.")
+            reportState(true, "Túnel VPN iniciado con transporte local.")
+            Log.i("AuraVPN", "Hev tun2socks conectado al proxy SOCKS5 local protegido.")
         } catch (e: Exception) {
             Log.e("AuraVPN", "No se pudo iniciar el escudo VPN.", e)
             if (tunnelStarted) TProxyService.TProxyStopService()
             tunnelStarted = false
+            localSocks5Proxy?.close()
+            localSocks5Proxy = null
             established?.close()
             vpnInterface = null
             startRequested.set(false)
             reportState(false, e.message ?: "No se pudo iniciar el túnel.")
             stopSelf()
         }
+    }
+
+    private fun createLocalProxy(): LocalSocks5Proxy =
+        LocalSocks5Proxy(
+            requestedPort = LocalSocks5Proxy.DEFAULT_PORT,
+            protectTcpSocket = { socket -> protect(socket) },
+            protectUdpSocket = { socket -> protect(socket) },
+        )
+
+    private fun loadCachedBlocklist() {
+        val cached = getSharedPreferences(BLOCKLIST_CACHE_PREFERENCES, MODE_PRIVATE)
+            .getStringSet(BLOCKLIST_CACHE_KEY, emptySet())
+            .orEmpty()
+            .filter(::isIpAddress)
+            .toSet()
+        if (cached.isNotEmpty()) replaceBlockedIps(cached, persist = false)
     }
 
     @Synchronized
@@ -278,6 +300,8 @@ mapdns:
                 return false
             }
             tunnelStarted = false
+            localSocks5Proxy?.close()
+            localSocks5Proxy = null
             panicIsolationActive = true
             startRequested.set(false)
             reportState(false, "Aislamiento de emergencia activo; forwarding detenido.")
@@ -302,6 +326,9 @@ mapdns:
         if (!configFile.isFile) return false
 
         return try {
+            val localProxy = createLocalProxy()
+            localProxy.start()
+            localSocks5Proxy = localProxy
             TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
             if (!TProxyService.TProxyStartService(configFile.absolutePath, tun.fd)) {
                 return false
@@ -325,6 +352,8 @@ mapdns:
             if (TProxyService.TProxyIsRunning()) {
                 TProxyService.TProxyStopService()
             }
+            localSocks5Proxy?.close()
+            localSocks5Proxy = null
             Log.e("AuraVPN", "No se pudo reanudar el forwarding del túnel.", exception)
             false
         }
@@ -355,34 +384,9 @@ mapdns:
         // Full routes capture TCP and UDP on both IP families for tunnel inspection.
         .addRoute("0.0.0.0", 0)
         .addRoute("::", 0)
-        .addDnsServer("10.0.0.3")
-
-    private fun resolveProxyAddress(): String {
-        val addresses = InetAddress.getAllByName(SOCKS5_HOST)
-        return addresses.firstOrNull { it is Inet6Address }?.hostAddress
-            ?: addresses.firstOrNull { it is Inet4Address }?.hostAddress
-            ?: throw IOException("No se pudo resolver el endpoint SOCKS5 en IPv4 o IPv6.")
-    }
-
-    private fun verifySocks5(address: String) {
-        Socket().use { socket ->
-            socket.connect(InetSocketAddress(address, SOCKS5_PORT), 5000)
-            socket.soTimeout = 5000
-            socket.getOutputStream().write(byteArrayOf(5, 1, 0))
-            socket.getOutputStream().flush()
-
-            val response = ByteArray(2)
-            var offset = 0
-            while (offset < response.size) {
-                val count = socket.getInputStream().read(response, offset, response.size - offset)
-                if (count < 0) throw IOException("El servidor SOCKS5 cerró el saludo.")
-                offset += count
-            }
-            if (response[0].toInt() != 5 || response[1].toInt() != 0) {
-                throw IOException("El servidor SOCKS5 no acepta el modo sin autenticación.")
-            }
-        }
-    }
+        // DNS packets are routed through TUN; protected relay sockets bypass it.
+        .addDnsServer(DNS_PRIMARY)
+        .addDnsServer(DNS_SECONDARY)
 
     private fun downloadThreatFeed(): Set<String> {
         val connection = URL(THREAT_FEED_URL).openConnection() as HttpURLConnection
@@ -427,10 +431,17 @@ mapdns:
         }
     }
 
-    private fun replaceBlockedIps(updated: Set<String>) {
+    private fun replaceBlockedIps(updated: Set<String>, persist: Boolean = true) {
+        val validated = updated.filter(::isIpAddress).take(MAX_BLOCKED_IPS).toSet()
         synchronized(blockedIps) {
             blockedIps.clear()
-            blockedIps.addAll(updated)
+            blockedIps.addAll(validated)
+        }
+        if (persist) {
+            getSharedPreferences(BLOCKLIST_CACHE_PREFERENCES, MODE_PRIVATE)
+                .edit()
+                .putStringSet(BLOCKLIST_CACHE_KEY, validated)
+                .apply()
         }
     }
 
