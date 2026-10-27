@@ -34,6 +34,7 @@ typedef AuraDnsBlockRuleHandler = Future<bool> Function(String domain);
 typedef AuraModelIntegrityFailureHandler = void Function(String message);
 
 const String minSupportedModelVersion = '3.0.0';
+const int _maximumValidatedModelNodes = 100000;
 
 int compareSemverTriplets(String left, String right) {
   final leftParts = _parseSemverTriplet(left);
@@ -429,11 +430,50 @@ class AuraAIBrain {
           'El modelo no contiene un bosque válido de 500 árboles.',
         );
       }
+      final featureOrder = decoded['feature_order'];
+      final int featureCount;
+      if (featureOrder == null) {
+        // Models without an explicit schema are legacy v3 (six features).
+        featureCount = shared_features.AuraAIInference.legacyFeatureOrder.length;
+      } else if (featureOrder is List &&
+          _sameModelFeatureOrder(
+            featureOrder,
+            shared_features.AuraAIInference.legacyFeatureOrder,
+          )) {
+        featureCount = shared_features.AuraAIInference.legacyFeatureOrder.length;
+      } else if (featureOrder is List &&
+          _sameModelFeatureOrder(
+            featureOrder,
+            shared_features.AuraAIInference.enhancedFeatureOrder,
+          )) {
+        featureCount =
+            shared_features.AuraAIInference.enhancedFeatureOrder.length;
+      } else {
+        throw const FormatException(
+          'El modelo declara un esquema de características no compatible.',
+        );
+      }
+      final decisionThreshold = decoded['decision_threshold'];
+      if (decisionThreshold != null &&
+          (decisionThreshold is! num ||
+              !decisionThreshold.toDouble().isFinite ||
+              decisionThreshold < 0 ||
+              decisionThreshold > 1)) {
+        throw const FormatException(
+          'El umbral de decisión del modelo debe estar entre 0 y 1.',
+        );
+      }
+      var totalNodes = 0;
       for (final tree in decoded['trees'] as List) {
         if (tree is! Map || !tree.containsKey('root')) {
           throw const FormatException('Raíz de árbol inválida en el bosque.');
         }
-        _validateNode(tree['root']);
+        totalNodes += _validateNode(tree['root'], featureCount: featureCount);
+        if (totalNodes > _maximumValidatedModelNodes) {
+          throw const FormatException(
+            'El modelo supera el límite de nodos permitido.',
+          );
+        }
       }
       return Map<String, dynamic>.from(decoded);
     } on Object {
@@ -442,7 +482,11 @@ class AuraAIBrain {
     }
   }
 
-  static void _validateNode(Object? rawNode, [int depth = 0]) {
+  static int _validateNode(
+    Object? rawNode, {
+    required int featureCount,
+    int depth = 0,
+  }) {
     if (rawNode is! Map || depth > 32) {
       throw const FormatException('Nodo inválido en el modelo local.');
     }
@@ -451,18 +495,40 @@ class AuraAIBrain {
       if (value is! int || (value != 0 && value != 1)) {
         throw const FormatException('La hoja debe contener un voto binario.');
       }
-      return;
+      return 1;
     }
     final featureIndex = rawNode['feature_index'];
+    final threshold = rawNode['threshold'];
     if (rawNode['type'] != 'split' ||
         featureIndex is! int ||
         featureIndex < 0 ||
-        featureIndex >= 6 ||
-        rawNode['threshold'] is! num) {
+        featureIndex >= featureCount ||
+        threshold is! num ||
+        !threshold.toDouble().isFinite) {
       throw const FormatException('Nodo de bifurcación inválido.');
     }
-    _validateNode(rawNode['left'], depth + 1);
-    _validateNode(rawNode['right'], depth + 1);
+    final leftCount = _validateNode(
+      rawNode['left'],
+      featureCount: featureCount,
+      depth: depth + 1,
+    );
+    final rightCount = _validateNode(
+      rawNode['right'],
+      featureCount: featureCount,
+      depth: depth + 1,
+    );
+    return 1 + leftCount + rightCount;
+  }
+
+  static bool _sameModelFeatureOrder(
+    List<dynamic> actual,
+    List<String> expected,
+  ) {
+    if (actual.length != expected.length) return false;
+    for (var index = 0; index < expected.length; index++) {
+      if (actual[index] != expected[index]) return false;
+    }
+    return true;
   }
 
   static Future<void> _writeModelPair(
