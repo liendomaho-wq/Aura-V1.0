@@ -1,4 +1,5 @@
 import 'package:aura_mobile_defens/providers/aura_state_provider.dart';
+import 'package:aura_mobile_defens/services/aura_local_telemetry.dart';
 import 'package:aura_mobile_defens/screens/aura_core_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -72,7 +73,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.telemetryEvents.single['requested_domain'], 'example.com');
     expect(find.text('TELEMETRÍA LOCAL'), findsOneWidget);
-    expect(find.textContaining('example.com'), findsOneWidget);
+    expect(find.text('REGISTRO LOCAL PAUSADO'), findsOneWidget);
+    // Network events remain available to the live session, but opt-out means
+    // they must not be persisted in local telemetry storage.
+    expect(await AuraLocalTelemetry.loadEvents(), isEmpty);
 
     expect(find.text('DEFENSA: OFF'), findsOneWidget);
     expect(find.text('TÚNEL'), findsOneWidget);
