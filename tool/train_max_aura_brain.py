@@ -7,6 +7,7 @@ import os
 import re
 import tempfile
 import time
+from bisect import bisect_left
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -25,6 +26,13 @@ MAJESTIC_TOP_5000 = tuple(
 if len(MAJESTIC_TOP_5000) != 5000 or len(set(MAJESTIC_TOP_5000)) != 5000:
     raise ValueError(f"{COMMON_DOMAINS_PATH} must contain 5000 unique domains")
 COMMON_DOMAINS = MAJESTIC_TOP_5000
+_DOMAINS_BY_LENGTH = {}
+for _common_domain in MAJESTIC_TOP_5000:
+    _DOMAINS_BY_LENGTH.setdefault(len(_common_domain), []).append(_common_domain)
+_DOMAINS_BY_LENGTH = {
+    length: tuple(domains) for length, domains in _DOMAINS_BY_LENGTH.items()
+}
+_COMMON_DOMAIN_LENGTHS = tuple(sorted(_DOMAINS_BY_LENGTH))
 MODEL_VERSION = "3.1.0"
 FEATURE_ORDER = [
     "length",
@@ -221,17 +229,46 @@ _RARE_CHARACTERS = frozenset("qxzk")
 
 @lru_cache(maxsize=65536)
 def _minimum_top_domain_distance(host):
+    """Find the exact nearest edit distance while visiting lengths in order.
+
+    Edit distance cannot be smaller than the absolute length difference. The
+    length index therefore lets us stop as soon as the next length group cannot
+    improve the best distance, avoiding a full 5,000-domain scan per hostname.
+    """
+    host_length = len(host)
     closest_distance = math.inf
-    for common_domain in MAJESTIC_TOP_5000:
-        length_difference = abs(len(host) - len(common_domain))
-        if length_difference >= closest_distance:
-            continue
-        distance = Levenshtein.distance(host, common_domain)
-        if distance < closest_distance:
-            closest_distance = distance
-        if closest_distance == 0:
+    right = bisect_left(_COMMON_DOMAIN_LENGTHS, host_length)
+    left = right - 1
+
+    while left >= 0 or right < len(_COMMON_DOMAIN_LENGTHS):
+        left_difference = (
+            abs(host_length - _COMMON_DOMAIN_LENGTHS[left]) if left >= 0 else math.inf
+        )
+        right_difference = (
+            abs(host_length - _COMMON_DOMAIN_LENGTHS[right])
+            if right < len(_COMMON_DOMAIN_LENGTHS)
+            else math.inf
+        )
+        next_difference = min(left_difference, right_difference)
+        if next_difference >= closest_distance:
             break
-    normalized_distance = min(closest_distance / max(len(host), 1), 1.0)
+
+        if left_difference <= right_difference:
+            target_length = _COMMON_DOMAIN_LENGTHS[left]
+            left -= 1
+        else:
+            target_length = _COMMON_DOMAIN_LENGTHS[right]
+            right += 1
+
+        for common_domain in _DOMAINS_BY_LENGTH[target_length]:
+            distance = Levenshtein.distance(host, common_domain)
+            if distance < closest_distance:
+                closest_distance = distance
+            if closest_distance == 0:
+                normalized_distance = 0.0
+                return 0, normalized_distance
+
+    normalized_distance = min(closest_distance / max(host_length, 1), 1.0)
     return closest_distance, normalized_distance
 
 
