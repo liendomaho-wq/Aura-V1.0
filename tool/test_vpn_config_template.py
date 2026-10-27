@@ -49,7 +49,8 @@ for section in required:
     if section_index + 1 >= len(normalized) or not normalized[section_index + 1].startswith("  "):
         sys.exit(f"FAIL: section {section!r} has no indented child keys")
 
-for required_line in ("port: $SOCKS5_PORT", "address: $proxyAddress", "log-level: error",
+for required_line in ("port: $LOCAL_SOCKS5_PORT", "address: $LOCAL_SOCKS5_HOST",
+                      "udp: 'tcp'", "log-level: error",
                       "address: 10.0.0.3", "cache-size: 8192"):
     if required_line not in raw:
         sys.exit(f"FAIL: expected configuration entry not found: {required_line}")
