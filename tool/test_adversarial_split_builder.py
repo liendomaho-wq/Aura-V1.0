@@ -1,6 +1,6 @@
 import re
 
-from dataset.build_adversarial_splits import generate_variant
+from tool.dataset.build_adversarial_splits import generate_variant
 
 
 def test_generated_typosquat_variants_are_deterministic_and_valid():
