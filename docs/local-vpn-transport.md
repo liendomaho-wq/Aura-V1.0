@@ -32,9 +32,10 @@ queries private from those resolvers. Android Private DNS (DoT), DNS-over-HTTPS,
 IPv6 UDP relay behavior, captive portals, network changes, and per-app traffic need device
 integration tests. The unit tests exercise local IPv4 TCP and UDP relay behavior only.
 
-The local SOCKS5 listener has no authentication because it binds to loopback only. Do not
-change the bind address to `0.0.0.0` or a LAN interface without adding authentication and
-an explicit threat model.
+The local SOCKS5 listener requires per-run random RFC 1929 credentials and binds only to
+loopback. Its generated credentials are written to the app-private tunnel configuration for
+Hev to consume. Do not change the bind address to `0.0.0.0` or a LAN interface without a
+separate threat model and additional hardening.
 
 ## Verification
 
