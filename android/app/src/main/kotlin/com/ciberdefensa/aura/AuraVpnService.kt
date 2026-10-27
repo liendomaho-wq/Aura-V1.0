@@ -446,7 +446,7 @@ class AuraVpnService : VpnService() {
         if (persist) {
             getSharedPreferences(BLOCKLIST_CACHE_PREFERENCES, MODE_PRIVATE)
                 .edit()
-                .putStringSet(BLOCKLIST_CACHE_KEY, validated)
+                .putStringSet(BLOCKLIST_CACHE_KEY, validated.toMutableSet())
                 .apply()
         }
     }
