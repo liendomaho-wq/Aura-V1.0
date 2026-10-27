@@ -19,6 +19,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 
 /**
@@ -194,63 +195,122 @@ internal class LocalSocks5Proxy(
     }
 
     private fun handleUdpAssociate(control: Socket) {
-        val relay = DatagramSocket(null)
+        // Separate the loopback-facing SOCKS UDP endpoint from the protected
+        // upstream socket. A wildcard-bound socket must never double as a local
+        // proxy listener, because it would expose the relay on network interfaces.
+        val localRelay = DatagramSocket(null)
+        var upstream: DatagramSocket? = null
         var associationEstablished = false
+        val remoteUdpEndpoints = ConcurrentHashMap.newKeySet<InetSocketAddress>()
+        val clientEndpoint = AtomicReference<InetSocketAddress?>(null)
+
         try {
-            relay.reuseAddress = false
-            relay.bind(InetSocketAddress(0))
-            activeResources.add(relay)
-            if (!protectUdpSocket(relay)) throw IOException("VpnService.protect(DatagramSocket) falló.")
-            relay.soTimeout = 120_000
-            val remoteUdpEndpoints = HashSet<InetSocketAddress>()
+            localRelay.reuseAddress = false
+            localRelay.bind(
+                InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0),
+            )
+            localRelay.soTimeout = 120_000
+            activeResources.add(localRelay)
+
+            val protectedUpstream = DatagramSocket(null)
+            upstream = protectedUpstream
+            protectedUpstream.reuseAddress = false
+            protectedUpstream.bind(InetSocketAddress(0))
+            activeResources.add(protectedUpstream)
+            if (!protectUdpSocket(protectedUpstream)) {
+                throw IOException("VpnService.protect(DatagramSocket) falló.")
+            }
+
             val advertised = InetAddress.getByName("127.0.0.1").address
             val response = byteArrayOf(5, 0, 0, ATYP_IPV4.toByte()) +
-                advertised + byteArrayOf((relay.localPort shr 8).toByte(), relay.localPort.toByte())
+                advertised +
+                byteArrayOf(
+                    (localRelay.localPort shr 8).toByte(),
+                    localRelay.localPort.toByte(),
+                )
+
+            // Start the response path before acknowledging the association. If
+            // worker creation fails, the client receives a SOCKS failure response.
+            workers.execute {
+                receiveUdpReplies(
+                    localRelay,
+                    protectedUpstream,
+                    remoteUdpEndpoints,
+                    clientEndpoint,
+                )
+            }
             control.getOutputStream().write(response)
             control.getOutputStream().flush()
             associationEstablished = true
             control.soTimeout = 0
 
             val buffer = ByteArray(MAX_UDP_PAYLOAD)
-            var clientAddress: InetAddress? = null
-            var clientPort = -1
-            while (running && !control.isClosed && !relay.isClosed) {
+            while (running && !control.isClosed &&
+                !localRelay.isClosed && !protectedUpstream.isClosed
+            ) {
                 val packet = DatagramPacket(buffer, buffer.size)
-                try {
-                    relay.receive(packet)
-                } catch (_: SocketTimeoutException) {
-                    break
+                localRelay.receive(packet)
+                if (!packet.address.isLoopbackAddress) continue
+
+                val source = InetSocketAddress(packet.address, packet.port)
+                val expectedClient = clientEndpoint.get()
+                if (expectedClient == null) {
+                    clientEndpoint.compareAndSet(null, source)
+                } else if (expectedClient != source) {
+                    continue
                 }
-                val packetEndpoint = InetSocketAddress(packet.address, packet.port)
-                val fromClient = packet.address.isLoopbackAddress &&
-                    (clientAddress == null ||
-                        (packet.address == clientAddress && packet.port == clientPort))
-                if (fromClient) {
-                    clientAddress = packet.address
-                    clientPort = packet.port
-                    val decoded = decodeUdp(packet.data, packet.length) ?: continue
-                    val remoteEndpoint = InetSocketAddress(decoded.address, decoded.port)
-                    if (remoteUdpEndpoints.size >= 1024) remoteUdpEndpoints.clear()
-                    remoteUdpEndpoints.add(remoteEndpoint)
-                    val outgoing = DatagramPacket(
-                        decoded.payload, decoded.payload.size,
-                        decoded.address, decoded.port,
-                    )
-                    relay.send(outgoing)
-                } else {
-                    if (packetEndpoint !in remoteUdpEndpoints) continue
-                    val target = clientAddress ?: continue
-                    if (clientPort < 1) continue
-                    val encoded = encodeUdp(packet.address, packet.port, packet.data, packet.length)
-                    relay.send(DatagramPacket(encoded, encoded.size, target, clientPort))
+
+                val decoded = decodeUdp(packet.data, packet.length) ?: continue
+                val remoteEndpoint = InetSocketAddress(decoded.address, decoded.port)
+                if (!remoteUdpEndpoints.contains(remoteEndpoint) &&
+                    remoteUdpEndpoints.size >= 1024
+                ) {
+                    continue
                 }
+                remoteUdpEndpoints.add(remoteEndpoint)
+                val outgoing = DatagramPacket(
+                    decoded.payload,
+                    decoded.payload.size,
+                    decoded.address,
+                    decoded.port,
+                )
+                protectedUpstream.send(outgoing)
             }
         } catch (_: Exception) {
-            // Report setup failures so the SOCKS client does not wait for a timeout.
+            // A failed association must not terminate the VPN service.
             if (!associationEstablished) writeReply(control, 1)
         } finally {
-            relay.close()
-            activeResources.remove(relay)
+            localRelay.close()
+            activeResources.remove(localRelay)
+            upstream?.close()
+            if (upstream != null) activeResources.remove(upstream)
+        }
+    }
+
+    private fun receiveUdpReplies(
+        localRelay: DatagramSocket,
+        upstream: DatagramSocket,
+        remoteEndpoints: Set<InetSocketAddress>,
+        clientEndpoint: AtomicReference<InetSocketAddress?>,
+    ) {
+        val buffer = ByteArray(MAX_UDP_PAYLOAD)
+        try {
+            while (running && !localRelay.isClosed && !upstream.isClosed) {
+                val packet = DatagramPacket(buffer, buffer.size)
+                upstream.receive(packet)
+                val remoteEndpoint = InetSocketAddress(packet.address, packet.port)
+                if (remoteEndpoint !in remoteEndpoints) continue
+                val client = clientEndpoint.get() ?: continue
+                val encoded = encodeUdp(
+                    packet.address,
+                    packet.port,
+                    packet.data,
+                    packet.length,
+                )
+                localRelay.send(DatagramPacket(encoded, encoded.size, client))
+            }
+        } catch (_: Exception) {
+            // Closing either socket ends the association quietly.
         }
     }
 
