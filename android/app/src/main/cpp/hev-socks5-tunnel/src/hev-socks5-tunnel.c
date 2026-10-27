@@ -278,6 +278,11 @@ local_socks5_stop (void)
                 &local_socks5_listener_fd, -1, memory_order_acq_rel);
             if (fd >= 0)
                 close (fd);
+        } else {
+            int fd = atomic_load_explicit (
+                &local_socks5_listener_fd, memory_order_acquire);
+            if (fd >= 0)
+                shutdown (fd, SHUT_RDWR);
         }
         hev_task_wakeup (local_socks5_accept_task);
     }
