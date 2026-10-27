@@ -7,6 +7,9 @@ import android.app.Service
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import android.util.Log
@@ -16,9 +19,6 @@ import hev.htproxy.TProxyService
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
-import java.net.Inet4Address
-import java.net.Inet6Address
-import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URL
@@ -32,8 +32,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 class AuraVpnService : VpnService() {
     companion object {
         const val ACTION_STATE = "com.ciberdefensa.aura.VPN_STATE"
-        private val SOCKS5_HOST = BuildConfig.AURA_SOCKS5_HOST.trim()
-        private val SOCKS5_PORT = BuildConfig.AURA_SOCKS5_PORT.toIntOrNull() ?: 0
+        private const val LOCAL_SOCKS5_HOST = "127.0.0.1"
+        private const val LOCAL_SOCKS5_PORT = 18763
         private const val THREAT_FEED_URL =
             "https://feodotracker.abuse.ch/downloads/ipblocklist.txt"
         private const val NOTIFICATION_CHANNEL = "com.aura.mobile.defens.vpn"
@@ -53,6 +53,10 @@ class AuraVpnService : VpnService() {
         @JvmStatic
         fun protectSocket(socketFd: Int): Boolean =
             activeService?.protect(socketFd) ?: false
+
+        @JvmStatic
+        fun resolveHostForTunnel(hostname: String): String? =
+            activeService?.resolveHostOnUnderlyingNetwork(hostname)
 
         @JvmStatic
         fun engagePanicIsolation(): Boolean =
@@ -87,6 +91,7 @@ class AuraVpnService : VpnService() {
         }
     }
 
+    @Volatile private var underlyingNetwork: Network? = null
     private val worker = Executors.newSingleThreadExecutor()
     private val feedRefresh: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor()
@@ -159,6 +164,7 @@ class AuraVpnService : VpnService() {
         notificationHandler.removeCallbacksAndMessages(null)
         vpnInterface?.close()
         vpnInterface = null
+        underlyingNetwork = null
         stopService(android.content.Intent(this, AuraNotificationService::class.java))
         super.onDestroy()
     }
@@ -200,19 +206,8 @@ class AuraVpnService : VpnService() {
     private fun startTunnel() {
         var established: ParcelFileDescriptor? = null
         try {
-            if (SOCKS5_HOST.isBlank()) {
-                throw IOException(
-                    "No se configuró el servidor SOCKS5 upstream. " +
-                        "Defina AURA_SOCKS5_HOST y AURA_SOCKS5_PORT al compilar.",
-                )
-            }
-            if (SOCKS5_PORT !in 1..65535) {
-                throw IOException(
-                    "AURA_SOCKS5_PORT debe ser un puerto válido entre 1 y 65535.",
-                )
-            }
-            val proxyAddress = resolveProxyAddress()
-            verifySocks5(proxyAddress)
+            underlyingNetwork = findUnderlyingNetwork()
+                ?: throw IOException("No se encontró una red física de salida para el túnel.")
             replaceBlockedIps(downloadThreatFeed())
 
             established = createVpnBuilder().establish()
@@ -228,9 +223,9 @@ class AuraVpnService : VpnService() {
                   ipv6: 'fd00::2'
                   icmp: 'off'
                 socks5:
-                  port: $SOCKS5_PORT
-                  address: $proxyAddress
-                  udp: 'udp'
+                  port: $LOCAL_SOCKS5_PORT
+                  address: $LOCAL_SOCKS5_HOST
+                  udp: 'tcp'
                 misc:
                   log-level: error
                 mapdns:
@@ -248,6 +243,7 @@ class AuraVpnService : VpnService() {
                 throw IOException("El motor tun2socks no pudo iniciar.")
             }
             tunnelStarted = true
+            verifyLocalSocks5Ready()
             for (endpoint in AuraBlocklistService.knownEncryptedDnsEndpoints()) {
                 if (!TProxyService.TProxyAddDynamicSniRule(endpoint)) {
                     throw IOException(
@@ -264,6 +260,7 @@ class AuraVpnService : VpnService() {
             tunnelStarted = false
             established?.close()
             vpnInterface = null
+            underlyingNetwork = null
             startRequested.set(false)
             reportState(false, e.message ?: "No se pudo iniciar el túnel.")
             stopSelf()
@@ -361,6 +358,7 @@ class AuraVpnService : VpnService() {
     private fun createVpnBuilder(): Builder = Builder()
         .setSession("Aura Mobile Defens")
         .setMtu(1500)
+        .setUnderlyingNetworks(underlyingNetwork?.let { arrayOf(it) })
         .addAddress("10.0.0.2", 24)
         .addAddress("fd00::2", 64)
         // Full routes capture TCP and UDP on both IP families for tunnel inspection.
@@ -368,31 +366,73 @@ class AuraVpnService : VpnService() {
         .addRoute("::", 0)
         .addDnsServer("10.0.0.3")
 
-    private fun resolveProxyAddress(): String {
-        val addresses = InetAddress.getAllByName(SOCKS5_HOST)
-        return addresses.firstOrNull { it is Inet6Address }?.hostAddress
-            ?: addresses.firstOrNull { it is Inet4Address }?.hostAddress
-            ?: throw IOException("No se pudo resolver el endpoint SOCKS5 en IPv4 o IPv6.")
-    }
-
-    private fun verifySocks5(address: String) {
-        Socket().use { socket ->
-            socket.connect(InetSocketAddress(address, SOCKS5_PORT), 5000)
-            socket.soTimeout = 5000
-            socket.getOutputStream().write(byteArrayOf(5, 1, 0))
-            socket.getOutputStream().flush()
-
-            val response = ByteArray(2)
-            var offset = 0
-            while (offset < response.size) {
-                val count = socket.getInputStream().read(response, offset, response.size - offset)
-                if (count < 0) throw IOException("El servidor SOCKS5 cerró el saludo.")
-                offset += count
-            }
-            if (response[0].toInt() != 5 || response[1].toInt() != 0) {
-                throw IOException("El servidor SOCKS5 no acepta el modo sin autenticación.")
+    private fun findUnderlyingNetwork(): Network? {
+        val connectivity = getSystemService(ConnectivityManager::class.java)
+        val candidates = connectivity.allNetworks.mapNotNull { network ->
+            val capabilities = connectivity.getNetworkCapabilities(network) ?: return@mapNotNull null
+            if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+            ) {
+                null
+            } else {
+                network to capabilities
             }
         }
+        return candidates.firstOrNull {
+            it.second.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        }?.first ?: candidates.firstOrNull()?.first
+    }
+
+    private fun resolveHostOnUnderlyingNetwork(hostname: String): String? {
+        val normalized = hostname.trim().trimEnd('.')
+        if (normalized.isBlank() || normalized.length > 253 ||
+            normalized.any { it.isWhitespace() || it == '/' }
+        ) return null
+
+        val network = underlyingNetwork ?: return null
+        return try {
+            network.getAllByName(normalized).firstOrNull()?.hostAddress?.substringBefore('%')
+        } catch (exception: Exception) {
+            Log.w("AuraVPN", "No se pudo resolver el destino en la red física.", exception)
+            null
+        }
+    }
+
+    private fun verifyLocalSocks5Ready() {
+        val deadline = android.os.SystemClock.elapsedRealtime() + 5000
+        var lastFailure: Exception? = null
+        while (android.os.SystemClock.elapsedRealtime() < deadline) {
+            try {
+                Socket().use { socket ->
+                    socket.connect(
+                        InetSocketAddress(LOCAL_SOCKS5_HOST, LOCAL_SOCKS5_PORT),
+                        250,
+                    )
+                    socket.soTimeout = 500
+                    socket.getOutputStream().write(byteArrayOf(5, 1, 0))
+                    socket.getOutputStream().flush()
+                    val response = ByteArray(2)
+                    var offset = 0
+                    while (offset < response.size) {
+                        val count = socket.getInputStream().read(
+                            response,
+                            offset,
+                            response.size - offset,
+                        )
+                        if (count < 0) throw IOException("El proxy SOCKS5 local cerró el saludo.")
+                        offset += count
+                    }
+                    if (response[0].toInt() != 5 || response[1].toInt() != 0) {
+                        throw IOException("El proxy SOCKS5 local rechazó la negociación.")
+                    }
+                }
+                return
+            } catch (exception: Exception) {
+                lastFailure = exception
+                Thread.sleep(100)
+            }
+        }
+        throw IOException("El proxy SOCKS5 local no quedó listo; túnel detenido.", lastFailure)
     }
 
     private fun downloadThreatFeed(): Set<String> {
