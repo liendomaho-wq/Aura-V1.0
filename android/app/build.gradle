@@ -165,6 +165,22 @@ tasks.register("printReleaseSigning") {
     group = "verification"
     description = "Prints the configured release signing identity without exposing credentials."
     doLast {
+        def requiredVariables = [
+            "AURA_KEYSTORE_PATH",
+            "AURA_STORE_PASSWORD",
+            "AURA_KEY_ALIAS",
+            "AURA_KEY_PASSWORD",
+        ]
+        def missingVariables = requiredVariables.findAll { variable ->
+            def value = System.getenv(variable)
+            value == null || value.trim().isEmpty()
+        }
+        if (!missingVariables.isEmpty()) {
+            throw new GradleException(
+                "Missing release signing variable(s): ${missingVariables.join(', ')}"
+            )
+        }
+
         def releaseSigningConfig = android.buildTypes.getByName("release").signingConfig
         println "STORE_FILE=${releaseSigningConfig?.storeFile?.absolutePath ?: ''}"
         println "KEY_ALIAS=${releaseSigningConfig?.keyAlias ?: ''}"
