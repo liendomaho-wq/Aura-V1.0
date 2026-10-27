@@ -32,12 +32,14 @@ jobs:
         run: python -m pip install -r tool/requirements-train.txt
       - name: Build dataset from commercially permitted sources
         run: python tool/dataset/build_dataset.py --sources phishing_database
+      - name: Build disjoint synthetic typosquat robustness splits
+        run: python tool/dataset/build_adversarial_splits.py
       - name: Train model and write held-out metrics
         run: python tool/train_max_aura_brain.py
       - name: Benchmark warm and cold inference
         run: python tool/bench_aura_brain.py
       - name: Run golden tests
-        run: python -m pytest tool/test_aura_brain.py -q
+        run: python -m pytest tool/test_aura_brain.py tool/test_adversarial_split_builder.py -q
       - name: Upload reports
         uses: actions/upload-artifact@v4
         with:
