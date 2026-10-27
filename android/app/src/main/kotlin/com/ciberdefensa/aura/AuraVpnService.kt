@@ -19,6 +19,7 @@ import java.net.HttpURLConnection
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.URL
+import java.security.SecureRandom
 import java.util.Collections
 import java.util.HashSet
 import java.util.concurrent.Executors
@@ -98,6 +99,7 @@ class AuraVpnService : VpnService() {
     private var notificationUpdatePending = false
     private var vpnInterface: ParcelFileDescriptor? = null
     @Volatile private var localSocks5Proxy: LocalSocks5Proxy? = null
+    @Volatile private var localSocks5Credentials: Pair<String, String>? = null
     private var integrityCheckScheduled = false
     private var feedRefreshScheduled = false
     @Volatile private var panicIsolationActive = false
@@ -155,8 +157,7 @@ class AuraVpnService : VpnService() {
             TProxyService.TProxyStopService()
             tunnelStarted = false
         }
-        localSocks5Proxy?.close()
-        localSocks5Proxy = null
+        stopLocalProxy()
         if (activeService === this) activeService = null
         notificationHandler.removeCallbacksAndMessages(null)
         vpnInterface?.close()
@@ -194,8 +195,7 @@ class AuraVpnService : VpnService() {
             TProxyService.TProxyStopService()
             tunnelStarted = false
         }
-        localSocks5Proxy?.close()
-        localSocks5Proxy = null
+        stopLocalProxy()
         reportState(false, "Túnel detenido por fallo de integridad.")
         stopSelf()
         return false
@@ -241,8 +241,7 @@ class AuraVpnService : VpnService() {
             Log.e("AuraVPN", "No se pudo iniciar el escudo VPN.", e)
             if (tunnelStarted) TProxyService.TProxyStopService()
             tunnelStarted = false
-            localSocks5Proxy?.close()
-            localSocks5Proxy = null
+            stopLocalProxy()
             established?.close()
             vpnInterface = null
             startRequested.set(false)
@@ -251,14 +250,30 @@ class AuraVpnService : VpnService() {
         }
     }
 
-    private fun createLocalProxy(): LocalSocks5Proxy =
-        LocalSocks5Proxy(
+    private fun createLocalProxy(): LocalSocks5Proxy {
+        val username = randomCredential(16)
+        val password = randomCredential(32)
+        localSocks5Credentials = username to password
+        return LocalSocks5Proxy(
             requestedPort = 0,
+            username = username,
+            password = password,
             protectTcpSocket = { socket -> protect(socket) },
             protectUdpSocket = { socket -> protect(socket) },
         )
+    }
+
+    private fun randomCredential(size: Int): String {
+        val bytes = ByteArray(size)
+        SecureRandom().nextBytes(bytes)
+        return bytes.joinToString("") { byte ->
+            (byte.toInt() and 0xff).toString(16).padStart(2, '0')
+        }
+    }
 
     private fun writeTunnelConfig(localPort: Int): File {
+        val (username, password) = localSocks5Credentials
+            ?: throw IOException("No hay credenciales para el proxy local.")
         val configFile = File(filesDir, "aura-hev-socks5.yml")
         configFile.writeText(
             """
@@ -271,12 +286,20 @@ class AuraVpnService : VpnService() {
             socks5:
               port: $localPort
               address: 127.0.0.1
+              username: $username
+              password: $password
               udp: 'udp'
             misc:
               log-level: error
             """.trimIndent(),
         )
         return configFile
+    }
+
+    private fun stopLocalProxy() {
+        localSocks5Proxy?.close()
+        localSocks5Proxy = null
+        localSocks5Credentials = null
     }
 
     private fun loadCachedBlocklist() {
