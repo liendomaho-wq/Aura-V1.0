@@ -26,7 +26,10 @@ void main() {
         throwsA(isA<AuraCryptoException>()),
       );
       expect(
-        () => AuraCryptoLayer.decryptModel(List<String>.filled(32, '00').join(), ''),
+        () => AuraCryptoLayer.decryptModel(
+          List<String>.filled(32, '00').join(),
+          '',
+        ),
         throwsA(isA<AuraCryptoException>()),
       );
     });
@@ -69,4 +72,42 @@ void main() {
       );
     });
   });
+  group('AuraCryptoLayer signature verification', () {
+    test('rejects empty, truncated, and out-of-range RSA signatures', () {
+      final model = Uint8List.fromList(utf8.encode('{"version":"1.0.0"}'));
+
+      expect(
+        AuraCryptoLayer.verifyModelSignature(
+          modelBytes: model,
+          signatureBytes: Uint8List(0),
+        ),
+        isFalse,
+      );
+      expect(
+        AuraCryptoLayer.verifyModelSignature(
+          modelBytes: model,
+          signatureBytes: Uint8List(32),
+        ),
+        isFalse,
+      );
+      expect(
+        AuraCryptoLayer.verifyModelSignature(
+          modelBytes: model,
+          signatureBytes: Uint8List.fromList(List<int>.filled(256, 0xff)),
+        ),
+        isFalse,
+      );
+    });
+
+    test('fails closed when the model bytes are empty', () {
+      expect(
+        AuraCryptoLayer.verifySignature(
+          Uint8List(0),
+          Uint8List(256),
+        ),
+        isFalse,
+      );
+    });
+  });
+
 }
