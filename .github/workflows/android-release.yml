@@ -58,6 +58,7 @@ jobs:
 
       - name: Compilar APK de Producción con Variables y Clave Pública
         env:
+          AURA_REQUIRE_RELEASE_SIGNING: 'true'
           AURA_STORE_PASSWORD: ${{ secrets.AURA_STORE_PASSWORD }}
           AURA_KEY_ALIAS: ${{ secrets.AURA_KEY_ALIAS }}
           AURA_KEY_PASSWORD: ${{ secrets.AURA_KEY_PASSWORD }}
@@ -68,6 +69,7 @@ jobs:
 
       - name: Verificar Firma del Artefacto
         env:
+          AURA_REQUIRE_RELEASE_SIGNING: 'true'
           AURA_STORE_PASSWORD: ${{ secrets.AURA_STORE_PASSWORD }}
           AURA_KEY_ALIAS: ${{ secrets.AURA_KEY_ALIAS }}
           AURA_KEY_PASSWORD: ${{ secrets.AURA_KEY_PASSWORD }}
