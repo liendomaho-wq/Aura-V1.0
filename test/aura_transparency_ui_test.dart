@@ -120,6 +120,8 @@ void main() {
     await tester.tap(find.text('Cerrar'));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('Reportar falso positivo'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Reportar falso positivo'));
     await tester.pumpAndSettle();
     expect(state.explanationHistory.single.reportedFalsePositive, isTrue);
