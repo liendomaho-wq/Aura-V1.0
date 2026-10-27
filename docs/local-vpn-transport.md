@@ -8,9 +8,10 @@ is now a device-local listener bound only to `127.0.0.1` on an ephemeral local p
 
 - TCP CONNECT requests are forwarded through outbound sockets protected with
   `VpnService.protect(Socket)` before connecting.
-- SOCKS5 UDP ASSOCIATE uses a local relay whose datagram socket is protected with
-  `VpnService.protect(DatagramSocket)` before sending outbound packets. The relay only
-  forwards replies from endpoints requested by that association and caps tracked endpoints.
+- SOCKS5 UDP ASSOCIATE uses a loopback-only local relay and a separate outbound
+  datagram socket protected with `VpnService.protect(DatagramSocket)`. The outbound
+  socket bypasses the TUN; replies are forwarded only from endpoints requested by the
+  association, with a cap on tracked endpoints.
 - The VPN advertises `1.1.1.1` and `1.0.0.1` as DNS servers. DNS packets are captured by
   the full-tunnel routes and carried through the UDP relay; protected upstream sockets bypass
   the TUN and therefore avoid a forwarding loop.
