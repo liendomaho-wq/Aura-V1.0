@@ -77,9 +77,13 @@ object AuraAntiTampering {
         } catch (_: Exception) {
             true
         }
-        val adbBlocked = adbEnabled && !BuildConfig.DEBUG
+        // ADB being enabled is a developer setting, not proof that this process
+        // has been tampered with. Keep it as a diagnostic signal, but never terminate
+        // the app or VPN solely because a user has USB debugging enabled.
+        val adbWarning = adbEnabled && !BuildConfig.DEBUG
+        val adbBlocked = false
         val integrityFailed = !signatureValid || !mapsInspectionSucceeded ||
-            fridaDetected || debuggerBlocked || adbBlocked
+            fridaDetected || debuggerBlocked
 
         return mapOf(
             "isSecure" to !integrityFailed,
@@ -91,6 +95,7 @@ object AuraAntiTampering {
             "debuggerBlocked" to debuggerBlocked,
             "adbEnabled" to adbEnabled,
             "adbBlocked" to adbBlocked,
+            "adbWarning" to adbWarning,
             "localDebugFallback" to localDebugFallback,
         )
     }
