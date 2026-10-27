@@ -17,7 +17,9 @@ Aura combina Flutter/Dart, servicios Android en Kotlin, componentes nativos C/C+
 - Se añadió un workflow para ejecutar análisis estático y pruebas Flutter en pushes y pull requests.
 - La ejecución de CI del commit `f956af6` terminó correctamente: análisis estático y suite Flutter aprobados (run [40587999575](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/40587999575)).
 - Se retiraron del árbol Git 26 archivos generados y se confirmó que no quedan entradas rastreadas bajo `android/.gradle/`.
-- El motor de integridad ahora trata una firma de aplicación ausente o inválida como estado crítico aunque un informe nativo contradictorio indique `isSecure=true`; se añadieron pruebas unitarias para esos casos. La nueva modificación aún debe pasar CI.
+- El motor de integridad ahora trata una firma de aplicación ausente o inválida como estado crítico aunque un informe nativo contradictorio indique `isSecure=true`; se añadieron pruebas unitarias para esos casos.
+- El motor de detección de root ya no interpreta el binario `su` del host Linux/macOS como evidencia de root Android.
+- El commit `a3ea203` pasó `flutter analyze` y toda la suite Flutter en CI (run [40588530841](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/40588530841)).
 
 ## Hallazgos priorizados
 
@@ -46,6 +48,14 @@ Referencias:
 **Mitigación aplicada:** el workflow Android de publicación ahora establece `AURA_REQUIRE_RELEASE_SIGNING=true` durante compilación y verificación.
 
 **Trabajo pendiente:** probar el workflow con secretos ausentes y credenciales inválidas; comprobar que el certificado del artefacto final coincide con el certificado esperado y restringir publicación a tags/revisiones autorizadas.
+
+### P0 — Endpoint SOCKS5 del túnel no localizado
+
+**Observación:** `AuraVpnService.kt` fija `SOCKS5_HOST = "socks5.tun2socks.local"` y puerto `1080`, y llama a `InetAddress.getAllByName` seguido de una comprobación de saludo SOCKS5. En el código de aplicación inspeccionado no aparece un servidor SOCKS5 que registre ese nombre o escuche en ese puerto. La clase `TProxyService` es el binding JNI del cliente Hev tun2socks; el README de Hev documenta `socks5.address` como dirección del servidor upstream.
+
+**Impacto probable:** si no existe infraestructura externa que resuelva y sirva ese endpoint, la resolución o el saludo fallará y el servicio VPN no llegará a iniciar. El repositorio no contiene una configuración visible de ese upstream.
+
+**Acción segura:** no sustituir el hostname por `127.0.0.1` sin desplegar primero un servidor local compatible. La decisión pendiente es integrar y probar un servidor SOCKS5 local (con sockets de salida protegidos contra el bucle VPN y soporte UDP relay) o configurar un upstream real gestionado con dirección, autenticación y documentación. La validación requiere un build Android y pruebas en dispositivo/emulador con tráfico TCP/UDP; no se declara la VPN funcional hasta completarlas.
 
 ### P1 — VPN, DNS y firewall SNI
 
@@ -79,8 +89,8 @@ Referencias:
 |---|---|---|
 | Telemetría opt-in | Pruebas unitarias y revisión de UX | Cambio implementado; ejecución local no disponible en esta sesión |
 | Flutter | `flutter analyze`, `flutter test` | Aprobado en run 40587999575 para commit f956af6; nuevas modificaciones deben volver a validarse |
-| VPN | Pruebas instrumentadas en dispositivos/emuladores | Pendiente |
-| IPv6/DNS/TLS/QUIC | Matriz de tráfico controlado | Pendiente |
+| VPN | Pruebas instrumentadas en dispositivos/emuladores | Pendiente; resolver antes el endpoint SOCKS5 P0 |
+| IPv6/DNS/TLS/QUIC | Matriz de tráfico controlado | Pendiente; incluye endpoint SOCKS5, ECH y tráfico UDP |
 | Firma release | Validación de APK/AAB con certificado esperado | Cambio de workflow implementado; validación real de release pendiente |
 | Permisos | Justificación y revisión de divulgación/consentimiento | Pendiente |
 | Dependencias | Auditoría de vulnerabilidades y licencias | Pendiente |

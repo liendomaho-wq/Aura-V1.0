@@ -1,0 +1,49 @@
+name: Aura Android Debug Build
+
+on:
+  push:
+    branches:
+      - main
+      - principal
+  pull_request:
+    branches:
+      - main
+      - principal
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aura-android-debug-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-debug:
+    name: Build Android debug APK (Kotlin/C/JNI)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build debug APK including native tunnel
+        run: flutter build apk --debug
+
+      - name: Verify debug APK exists
+        run: test -s build/app/outputs/flutter-apk/app-debug.apk
