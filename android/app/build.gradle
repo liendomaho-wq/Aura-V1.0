@@ -14,6 +14,11 @@ def modelVersion = System.getenv("AURA_MODEL_VERSION") ?: "3.0.0"
 def buildConfigString = { value ->
     '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 }
+def releaseSigningFallback = false
+def releaseSigningFailureReason = null
+def debugFallbackExplicitlyAllowed = System.getenv("AURA_ALLOW_DEBUG_SIGNING") == "true"
+def requireReleaseSigning = System.getenv("AURA_REQUIRE_RELEASE_SIGNING") == "true"
+
 
 android {
     namespace "com.ciberdefensa.aura"
@@ -93,18 +98,13 @@ android {
             def keystoreFile = keystorePath ? project.file(keystorePath).absoluteFile : null
             def isDebugFallback = !missingSigningVariables.isEmpty() ||
                 keystoreFile == null || !keystoreFile.isFile()
-            def debugFallbackExplicitlyAllowed =
-                System.getenv("AURA_ALLOW_DEBUG_SIGNING") == "true"
+            releaseSigningFallback = isDebugFallback
+            releaseSigningFailureReason = missingSigningVariables.isEmpty()
+                ? "AURA_KEYSTORE_PATH must reference an existing keystore file."
+                : "Missing release signing variable(s): ${missingSigningVariables.join(', ')}"
 
-            if (isDebugFallback && !debugFallbackExplicitlyAllowed) {
-                def reason = missingSigningVariables.isEmpty()
-                    ? "AURA_KEYSTORE_PATH must reference an existing keystore file."
-                    : "Missing release signing variable(s): ${missingSigningVariables.join(', ')}"
-                throw new GradleException(
-                    "${reason} Set AURA_ALLOW_DEBUG_SIGNING=true only for a local test build."
-                )
-            }
-
+            // Keep debug/unit-test builds usable. Enforce release signing only when a
+            // release packaging task is actually requested (see task-graph guard below).
             signingConfig isDebugFallback ? signingConfigs.debug : signingConfigs.release
             buildConfigField "boolean", "IS_DEBUG_FALLBACK", String.valueOf(isDebugFallback)
 
@@ -114,6 +114,21 @@ android {
         }
     }
 
+}
+
+// Fail closed for actual release artifacts without breaking ordinary debug builds.
+gradle.taskGraph.whenReady { taskGraph ->
+    def releasePackagingRequested = taskGraph.allTasks.any { task ->
+        task.name ==~ /(?:assemble|bundle|package).*Release/
+    }
+    if (releasePackagingRequested && releaseSigningFallback &&
+        (!debugFallbackExplicitlyAllowed || requireReleaseSigning)) {
+        throw new GradleException(
+            "${releaseSigningFailureReason} Release signing is required. " +
+            "AURA_ALLOW_DEBUG_SIGNING=true is permitted only for explicit local testing, " +
+            "never when AURA_REQUIRE_RELEASE_SIGNING=true."
+        )
+    }
 }
 
 dependencies {
