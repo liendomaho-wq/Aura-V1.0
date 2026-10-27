@@ -39,7 +39,7 @@ jobs:
       - name: Build disjoint synthetic typosquat robustness splits
         run: python tool/dataset/build_adversarial_splits.py
       - name: Train model and write held-out metrics
-        run: python tool/train_max_aura_brain.py
+        run: python tool/train_max_aura_brain.py --preset mobile
       - name: Benchmark warm and cold inference
         run: python tool/bench_aura_brain.py
       - name: Run golden tests (even if candidate training is rejected)
