@@ -11,6 +11,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
 import java.net.SocketTimeoutException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -43,6 +44,8 @@ internal class LocalSocks5Proxy(
     @Volatile private var listener: ServerSocket? = null
     @Volatile private var running = false
     private val workers: ExecutorService = Executors.newCachedThreadPool()
+    private val activeResources = ConcurrentHashMap.newKeySet<Closeable>()
+    private val remoteUdpEndpoints = ConcurrentHashMap.newKeySet<InetSocketAddress>()
     private val closed = AtomicBoolean(false)
 
     val port: Int
@@ -67,6 +70,7 @@ internal class LocalSocks5Proxy(
         while (running && !server.isClosed) {
             try {
                 val client = server.accept()
+                activeResources.add(client)
                 workers.execute { handleClient(client) }
             } catch (_: SocketException) {
                 if (running) close()
@@ -105,6 +109,8 @@ internal class LocalSocks5Proxy(
                 }
             } catch (_: Exception) {
                 // Invalid or disconnected clients are isolated to this session.
+            } finally {
+                activeResources.remove(socket)
             }
         }
     }
@@ -155,6 +161,7 @@ internal class LocalSocks5Proxy(
         try {
             relay.reuseAddress = false
             relay.bind(InetSocketAddress(0))
+            activeResources.add(relay)
             if (!protectUdpSocket(relay)) throw IOException("VpnService.protect(DatagramSocket) falló.")
             relay.soTimeout = 120_000
             val advertised = InetAddress.getByName("127.0.0.1").address
@@ -174,6 +181,7 @@ internal class LocalSocks5Proxy(
                 } catch (_: SocketTimeoutException) {
                     break
                 }
+                val packetEndpoint = InetSocketAddress(packet.address, packet.port)
                 val fromClient = packet.address.isLoopbackAddress &&
                     (clientAddress == null ||
                         (packet.address == clientAddress && packet.port == clientPort))
@@ -181,12 +189,15 @@ internal class LocalSocks5Proxy(
                     clientAddress = packet.address
                     clientPort = packet.port
                     val decoded = decodeUdp(packet.data, packet.length) ?: continue
+                    val remoteEndpoint = InetSocketAddress(decoded.address, decoded.port)
+                    remoteUdpEndpoints.add(remoteEndpoint)
                     val outgoing = DatagramPacket(
                         decoded.payload, decoded.payload.size,
                         decoded.address, decoded.port,
                     )
                     relay.send(outgoing)
                 } else {
+                    if (packetEndpoint !in remoteUdpEndpoints) continue
                     val target = clientAddress ?: continue
                     if (clientPort < 1) continue
                     val encoded = encodeUdp(packet.address, packet.port, packet.data, packet.length)
@@ -197,6 +208,7 @@ internal class LocalSocks5Proxy(
             // A failed UDP association must not terminate the VPN service.
         } finally {
             relay.close()
+            activeResources.remove(relay)
         }
     }
 
@@ -279,6 +291,10 @@ internal class LocalSocks5Proxy(
         running = false
         try { listener?.close() } catch (_: IOException) { }
         listener = null
+        activeResources.toList().forEach { resource ->
+            try { resource.close() } catch (_: IOException) { }
+        }
+        activeResources.clear()
         workers.shutdownNow()
     }
 }
