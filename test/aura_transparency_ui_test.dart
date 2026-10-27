@@ -168,7 +168,7 @@ void main() {
     expect(find.text('Auditoría de cobertura'), findsOneWidget);
     expect(
         find.textContaining('1 SNI observados, 1 bloqueo, '
-            '1 alerta DGA y 1 bloqueo de DNS cifrado.'),
+            '1 alerta DGA y 1 bloqueo de DNS cifrado'),
         findsOneWidget);
     expect(find.text('8.8.8.8'), findsOneWidget);
     await tester.tap(find.text('Ejecutar autotest'));
