@@ -4,7 +4,7 @@
 
 Aura no longer expects the fictional host `socks5.tun2socks.local` to exist. The existing
 `hev-socks5-tunnel` engine is still used as a TUN-to-SOCKS5 client, but its SOCKS5 endpoint
-is now a device-local listener bound only to `127.0.0.1:10808`.
+is now a device-local listener bound only to `127.0.0.1` on an ephemeral local port.
 
 - TCP CONNECT requests are forwarded through outbound sockets protected with
   `VpnService.protect(Socket)` before connecting.
