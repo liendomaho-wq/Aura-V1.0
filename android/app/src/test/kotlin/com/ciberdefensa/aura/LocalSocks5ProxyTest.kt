@@ -19,6 +19,28 @@ class LocalSocks5ProxyTest {
     private val testPassword = "aura-test-password"
 
     @Test
+    fun unauthenticatedClientsAreRejected() {
+        val loopback = InetAddress.getByName("127.0.0.1")
+        val proxy = LocalSocks5Proxy(
+            requestedPort = 0,
+            username = testUsername,
+            password = testPassword,
+            protectTcpSocket = { true },
+            protectUdpSocket = { true },
+        )
+        try {
+            Socket(loopback, proxy.start()).use { client ->
+                client.soTimeout = 3000
+                client.getOutputStream().write(byteArrayOf(5, 1, 0))
+                client.getOutputStream().flush()
+                assertArrayEquals(byteArrayOf(5, 0xff.toByte()), readExactly(client.getInputStream(), 2))
+            }
+        } finally {
+            proxy.close()
+        }
+    }
+
+    @Test
     fun tcpConnectUsesLocalProxyAndRelaysBytes() {
         val loopback = InetAddress.getByName("127.0.0.1")
         ServerSocket(0, 1, loopback).use { echoServer ->
