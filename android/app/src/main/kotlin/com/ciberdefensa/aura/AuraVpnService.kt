@@ -408,7 +408,7 @@ class AuraVpnService : VpnService() {
     }
 
     private fun createVpnBuilder(): Builder = Builder()
-        .setSession("Aura Mobile Defens")
+        .setSession("Aura · Protección de red")
         .setMtu(1500)
         .addAddress("10.0.0.2", 24)
         .addAddress("fd00::2", 64)
