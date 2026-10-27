@@ -646,7 +646,9 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
             margin: const EdgeInsets.symmetric(horizontal: 3),
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              border: Border.all(color: const Color(0xFF1B3A2A)),
+              border: Border(
+                bottom: BorderSide(color: valueColor.withAlpha(105), width: 1.2),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -726,13 +728,14 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                 ),
                 const Expanded(
                   child: Text(
-                    'Aura Mobile Defens',
+                    'A U R A',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Color(0xFF00FFFF),
                       fontFamily: 'monospace',
-                      fontSize: 16,
+                      fontSize: 15,
                       fontWeight: FontWeight.bold,
+                      letterSpacing: 2,
                     ),
                   ),
                 ),
