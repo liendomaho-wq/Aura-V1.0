@@ -79,19 +79,33 @@ android {
 
     buildTypes {
         release {
-            // Verificar si tenemos todas las variables de producción
-            def hasReleaseSigning = System.getenv("AURA_KEYSTORE_PATH") != null &&
-                                    System.getenv("AURA_STORE_PASSWORD") != null &&
-                                    System.getenv("AURA_KEY_ALIAS") != null &&
-                                    System.getenv("AURA_KEY_PASSWORD") != null
+            def requiredSigningVariables = [
+                "AURA_KEYSTORE_PATH",
+                "AURA_STORE_PASSWORD",
+                "AURA_KEY_ALIAS",
+                "AURA_KEY_PASSWORD",
+            ]
+            def missingSigningVariables = requiredSigningVariables.findAll { variable ->
+                def value = System.getenv(variable)
+                value == null || value.trim().isEmpty()
+            }
+            def keystorePath = System.getenv("AURA_KEYSTORE_PATH")
+            def keystoreFile = keystorePath ? project.file(keystorePath).absoluteFile : null
+            def isDebugFallback = !missingSigningVariables.isEmpty() ||
+                keystoreFile == null || !keystoreFile.isFile()
+            def debugFallbackExplicitlyAllowed =
+                System.getenv("AURA_ALLOW_DEBUG_SIGNING") == "true"
 
-            def keystoreFile = hasReleaseSigning ? project.file(System.getenv("AURA_KEYSTORE_PATH")).absoluteFile : null
-            def isDebugFallback = !hasReleaseSigning || keystoreFile == null || !keystoreFile.isFile()
+            if (isDebugFallback && !debugFallbackExplicitlyAllowed) {
+                def reason = missingSigningVariables.isEmpty()
+                    ? "AURA_KEYSTORE_PATH must reference an existing keystore file."
+                    : "Missing release signing variable(s): ${missingSigningVariables.join(', ')}"
+                throw new GradleException(
+                    "${reason} Set AURA_ALLOW_DEBUG_SIGNING=true only for a local test build."
+                )
+            }
 
-            // Aplicar la configuración de firma (fallback a debug si es necesario)
             signingConfig isDebugFallback ? signingConfigs.debug : signingConfigs.release
-
-            // ✅ FASE 1: Inyectar bandera para que Dart sepa su postura de seguridad
             buildConfigField "boolean", "IS_DEBUG_FALLBACK", String.valueOf(isDebugFallback)
 
             minifyEnabled true
@@ -165,6 +179,22 @@ tasks.register("printReleaseSigning") {
     group = "verification"
     description = "Prints the configured release signing identity without exposing credentials."
     doLast {
+        def requiredVariables = [
+            "AURA_KEYSTORE_PATH",
+            "AURA_STORE_PASSWORD",
+            "AURA_KEY_ALIAS",
+            "AURA_KEY_PASSWORD",
+        ]
+        def missingVariables = requiredVariables.findAll { variable ->
+            def value = System.getenv(variable)
+            value == null || value.trim().isEmpty()
+        }
+        if (!missingVariables.isEmpty()) {
+            throw new GradleException(
+                "Missing release signing variable(s): ${missingVariables.join(', ')}"
+            )
+        }
+
         def releaseSigningConfig = android.buildTypes.getByName("release").signingConfig
         println "STORE_FILE=${releaseSigningConfig?.storeFile?.absolutePath ?: ''}"
         println "KEY_ALIAS=${releaseSigningConfig?.keyAlias ?: ''}"

@@ -64,6 +64,7 @@ jobs:
           AURA_KEYSTORE_BASE64: ${{ secrets.AURA_KEYSTORE_BASE64 }}
           AURA_PUBLIC_KEY_ENV: ${{ secrets.AURA_PUBLIC_KEY_ENV }}
           AURA_BUILD_FORMAT: ${{ github.event.inputs.build_format || 'apk' }}
+          AURA_REQUIRE_RELEASE_SIGNING: 'true'
         run: bash tool/compile_aura.sh
 
       - name: Verificar Firma del Artefacto
@@ -74,6 +75,7 @@ jobs:
           AURA_KEYSTORE_BASE64: ${{ secrets.AURA_KEYSTORE_BASE64 }}
           AURA_PUBLIC_KEY_ENV: ${{ secrets.AURA_PUBLIC_KEY_ENV }}
           AURA_BUILD_FORMAT: ${{ github.event.inputs.build_format || 'apk' }}
+          AURA_REQUIRE_RELEASE_SIGNING: 'true'
         run: bash tool/compile_aura.sh --verify-artifact
 
       - name: Set release artifact metadata
