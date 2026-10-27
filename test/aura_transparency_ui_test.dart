@@ -42,20 +42,7 @@ void main() {
           ],
         ),
       );
-    for (final action in <String>[
-      'SNI_OBSERVED',
-      'BLOCKED',
-      'DGA_ALERT',
-      'ENCRYPTED_DNS_BLOCKED',
-    ]) {
-      state.addTelemetryEvent(<String, dynamic>{
-        'action': action,
-        if (action == 'SNI_OBSERVED') ...<String, Object>{
-          'public_dns_resolver': true,
-          'destination_address': '8.8.8.8',
-        },
-      });
-    }
+    MockStreamHandlerEventSink? networkEventSink;
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     addTearDown(() {
@@ -76,7 +63,11 @@ void main() {
     });
     messenger.setMockStreamHandler(
       networkEventChannel,
-      MockStreamHandler.inline(onListen: (_, __) {}),
+      MockStreamHandler.inline(
+        onListen: (_, events) {
+          networkEventSink = events;
+        },
+      ),
     );
 
     await tester.pumpWidget(
@@ -85,6 +76,41 @@ void main() {
         child: const MaterialApp(home: AuraCoreScreen()),
       ),
     );
+    await tester.pumpAndSettle();
+
+    expect(networkEventSink, isNotNull);
+    for (final entry in <Map<String, Object>>[
+      <String, Object>{
+        'timestamp': 1,
+        'source_app': 'com.example.browser',
+        'requested_domain': 'dns.google',
+        'action': 'SNI_OBSERVED',
+        'public_dns_resolver': true,
+        'destination_address': '8.8.8.8',
+        'destination_port': 443,
+        'transport_protocol': 'TCP',
+      },
+      <String, Object>{
+        'timestamp': 2,
+        'source_app': 'com.example.browser',
+        'requested_domain': 'bad.example',
+        'action': 'BLOCKED',
+      },
+      <String, Object>{
+        'timestamp': 3,
+        'source_app': 'com.example.browser',
+        'requested_domain': 'random.example',
+        'action': 'DGA_ALERT',
+      },
+      <String, Object>{
+        'timestamp': 4,
+        'source_app': 'com.example.browser',
+        'requested_domain': 'resolver.example',
+        'action': 'ENCRYPTED_DNS_BLOCKED',
+      },
+    ]) {
+      networkEventSink!.success(entry);
+    }
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
