@@ -5,7 +5,11 @@ import re
 import sys
 
 SOURCE = Path("android/app/src/main/kotlin/com/ciberdefensa/aura/AuraVpnService.kt")
+NATIVE_TUNNEL = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/hev-socks5-tunnel.c")
+NATIVE_SOCKS = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/core/src/hev-socks5-misc.c")
 text = SOURCE.read_text(encoding="utf-8")
+native_tunnel = NATIVE_TUNNEL.read_text(encoding="utf-8")
+native_socks = NATIVE_SOCKS.read_text(encoding="utf-8")
 match = re.search(
     r"configFile\.writeText\(\s*\"\"\"(.*?)\"\"\"\.trimIndent\(\)",
     text,
@@ -55,4 +59,13 @@ for required_line in ("port: $LOCAL_SOCKS5_PORT", "address: $LOCAL_SOCKS5_HOST",
     if required_line not in raw:
         sys.exit(f"FAIL: expected configuration entry not found: {required_line}")
 
-print("PASS: Hev YAML template has consistent top-level sections and required fields.")
+if "AURA_LOCAL_SOCKS5_PORT 18763" not in native_tunnel or "INADDR_LOOPBACK" not in native_tunnel:
+    sys.exit("FAIL: local SOCKS5 listener must bind only to loopback port 18763")
+if "hev_socks5_server_new" not in native_tunnel:
+    sys.exit("FAIL: local SOCKS5 server is not wired into the Hev task system")
+if "hev_jni_protect_socket (fd)" not in native_socks:
+    sys.exit("FAIL: native outbound sockets are not protected from VPN recursion")
+if "hev_jni_resolve_host (name" not in native_socks:
+    sys.exit("FAIL: Android destination DNS must resolve on the underlying network")
+
+print("PASS: Hev YAML, loopback SOCKS5 wiring, socket protection and physical DNS checks passed.")
