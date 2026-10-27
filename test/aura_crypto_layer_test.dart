@@ -26,7 +26,7 @@ void main() {
         throwsA(isA<AuraCryptoException>()),
       );
       expect(
-        () => AuraCryptoLayer.decryptModel('00' * 32, ''),
+        () => AuraCryptoLayer.decryptModel(List<String>.filled(32, '00').join(), ''),
         throwsA(isA<AuraCryptoException>()),
       );
     });
