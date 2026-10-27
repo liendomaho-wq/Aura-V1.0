@@ -420,6 +420,10 @@ class AuraAIBrain {
   static bool _isSha256(String value) =>
       RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(value.trim());
 
+  /// Validates the structure of a decoded model before it can be used.
+  static Map<String, dynamic> validateModelStructure(String plaintext) =>
+      _decodeAndValidateModel(plaintext);
+
   static Map<String, dynamic> _decodeAndValidateModel(String plaintext) {
     final decoded = jsonDecode(plaintext);
     try {
