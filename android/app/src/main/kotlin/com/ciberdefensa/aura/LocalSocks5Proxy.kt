@@ -151,7 +151,7 @@ internal class LocalSocks5Proxy(
 
     private fun relay(client: Socket, upstream: Socket) {
         val done = AtomicBoolean(false)
-        val latch = java.util.concurrent.CountDownLatch(2)
+        val reversePumpDone = java.util.concurrent.CountDownLatch(1)
         fun pump(from: Socket, to: Socket) {
             try {
                 from.getInputStream().copyTo(to.getOutputStream())
@@ -162,12 +162,17 @@ internal class LocalSocks5Proxy(
                     try { client.close() } catch (_: IOException) { }
                     try { upstream.close() } catch (_: IOException) { }
                 }
-                latch.countDown()
             }
         }
-        workers.execute { pump(client, upstream) }
-        workers.execute { pump(upstream, client) }
-        try { latch.await() } catch (_: InterruptedException) {
+        workers.execute {
+            try {
+                pump(upstream, client)
+            } finally {
+                reversePumpDone.countDown()
+            }
+        }
+        pump(client, upstream)
+        try { reversePumpDone.await() } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
         }
     }
