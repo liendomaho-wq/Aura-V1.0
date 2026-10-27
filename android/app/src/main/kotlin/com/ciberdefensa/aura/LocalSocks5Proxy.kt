@@ -11,6 +11,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
 import java.net.SocketTimeoutException
+import java.security.MessageDigest
 import java.util.HashSet
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
@@ -21,13 +22,16 @@ import kotlin.concurrent.thread
 /**
  * Device-local SOCKS5 transport for hev-socks5-tunnel.
  *
- * Only binds its control listener to IPv4 loopback. Outbound TCP/UDP sockets must
+ * Requires per-run RFC 1929 credentials and only binds its control listener to IPv4 loopback.
+ * Outbound TCP/UDP sockets must
  * be protected by VpnService before connect/send so they do not re-enter the TUN.
  * This deliberately accepts numeric destinations only: DNS is supplied by the VPN
  * builder and traverses the tunnel as ordinary UDP, avoiding resolver recursion.
  */
 internal class LocalSocks5Proxy(
     private val requestedPort: Int = DEFAULT_PORT,
+    private val username: String,
+    private val password: String,
     private val protectTcpSocket: (Socket) -> Boolean,
     private val protectUdpSocket: (DatagramSocket) -> Boolean,
 ) : Closeable {
@@ -88,13 +92,24 @@ internal class LocalSocks5Proxy(
                 val output = socket.getOutputStream()
                 if (readByte(input) != SOCKS_VERSION) return
                 val methodsCount = readByte(input)
-                var noAuthOffered = false
+                var userPassOffered = false
                 repeat(methodsCount) {
-                    if (readByte(input) == 0) noAuthOffered = true
+                    if (readByte(input) == 2) userPassOffered = true
                 }
-                output.write(byteArrayOf(5, if (noAuthOffered) 0.toByte() else 0xff.toByte()))
+                output.write(byteArrayOf(5, if (userPassOffered) 2.toByte() else 0xff.toByte()))
                 output.flush()
-                if (!noAuthOffered) return
+                if (!userPassOffered || readByte(input) != 1) return
+
+                val usernameLength = readByte(input)
+                val suppliedUsername = ByteArray(usernameLength) { readByte(input).toByte() }
+                val passwordLength = readByte(input)
+                val suppliedPassword = ByteArray(passwordLength) { readByte(input).toByte() }
+                val validUsername = MessageDigest.isEqual(username.toByteArray(Charsets.UTF_8), suppliedUsername)
+                val validPassword = MessageDigest.isEqual(password.toByteArray(Charsets.UTF_8), suppliedPassword)
+                val authenticated = validUsername && validPassword
+                output.write(byteArrayOf(1, if (authenticated) 0.toByte() else 1.toByte()))
+                output.flush()
+                if (!authenticated) return
 
                 if (readByte(input) != SOCKS_VERSION) return
                 val command = readByte(input)
