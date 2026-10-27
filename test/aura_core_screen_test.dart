@@ -74,14 +74,14 @@ void main() {
     expect(find.text('TELEMETRÍA LOCAL'), findsOneWidget);
     expect(find.textContaining('example.com'), findsOneWidget);
 
-    expect(find.text('DEFENSA: OFF'), findsOneWidget);
+    expect(find.text('VPN: INACTIVA'), findsOneWidget);
     expect(find.text('TÚNEL'), findsOneWidget);
     expect(find.text('OFF'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
     await tester.pumpAndSettle();
     expect(calls, <String>['startShield']);
     expect(state.isVpnActive, isTrue);
-    expect(find.text('DEFENSA: ON'), findsOneWidget);
+    expect(find.text('VPN: ACTIVA'), findsOneWidget);
     expect(find.text('ON'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
@@ -103,7 +103,7 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
     expect(state.isVpnActive, isFalse);
-    expect(find.text('DEFENSA: OFF'), findsOneWidget);
+    expect(find.text('VPN: INACTIVA'), findsOneWidget);
     expect(
       find.textContaining(
         '[CRIT] TÚNEL REVOCADO POR ANDROID O POR EL OPERADOR',
