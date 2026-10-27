@@ -15,6 +15,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LocalSocks5ProxyTest {
+    private val testUsername = "aura-test-user"
+    private val testPassword = "aura-test-password"
+
     @Test
     fun tcpConnectUsesLocalProxyAndRelaysBytes() {
         val loopback = InetAddress.getByName("127.0.0.1")
@@ -34,6 +37,8 @@ class LocalSocks5ProxyTest {
 
             val proxy = LocalSocks5Proxy(
                 requestedPort = 0,
+                username = testUsername,
+                password = testPassword,
                 protectTcpSocket = { true },
                 protectUdpSocket = { true },
             )
@@ -43,9 +48,7 @@ class LocalSocks5ProxyTest {
                     client.soTimeout = 3000
                     val output = client.getOutputStream()
                     val input = client.getInputStream()
-                    output.write(byteArrayOf(5, 1, 0))
-                    output.flush()
-                    assertArrayEquals(byteArrayOf(5, 0), readExactly(input, 2))
+                    authenticate(output, input)
 
                     val targetPort = echoServer.localPort
                     output.write(
@@ -98,9 +101,7 @@ class LocalSocks5ProxyTest {
                     control.soTimeout = 3000
                     val output = control.getOutputStream()
                     val input = control.getInputStream()
-                    output.write(byteArrayOf(5, 1, 0))
-                    output.flush()
-                    assertArrayEquals(byteArrayOf(5, 0), readExactly(input, 2))
+                    authenticate(output, input)
 
                     output.write(byteArrayOf(5, 3, 0, 1, 0, 0, 0, 0, 0, 0))
                     output.flush()
@@ -141,6 +142,20 @@ class LocalSocks5ProxyTest {
                 proxy.close()
             }
         }
+    }
+
+    private fun authenticate(output: java.io.OutputStream, input: java.io.InputStream) {
+        output.write(byteArrayOf(5, 1, 2))
+        output.flush()
+        assertArrayEquals(byteArrayOf(5, 2), readExactly(input, 2))
+        val username = testUsername.toByteArray(Charsets.UTF_8)
+        val password = testPassword.toByteArray(Charsets.UTF_8)
+        output.write(
+            byteArrayOf(1, username.size.toByte()) + username +
+                byteArrayOf(password.size.toByte()) + password,
+        )
+        output.flush()
+        assertArrayEquals(byteArrayOf(1, 0), readExactly(input, 2))
     }
 
     private fun readExactly(input: java.io.InputStream, length: Int): ByteArray {
