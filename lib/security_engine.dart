@@ -144,6 +144,9 @@ class AuraSecurityEngine {
   }
 
   Future<bool> _hasRootBinary() async {
+    // These paths are Android-specific. Checking them on Linux/macOS CI would
+    // incorrectly classify the host machine's own su binary as Android root.
+    if (!Platform.isAndroid) return false;
     for (final path in _rootBinaryPaths) {
       try {
         if (await File(path).exists()) return true;
