@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -694,7 +695,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 48),
+            const SizedBox(height: 12),
             Row(
               children: [
                 IconButton(
@@ -807,6 +808,47 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                     state.quicBlocked > 0 ? _terminalYellow : _terminalGreen,
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 104,
+              width: double.infinity,
+              child: CustomPaint(
+                painter: _AuraSignalFieldPainter(
+                  isActive: vpnActive,
+                  signalCount: state.sniObservedEvents +
+                      state.blockedEvents +
+                      state.dgaAlertEvents +
+                      state.quicBlocked,
+                ),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        vpnActive ? 'CAMPO DE SEÑALES / ACTIVO' : 'CAMPO DE SEÑALES / EN ESPERA',
+                        style: TextStyle(
+                          color: vpnActive ? _terminalCyan : _terminalYellow,
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        '${state.sniObservedEvents} señales · ${state.blockedEvents} bloqueos · ${state.dgaAlertEvents} anomalías',
+                        style: const TextStyle(
+                          color: Color(0xFF9BB9C7),
+                          fontFamily: 'monospace',
+                          fontSize: 10,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
             if (_untrustedAccessibilityPackages.isNotEmpty)
@@ -1549,4 +1591,87 @@ class _TerminalInput extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Original, data-driven network visualization. It intentionally avoids a shield
+/// metaphor and does not invent traffic: the center label is backed by session counters.
+class _AuraSignalFieldPainter extends CustomPainter {
+  const _AuraSignalFieldPainter({
+    required this.isActive,
+    required this.signalCount,
+  });
+
+  final bool isActive;
+  final int signalCount;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final scale = math.min(size.width / 340, size.height / 104);
+    final baseColor = isActive ? _terminalCyan : _terminalYellow;
+    final linePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8
+      ..color = baseColor.withAlpha(isActive ? 70 : 35);
+
+    for (final radius in <double>[24, 37, 50, 63]) {
+      final scaledRadius = radius * scale;
+      canvas.drawCircle(center, scaledRadius, linePaint);
+    }
+
+    final sweep = signalCount == 0
+        ? math.pi * 0.65
+        : math.pi * (0.65 + (signalCount % 12) / 12);
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: 50 * scale),
+      -math.pi / 2,
+      sweep,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..color = baseColor.withAlpha(isActive ? 220 : 100),
+    );
+
+    for (var index = 0; index < 12; index++) {
+      final angle = (math.pi * 2 * index / 12) - math.pi / 2;
+      final radius = (index.isEven ? 50.0 : 63.0) * scale;
+      final point = Offset(
+        center.dx + math.cos(angle) * radius,
+        center.dy + math.sin(angle) * radius,
+      );
+      canvas.drawLine(
+        Offset(
+          center.dx + math.cos(angle) * 38 * scale,
+          center.dy + math.sin(angle) * 38 * scale,
+        ),
+        point,
+        linePaint,
+      );
+      canvas.drawCircle(
+        point,
+        (index % 3 == 0 ? 2.2 : 1.2) * scale,
+        Paint()..color = baseColor.withAlpha(isActive ? 210 : 85),
+      );
+    }
+
+    final axisPaint = Paint()
+      ..color = const Color(0xFF214452)
+      ..strokeWidth = 0.6;
+    canvas.drawLine(
+      Offset(12, center.dy),
+      Offset(center.dx - 72 * scale, center.dy),
+      axisPaint,
+    );
+    canvas.drawLine(
+      Offset(center.dx + 72 * scale, center.dy),
+      Offset(size.width - 12, center.dy),
+      axisPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _AuraSignalFieldPainter oldDelegate) =>
+      oldDelegate.isActive != isActive ||
+      oldDelegate.signalCount != signalCount;
 }
