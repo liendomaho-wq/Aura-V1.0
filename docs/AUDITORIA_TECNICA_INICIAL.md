@@ -53,15 +53,15 @@ Referencias:
 
 **Trabajo pendiente:** probar el workflow con secretos ausentes y credenciales inválidas; comprobar que el certificado del artefacto final coincide con el certificado esperado y restringir publicación a tags/revisiones autorizadas.
 
-### P0 — Endpoint SOCKS5 del túnel no localizado
+### P0 — Transporte local SOCKS5 integrado; validación en dispositivo pendiente
 
-**Observación:** `AuraVpnService.kt` fija `SOCKS5_HOST = "socks5.tun2socks.local"` y puerto `1080`, y llama a `InetAddress.getAllByName` seguido de una comprobación de saludo SOCKS5. El árbol nativo vendorizado sí incluye fuentes del protocolo servidor (`android/app/src/main/cpp/hev-socks5-tunnel/src/core/src/hev-socks5-server.c`), pero la clase `TProxyService` solo expone el JNI del cliente tun2socks. En la integración de Aura no se encontró una rutina que cree un socket de escucha, acepte conexiones y ejecute `hev_socks5_server_run`, ni un listener local iniciado por `AuraVpnService`. Por tanto, la presencia de código servidor no demuestra que exista un SOCKS5 local activo. El README de Hev documenta `socks5.address` como dirección del servidor upstream.
+**Problema corregido en código:** el motor tun2socks necesitaba un endpoint SOCKS5, pero el repositorio no tenía uno configurado de forma funcional. El hostname `.local` ficticio y la dependencia de un servidor externo se sustituyeron por un servidor SOCKS5 embebido en el motor Hev, enlazado exclusivamente a `127.0.0.1:18763`. La configuración del cliente usa UDP encapsulado en TCP (`udp: 'tcp'`), compatible con el modo `FWD_UDP` del servidor Hev.
 
-**Impacto probable:** si no existe infraestructura externa que resuelva y sirva ese endpoint, la resolución o el saludo fallará y el servicio VPN no llegará a iniciar. El repositorio no contiene una configuración visible de ese upstream.
+**Mitigaciones añadidas:** los sockets nativos de salida deben pasar por `VpnService.protect()` para evitar recursión del túnel; la resolución de destinos se delega a la red física capturada antes de establecer la VPN; el servicio comprueba el saludo SOCKS5 local y se detiene si el endpoint no está listo. Se añadieron comprobaciones automatizadas para la plantilla YAML, el enlace del servidor local, el bind loopback, la protección de sockets y la resolución DNS sobre la red subyacente.
 
-**Mitigación aplicada:** el host y el puerto se configuran mediante `AURA_SOCKS5_HOST` y `AURA_SOCKS5_PORT` al compilar. Si faltan o el puerto no es válido, el servicio aborta con un mensaje claro en vez de intentar resolver `socks5.tun2socks.local`. Ejemplo de configuración de entorno para un despliegue: `AURA_SOCKS5_HOST=proxy.example.net` y `AURA_SOCKS5_PORT=1080` (el dominio es solo ilustrativo; no representa un servidor real).
+**Estado de validación:** el workflow Flutter de calidad pasó para el commit `de62bcc` (run [40596791141](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/40596791141)). El build Android con el servidor local y los cambios JNI sigue en ejecución en el run [40596791100](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/40596791100); no se debe afirmar que compila hasta que termine correctamente. Tampoco se han completado pruebas instrumentadas en un dispositivo/emulador. La integración de código no prueba por sí sola el funcionamiento real de TCP, UDP, DNS, IPv6 ni la ausencia de fugas.
 
-**Pendiente crítico:** todavía no hay un servidor SOCKS5 activo/configurado que se haya validado de extremo a extremo. No sustituir el endpoint por `127.0.0.1` solo porque existan fuentes del protocolo servidor: hace falta integrar e iniciar un listener, limitarlo a loopback, evitar bucles de encaminamiento protegiendo sus sockets de salida y probar TCP CONNECT y UDP ASSOCIATE. La otra opción es configurar un upstream real gestionado; el cliente actual valida el saludo sin autenticación y no admite credenciales en este flujo. La validación requiere un build Android y pruebas en dispositivo/emulador con tráfico TCP/UDP; no se declara la VPN funcional hasta completarlas.
+**Criterio de aceptación pendiente:** build Android aprobado y pruebas controladas en dispositivo/emulador que cubran TCP CONNECT, tráfico UDP encapsulado, DNS, IPv4/IPv6, reconexión y cambio entre Wi-Fi/datos. No habilitar un estado de “VPN protegida” si el motor falla o el tráfico de prueba no puede completar el recorrido.
 
 ### P1 — VPN, DNS y firewall SNI
 
@@ -97,7 +97,7 @@ Referencias:
 |---|---|---|
 | Telemetría opt-in | Pruebas unitarias y revisión de UX | Cambio implementado; ejecución local no disponible en esta sesión |
 | Flutter | `flutter analyze`, `flutter test` | Aprobado en run 40587999575 para commit f956af6; nuevas modificaciones deben volver a validarse |
-| VPN | Pruebas instrumentadas en dispositivos/emuladores | Pendiente; resolver antes el endpoint SOCKS5 P0 |
+| VPN | Build Android y pruebas instrumentadas en dispositivos/emuladores | Transporte SOCKS5 local integrado; build en curso y pruebas de red reales pendientes |
 | IPv6/DNS/TLS/QUIC | Matriz de tráfico controlado | Pendiente; incluye endpoint SOCKS5, ECH y tráfico UDP |
 | Firma release | Validación de APK/AAB con certificado esperado | Cambio de workflow implementado; validación real de release pendiente |
 | Permisos | Justificación y revisión de divulgación/consentimiento | Pendiente |
