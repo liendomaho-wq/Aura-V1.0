@@ -295,6 +295,14 @@ def test_quality_gate_accepts_candidate_at_documented_boundaries():
     assert candidate_quality_gate_failures(_candidate_metrics()) == []
 
 
+def test_quality_gate_accepts_mobile_holdout_mode():
+    assert candidate_quality_gate_failures(
+        _candidate_metrics(
+            evaluation_mode="stratified-test-split-serialized-mobile-model"
+        )
+    ) == []
+
+
 def test_quality_gate_rejects_seed_only_metrics():
     failures = candidate_quality_gate_failures(
         _candidate_metrics(evaluation_mode="seed-only-not-a-holdout")
