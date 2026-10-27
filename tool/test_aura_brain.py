@@ -23,6 +23,7 @@ from train_max_aura_brain import (  # noqa: E402
     FEATURE_ORDER,
     MODEL_VERSION,
     build_model_metadata,
+    candidate_quality_gate_failures,
     calculate_bigram_repeat_ratio,
     calculate_conditional_entropy,
     calculate_trigram_repeat_ratio,
@@ -49,7 +50,10 @@ def model():
 def is_threat(model_data: dict, domain: str) -> bool:
     if is_allowlisted(domain):
         return False
-    return predict_serialized_model(model_data, domain) >= 0.5
+    threshold = model_data.get("decision_threshold", 0.5)
+    if not isinstance(threshold, (int, float)) or not math.isfinite(threshold):
+        threshold = 0.5
+    return predict_serialized_model(model_data, domain) >= threshold
 
 
 def test_known_dga_is_classified_as_threat(model):
@@ -264,3 +268,57 @@ def test_idn_homoglyph_indicator_is_capped_at_one():
 
 def test_enhanced_features_return_zeros_for_empty_domains():
     assert extract_enhanced_features("") == [0.0] * 18
+
+def _candidate_metrics(
+    *,
+    evaluation_mode: str = "stratified-test-split",
+    test_fpr: float = 0.08,
+    test_recall: float = 0.65,
+    adversarial_fpr: float = 0.15,
+    adversarial_recall: float = 0.60,
+) -> dict:
+    return {
+        "evaluation_mode": evaluation_mode,
+        "test_metrics": {
+            "false_positive_rate": test_fpr,
+            "recall": test_recall,
+        },
+        "adversarial_test_metrics": {
+            "false_positive_rate": adversarial_fpr,
+            "recall": adversarial_recall,
+        },
+        "adversarial_test_class_counts": {"safe": 500, "threat": 500},
+    }
+
+
+def test_quality_gate_accepts_candidate_at_documented_boundaries():
+    assert candidate_quality_gate_failures(_candidate_metrics()) == []
+
+
+def test_quality_gate_rejects_seed_only_metrics():
+    failures = candidate_quality_gate_failures(
+        _candidate_metrics(evaluation_mode="seed-only-not-a-holdout")
+    )
+    assert any("stratified held-out test split" in failure for failure in failures)
+
+
+def test_quality_gate_rejects_excess_false_positives_and_low_recall():
+    failures = candidate_quality_gate_failures(
+        _candidate_metrics(
+            test_fpr=0.081,
+            test_recall=0.649,
+            adversarial_fpr=0.151,
+            adversarial_recall=0.599,
+        )
+    )
+    assert any("held-out false-positive rate" in failure for failure in failures)
+    assert any("held-out recall" in failure for failure in failures)
+    assert any("adversarial false-positive rate" in failure for failure in failures)
+    assert any("adversarial recall" in failure for failure in failures)
+
+
+def test_quality_gate_rejects_missing_adversarial_class():
+    metrics = _candidate_metrics()
+    metrics["adversarial_test_class_counts"] = {"safe": 500, "threat": 0}
+    failures = candidate_quality_gate_failures(metrics)
+    assert any("both safe and threat samples" in failure for failure in failures)
