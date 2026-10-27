@@ -10,9 +10,25 @@ void main() {
     AuraLocalTelemetry.configure(endpointConfigured: false);
   });
 
+  test('la telemetría local está desactivada por defecto', () async {
+    expect(await AuraLocalTelemetry.isEnabled(), isFalse);
+
+    final stored = await AuraLocalTelemetry.recordNetworkEvent(
+      <String, Object>{
+        'timestamp': 1800000000000,
+        'requested_domain': 'example.com',
+        'action': 'BLOCKED',
+      },
+    );
+
+    expect(stored, isFalse);
+    expect(await AuraLocalTelemetry.loadEvents(), isEmpty);
+  });
+
   test(
-    'registra escaneos y dominios bloqueados con marcas de tiempo',
+    'registra escaneos y dominios bloqueados solo tras habilitarla',
     () async {
+      await AuraLocalTelemetry.setEnabled(true);
       final stored = await AuraLocalTelemetry.recordNetworkEvent(
         <String, Object>{
           'timestamp': 1800000000000,
@@ -43,6 +59,7 @@ void main() {
   test(
     'no registra localmente cuando el endpoint remoto está configurado',
     () async {
+      await AuraLocalTelemetry.setEnabled(true);
       AuraLocalTelemetry.configure(endpointConfigured: true);
 
       final stored = await AuraLocalTelemetry.recordDomainOutcome(
