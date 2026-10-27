@@ -314,6 +314,8 @@ class AuraVpnService : VpnService() {
             if (!TProxyService.TProxyStartService(configFile.absolutePath, tun.fd)) {
                 return false
             }
+            tunnelStarted = true
+            verifyLocalSocks5Ready()
             val cleared = getSharedPreferences(VPN_STATE_PREFERENCES, MODE_PRIVATE)
                 .edit()
                 .putBoolean(PANIC_ISOLATION_KEY, false)
