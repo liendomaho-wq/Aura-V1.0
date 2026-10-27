@@ -22,6 +22,8 @@ Aura combina Flutter/Dart, servicios Android en Kotlin, componentes nativos C/C+
 - El commit `a3ea203` pasó `flutter analyze` y toda la suite Flutter en CI (run [40588530841](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/40588530841)).
 - El commit `bac0f41` pasó el workflow Flutter de calidad (análisis estático y pruebas) en el run [40588910406](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/40588910406).
 - El workflow de compilación Android de depuración pasó para `bac0f41`, incluyendo Kotlin/C/JNI, en el run [40588910379](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/40588910379). Esto valida compilación, no conectividad VPN en un dispositivo.
+- Se añadieron pruebas negativas de firma de modelos: firmas vacías, truncadas y fuera del rango RSA deben rechazarse.
+- El endpoint upstream SOCKS5 ya no depende de un hostname `.local` ficticio: el build lee `AURA_SOCKS5_HOST` y `AURA_SOCKS5_PORT` del entorno y falla con un mensaje explícito si faltan o son inválidos.
 
 ## Hallazgos priorizados
 
@@ -57,7 +59,9 @@ Referencias:
 
 **Impacto probable:** si no existe infraestructura externa que resuelva y sirva ese endpoint, la resolución o el saludo fallará y el servicio VPN no llegará a iniciar. El repositorio no contiene una configuración visible de ese upstream.
 
-**Acción segura:** no sustituir el hostname por `127.0.0.1` sin desplegar primero un servidor local compatible. La decisión pendiente es integrar y probar un servidor SOCKS5 local (con sockets de salida protegidos contra el bucle VPN y soporte UDP relay) o configurar un upstream real gestionado con dirección, autenticación y documentación. La validación requiere un build Android y pruebas en dispositivo/emulador con tráfico TCP/UDP; no se declara la VPN funcional hasta completarlas.
+**Mitigación aplicada:** el host y el puerto se configuran mediante `AURA_SOCKS5_HOST` y `AURA_SOCKS5_PORT` al compilar. Si faltan o el puerto no es válido, el servicio aborta con un mensaje claro en vez de intentar resolver `socks5.tun2socks.local`. Ejemplo de configuración de entorno para un despliegue: `AURA_SOCKS5_HOST=proxy.example.net` y `AURA_SOCKS5_PORT=1080` (el dominio es solo ilustrativo; no representa un servidor real).
+
+**Pendiente crítico:** todavía no hay un servidor upstream real configurado en este repositorio y no se debe usar un endpoint de ejemplo en producción. No sustituirlo por `127.0.0.1` sin desplegar un servidor local compatible. La alternativa es proporcionar un upstream real gestionado con dirección, autenticación y documentación; el código actual solo admite saludo sin autenticación. La validación requiere un build Android y pruebas en dispositivo/emulador con tráfico TCP/UDP; no se declara la VPN funcional hasta completarlas.
 
 ### P1 — VPN, DNS y firewall SNI
 
