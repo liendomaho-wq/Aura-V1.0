@@ -330,8 +330,7 @@ class AuraVpnService : VpnService() {
                 return false
             }
             tunnelStarted = false
-            localSocks5Proxy?.close()
-            localSocks5Proxy = null
+            stopLocalProxy()
             panicIsolationActive = true
             startRequested.set(false)
             reportState(false, "Aislamiento de emergencia activo; forwarding detenido.")
@@ -362,8 +361,7 @@ class AuraVpnService : VpnService() {
             writeTunnelConfig(localProxy.port)
             TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
             if (!TProxyService.TProxyStartService(configFile.absolutePath, tun.fd)) {
-                localSocks5Proxy?.close()
-                localSocks5Proxy = null
+                stopLocalProxy()
                 return false
             }
             val cleared = getSharedPreferences(VPN_STATE_PREFERENCES, MODE_PRIVATE)
@@ -387,8 +385,7 @@ class AuraVpnService : VpnService() {
             if (TProxyService.TProxyIsRunning()) {
                 TProxyService.TProxyStopService()
             }
-            localSocks5Proxy?.close()
-            localSocks5Proxy = null
+            stopLocalProxy()
             Log.e("AuraVPN", "No se pudo reanudar el forwarding del túnel.", exception)
             false
         }
