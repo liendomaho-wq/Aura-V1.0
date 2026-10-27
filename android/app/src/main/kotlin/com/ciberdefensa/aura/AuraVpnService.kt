@@ -370,8 +370,7 @@ class AuraVpnService : VpnService() {
                 .commit()
             if (!cleared) {
                 TProxyService.TProxyStopService()
-                localSocks5Proxy?.close()
-                localSocks5Proxy = null
+                stopLocalProxy()
                 return false
             }
             panicIsolationActive = false
