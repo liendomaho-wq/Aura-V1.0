@@ -11,9 +11,6 @@ on:
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/vpn-transport-tests.yml'
-  push:
-    branches:
-      - feature/local-vpn-transport
   workflow_dispatch:
 
 permissions:
