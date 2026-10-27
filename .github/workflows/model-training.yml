@@ -40,11 +40,12 @@ jobs:
         run: python tool/bench_aura_brain.py
       - name: Run golden tests
         run: python -m pytest tool/test_aura_brain.py tool/test_adversarial_split_builder.py -q
-      - name: Upload reports
+      - name: Upload reports (including rejected candidates)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: aura-model-pipeline-reports
           path: tool/reports/*
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
       # CI artifacts are unsigned candidates; release signing stays manual with tool/sign_model.py.
