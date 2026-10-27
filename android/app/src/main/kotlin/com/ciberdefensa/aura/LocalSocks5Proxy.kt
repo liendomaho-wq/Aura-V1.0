@@ -45,7 +45,6 @@ internal class LocalSocks5Proxy(
     @Volatile private var running = false
     private val workers: ExecutorService = Executors.newCachedThreadPool()
     private val activeResources = ConcurrentHashMap.newKeySet<Closeable>()
-    private val remoteUdpEndpoints = ConcurrentHashMap.newKeySet<InetSocketAddress>()
     private val closed = AtomicBoolean(false)
 
     val port: Int
@@ -92,7 +91,7 @@ internal class LocalSocks5Proxy(
                 repeat(methodsCount) {
                     if (readByte(input) == 0) noAuthOffered = true
                 }
-                output.write(byteArrayOf(5, if (noAuthOffered) 0 else 0xff.toByte()))
+                output.write(byteArrayOf(5, if (noAuthOffered) 0.toByte() else 0xff.toByte()))
                 output.flush()
                 if (!noAuthOffered) return
 
@@ -125,6 +124,7 @@ internal class LocalSocks5Proxy(
             if (!protectTcpSocket(upstream)) throw IOException("VpnService.protect(Socket) falló.")
             upstream.connect(InetSocketAddress(address, port), 10_000)
             upstream.soTimeout = 0
+            client.soTimeout = 0
             writeReply(client, 0)
             relay(client, upstream)
         } catch (_: Exception) {
@@ -164,6 +164,7 @@ internal class LocalSocks5Proxy(
             activeResources.add(relay)
             if (!protectUdpSocket(relay)) throw IOException("VpnService.protect(DatagramSocket) falló.")
             relay.soTimeout = 120_000
+            val remoteUdpEndpoints = HashSet<InetSocketAddress>()
             val advertised = InetAddress.getByName("127.0.0.1").address
             val response = byteArrayOf(5, 0, 0, ATYP_IPV4.toByte()) +
                 advertised + byteArrayOf((relay.localPort shr 8).toByte(), relay.localPort.toByte())
@@ -190,6 +191,7 @@ internal class LocalSocks5Proxy(
                     clientPort = packet.port
                     val decoded = decodeUdp(packet.data, packet.length) ?: continue
                     val remoteEndpoint = InetSocketAddress(decoded.address, decoded.port)
+                    if (remoteUdpEndpoints.size >= 1024) remoteUdpEndpoints.clear()
                     remoteUdpEndpoints.add(remoteEndpoint)
                     val outgoing = DatagramPacket(
                         decoded.payload, decoded.payload.size,
