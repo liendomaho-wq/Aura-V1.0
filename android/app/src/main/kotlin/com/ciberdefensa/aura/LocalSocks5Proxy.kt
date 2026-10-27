@@ -16,7 +16,9 @@ import java.util.HashSet
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
 /**
@@ -44,6 +46,7 @@ internal class LocalSocks5Proxy(
         private const val ATYP_DOMAIN = 3
         private const val ATYP_IPV6 = 4
         private const val MAX_UDP_PAYLOAD = 65507
+        private const val MAX_CLIENT_SESSIONS = 32
     }
 
     @Volatile private var listener: ServerSocket? = null
@@ -51,6 +54,7 @@ internal class LocalSocks5Proxy(
     private val workers: ExecutorService = Executors.newCachedThreadPool()
     private val activeResources = ConcurrentHashMap.newKeySet<Closeable>()
     private val closed = AtomicBoolean(false)
+    private val activeClientSessions = AtomicInteger(0)
 
     val port: Int
         get() = listener?.localPort ?: requestedPort
@@ -74,8 +78,19 @@ internal class LocalSocks5Proxy(
         while (running && !server.isClosed) {
             try {
                 val client = server.accept()
+                if (activeClientSessions.incrementAndGet() > MAX_CLIENT_SESSIONS) {
+                    activeClientSessions.decrementAndGet()
+                    client.close()
+                    continue
+                }
                 activeResources.add(client)
-                workers.execute { handleClient(client) }
+                try {
+                    workers.execute { handleClient(client) }
+                } catch (_: RejectedExecutionException) {
+                    activeResources.remove(client)
+                    activeClientSessions.decrementAndGet()
+                    client.close()
+                }
             } catch (_: SocketException) {
                 if (running) close()
             } catch (_: IOException) {
@@ -126,6 +141,7 @@ internal class LocalSocks5Proxy(
                 // Invalid or disconnected clients are isolated to this session.
             } finally {
                 activeResources.remove(socket)
+                activeClientSessions.decrementAndGet()
             }
         }
     }
