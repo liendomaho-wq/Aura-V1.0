@@ -19,6 +19,8 @@ import hev.htproxy.TProxyService
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.Inet6Address
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URL
