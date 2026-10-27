@@ -1607,7 +1607,7 @@ class _AuraSignalFieldPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final scale = math.min(size.width / 340, size.height / 104);
+    final double scale = math.min(size.width / 340, size.height / 104).toDouble();
     final baseColor = isActive ? _terminalCyan : _terminalYellow;
     final linePaint = Paint()
       ..style = PaintingStyle.stroke
