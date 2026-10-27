@@ -35,6 +35,10 @@ public final class TProxyService {
         return com.ciberdefensa.aura.AuraVpnService.protectSocket(socketFd);
     }
 
+    public static String resolveHostForTunnel(String hostname) {
+        return com.ciberdefensa.aura.AuraVpnService.resolveHostForTunnel(hostname);
+    }
+
     public static void dispatchDnsEvent(
             String domain, int action, String sourceAddress, int sourcePort) {
         com.ciberdefensa.aura.AuraNetworkStream.INSTANCE.emitDnsEvent(
