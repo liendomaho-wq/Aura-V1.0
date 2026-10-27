@@ -84,6 +84,76 @@ MAX_MOBILE_MODEL_BYTES = 4 * 1024 * 1024
 EXPECTED_CLASSES = {0, 1}
 MIN_TEST_ROWS_PER_CLASS = 500
 
+# Candidate gates are deliberately evaluated on untouched holdout splits.
+# Passing them is necessary, but not sufficient, for production promotion.
+MAX_HOLDOUT_FALSE_POSITIVE_RATE = 0.08
+MIN_HOLDOUT_RECALL = 0.65
+MAX_ADVERSARIAL_FALSE_POSITIVE_RATE = 0.15
+MIN_ADVERSARIAL_RECALL = 0.60
+
+
+def candidate_quality_gate_failures(metrics):
+    failures = []
+    if metrics.get("evaluation_mode") != "stratified-test-split":
+        failures.append("evaluation must use a stratified held-out test split")
+
+    test_metrics = metrics.get("test_metrics")
+    if not isinstance(test_metrics, dict):
+        failures.append("held-out test metrics are missing")
+    else:
+        fpr = test_metrics.get("false_positive_rate")
+        recall = test_metrics.get("recall")
+        if not isinstance(fpr, (int, float)) or not math.isfinite(fpr):
+            failures.append("held-out false-positive rate is invalid")
+        elif fpr > MAX_HOLDOUT_FALSE_POSITIVE_RATE:
+            failures.append(
+                f"held-out false-positive rate {fpr:.4f} exceeds "
+                f"{MAX_HOLDOUT_FALSE_POSITIVE_RATE:.2f}"
+            )
+        if not isinstance(recall, (int, float)) or not math.isfinite(recall):
+            failures.append("held-out recall is invalid")
+        elif recall < MIN_HOLDOUT_RECALL:
+            failures.append(
+                f"held-out recall {recall:.4f} is below {MIN_HOLDOUT_RECALL:.2f}"
+            )
+
+    adversarial_metrics = metrics.get("adversarial_test_metrics")
+    adversarial_counts = metrics.get("adversarial_test_class_counts")
+    if not isinstance(adversarial_metrics, dict):
+        failures.append("adversarial test metrics are missing")
+    else:
+        fpr = adversarial_metrics.get("false_positive_rate")
+        recall = adversarial_metrics.get("recall")
+        if not isinstance(fpr, (int, float)) or not math.isfinite(fpr):
+            failures.append("adversarial false-positive rate is invalid")
+        elif fpr > MAX_ADVERSARIAL_FALSE_POSITIVE_RATE:
+            failures.append(
+                f"adversarial false-positive rate {fpr:.4f} exceeds "
+                f"{MAX_ADVERSARIAL_FALSE_POSITIVE_RATE:.2f}"
+            )
+        if not isinstance(recall, (int, float)) or not math.isfinite(recall):
+            failures.append("adversarial recall is invalid")
+        elif recall < MIN_ADVERSARIAL_RECALL:
+            failures.append(
+                f"adversarial recall {recall:.4f} is below "
+                f"{MIN_ADVERSARIAL_RECALL:.2f}"
+            )
+    if not isinstance(adversarial_counts, dict) or any(
+        not isinstance(adversarial_counts.get(label), int)
+        or adversarial_counts[label] < 1
+        for label in ("safe", "threat")
+    ):
+        failures.append("adversarial test must contain both safe and threat samples")
+    return failures
+
+
+def enforce_candidate_quality_gate(metrics):
+    failures = candidate_quality_gate_failures(metrics)
+    if failures:
+        raise RuntimeError(
+            "Model candidate rejected by quality gate: " + "; ".join(failures)
+        )
+
 
 def build_model_metadata():
     return {
@@ -893,6 +963,12 @@ def main():
         "adversarial_test_metrics": adversarial_test_metrics,
     }
     write_metrics(metrics)
+    try:
+        enforce_candidate_quality_gate(metrics)
+    except RuntimeError as error:
+        print(f"QUALITY_GATE=REJECTED: {error}")
+        raise SystemExit(2) from error
+    print("QUALITY_GATE=PASSED")
     print(f"MODEL_CANDIDATE={MODEL_OUTPUT.relative_to(ROOT)}")
     print(f"METRICS_JSON={METRICS_JSON.relative_to(ROOT)}")
     print(f"METRICS_MARKDOWN={METRICS_MARKDOWN.relative_to(ROOT)}")
