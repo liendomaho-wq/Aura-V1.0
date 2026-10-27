@@ -35,18 +35,6 @@ void main() {
         'transport_protocol': 'TCP',
       });
 
-      test('maps VPN revocation through the existing native event stream', () {
-        final event = NetworkAuditEvent.fromPlatform(<String, Object>{
-          'timestamp': 1,
-          'source_app': 'android',
-          'requested_domain':
-              '[CRIT] TÚNEL REVOCADO POR ANDROID O POR EL OPERADOR',
-          'action': 'VPN_REVOKED',
-        });
-
-        expect(event.action, NetworkAuditAction.vpnRevoked);
-        expect(event.toJson()['action'], 'VPN_REVOKED');
-      });
       final directIp = NetworkAuditEvent.fromPlatform(<String, Object>{
         'timestamp': 125,
         'source_app': 'uid-unavailable',
@@ -60,6 +48,19 @@ void main() {
       expect(encryptedSni.action, NetworkAuditAction.sniEncrypted);
       expect(directIp.action, NetworkAuditAction.directIp);
     });
+
+      test('maps VPN revocation through the existing native event stream', () {
+        final event = NetworkAuditEvent.fromPlatform(<String, Object>{
+          'timestamp': 1,
+          'source_app': 'android',
+          'requested_domain':
+              '[CRIT] TÚNEL REVOCADO POR ANDROID O POR EL OPERADOR',
+          'action': 'VPN_REVOKED',
+        });
+
+        expect(event.action, NetworkAuditAction.vpnRevoked);
+        expect(event.toJson()['action'], 'VPN_REVOKED');
+      });
 
     test('preserves blocked encrypted DNS endpoint metadata', () {
       final event = NetworkAuditEvent.fromPlatform(<String, Object>{
