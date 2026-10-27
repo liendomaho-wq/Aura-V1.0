@@ -824,7 +824,7 @@ def main():
         "model_type": "random_forest",
         "training_status": "heuristic_seed" if using_seed_fallback else "heuristic_seed_with_csv",
         "training_samples": len(training_rows),
-        "csv_files": [str((DATASET_DIR / "splits/train.csv").relative_to(ROOT))],
+        "csv_files": [str((DATASET_DIR / "splits/train_adversarial.csv").relative_to(ROOT))],
         "training_config": {
             "n_estimators": 500,
             "max_depth": 10,
@@ -850,6 +850,12 @@ def main():
     if not manifest_path.is_file() and not using_seed_fallback:
         raise FileNotFoundError(f"Dataset manifest is missing: {manifest_path}")
     manifest_digest = hashlib.sha256(manifest_path.read_bytes()).hexdigest() if manifest_path.is_file() else "seed-only-no-manifest"
+    adversarial_manifest_path = DATASET_DIR / "adversarial_split_manifest.json"
+    adversarial_manifest_digest = (
+        hashlib.sha256(adversarial_manifest_path.read_bytes()).hexdigest()
+        if adversarial_manifest_path.is_file()
+        else None
+    )
     metrics = {
         "metrics_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -874,6 +880,7 @@ def main():
         },
         "training_seconds": training_seconds,
         "dataset_manifest_sha256": manifest_digest,
+        "adversarial_split_manifest_sha256": adversarial_manifest_digest,
         "metrics_model_file": str(MODEL_OUTPUT.relative_to(ROOT)),
         "validation_metrics": validation_metrics,
         "test_metrics": test_metrics,
