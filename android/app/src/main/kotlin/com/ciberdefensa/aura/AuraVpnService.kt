@@ -194,6 +194,8 @@ class AuraVpnService : VpnService() {
             TProxyService.TProxyStopService()
             tunnelStarted = false
         }
+        localSocks5Proxy?.close()
+        localSocks5Proxy = null
         reportState(false, "Túnel detenido por fallo de integridad.")
         stopSelf()
         return false
@@ -249,7 +251,7 @@ class AuraVpnService : VpnService() {
                 }
             }
             scheduleFeedRefresh()
-            reportState(true, "Túnel VPN iniciado con transporte local.")
+            reportState(true, "Túnel VPN iniciado con transporte local; la lista de amenazas puede estar desactualizada.")
             Log.i("AuraVPN", "Hev tun2socks conectado al proxy SOCKS5 local protegido.")
         } catch (e: Exception) {
             Log.e("AuraVPN", "No se pudo iniciar el escudo VPN.", e)
@@ -331,6 +333,8 @@ class AuraVpnService : VpnService() {
             localSocks5Proxy = localProxy
             TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
             if (!TProxyService.TProxyStartService(configFile.absolutePath, tun.fd)) {
+                localSocks5Proxy?.close()
+                localSocks5Proxy = null
                 return false
             }
             val cleared = getSharedPreferences(VPN_STATE_PREFERENCES, MODE_PRIVATE)
@@ -339,6 +343,8 @@ class AuraVpnService : VpnService() {
                 .commit()
             if (!cleared) {
                 TProxyService.TProxyStopService()
+                localSocks5Proxy?.close()
+                localSocks5Proxy = null
                 return false
             }
             panicIsolationActive = false
