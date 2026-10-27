@@ -6,13 +6,15 @@
 
 ## Resumen ejecutivo
 
-Aura combina Flutter/Dart, servicios Android en Kotlin, componentes nativos C/C++, una VPN local, reglas de inspección TLS SNI y un modelo local. La arquitectura tiene componentes relevantes, pero la existencia de esos componentes no demuestra cobertura de protección completa. Las prioridades iniciales son privacidad por defecto, validación automatizada, integridad de releases y pruebas de red en dispositivos.
+Aura combina Flutter/Dart, servicios Android en Kotlin, componentes nativos C/C++, una VPN local, reglas de inspección TLS SNI y un modelo local. La arquitectura tiene componentes relevantes, pero la existencia de esos componentes no demuestra cobertura de protección completa. Las prioridades iniciales son privacidad por defecto, validación automatizada, integridad de releases, minimización de permisos y pruebas de red en dispositivos.
 
 ## Cambios aplicados en esta iteración
 
 - La telemetría local ahora está **desactivada por defecto**. El usuario debe habilitarla explícitamente mediante `setEnabled(true)`.
 - Se agregaron pruebas para verificar el comportamiento opt-in y se adaptó la prueba existente para habilitar la telemetría expresamente.
 - `clearEvents()` ya no falla si la clave de preferencias no existía; la operación de borrado es idempotente.
+- El flujo de publicación Android exige `AURA_REQUIRE_RELEASE_SIGNING=true` al compilar y verificar el artefacto.
+- Se añadió un workflow para ejecutar análisis estático y pruebas Flutter en pushes y pull requests.
 
 ## Hallazgos priorizados
 
@@ -24,11 +26,23 @@ Aura combina Flutter/Dart, servicios Android en Kotlin, componentes nativos C/C+
 
 **Trabajo pendiente:** revisar la interfaz de consentimiento y la política de privacidad; determinar si el usuario entiende qué datos se guardan y durante cuánto tiempo; valorar la minimización, el borrado automático y el almacenamiento protegido para datos sensibles. No afirmar que los dominios quedan cifrados: esta modificación no cifra el almacén de eventos.
 
+### P1 — Permisos Android y elegibilidad de distribución
+
+**Observación:** `AndroidManifest.xml` declara `QUERY_ALL_PACKAGES` y `RECORD_AUDIO`. El primero permite visibilidad amplia del inventario de aplicaciones instaladas, que Android/Google Play trata como información sensible y restringe a casos de uso admisibles. La grabación de audio también requiere que la función que la necesita esté clara y que el permiso se solicite en el momento adecuado.
+
+**Recomendación:** rastrear los usos de cada permiso en Dart/Kotlin y justificar su necesidad para la función principal. Si Aura solo necesita detectar un conjunto limitado de aplicaciones, sustituir `QUERY_ALL_PACKAGES` por consultas específicas. Mantener el permiso amplio únicamente si la función principal lo requiere y puede justificarse en la declaración de Play Console. Verificar divulgación destacada y consentimiento para cualquier recopilación sensible relacionada con la VPN. No eliminar permisos sin revisar primero los flujos dependientes.
+
+Referencias:
+- Google Play, permisos y APIs con acceso a información sensible: https://support.google.com/googleplay/android-developer/answer/16558241
+- Política de visibilidad de paquetes: https://support.google.com/googleplay/android-developer/answer/10158779
+
 ### P1 — Integridad de publicación
 
 **Observación:** `tool/compile_aura.sh` permite una firma de depuración como fallback salvo que `AURA_REQUIRE_RELEASE_SIGNING=true`. Aunque el script marca el artefacto como solo de pruebas y contiene validaciones adicionales, la distribución de producción debe exigir siempre una clave de release.
 
-**Recomendación:** configurar `AURA_REQUIRE_RELEASE_SIGNING=true` en todos los jobs de publicación; fallar cerrado si faltan secretos; verificar el certificado del artefacto final y restringir publicación a tags/revisiones autorizadas. Probar el workflow con secretos ausentes y credenciales inválidas.
+**Mitigación aplicada:** el workflow Android de publicación ahora establece `AURA_REQUIRE_RELEASE_SIGNING=true` durante compilación y verificación.
+
+**Trabajo pendiente:** probar el workflow con secretos ausentes y credenciales inválidas; comprobar que el certificado del artefacto final coincide con el certificado esperado y restringir publicación a tags/revisiones autorizadas.
 
 ### P1 — VPN, DNS y firewall SNI
 
@@ -38,9 +52,11 @@ Aura combina Flutter/Dart, servicios Android en Kotlin, componentes nativos C/C+
 
 ### P1 — Calidad automatizada
 
-**Observación:** el repositorio contiene pruebas Flutter, pero la revisión de archivos seleccionados no demuestra que el análisis estático y los tests se ejecuten en cada cambio.
+**Observación:** el repositorio contiene pruebas Flutter, pero la revisión de archivos seleccionados no demuestra que el análisis estático y los tests se ejecutaran en cada cambio.
 
-**Recomendación:** automatizar `flutter analyze` y `flutter test` en pull requests y pushes a `main`; añadir pruebas nativas y análisis de dependencias. Los resultados deben ser visibles y bloquear releases si fallan.
+**Mitigación aplicada:** se añadió `.github/workflows/flutter-quality.yml` con `flutter analyze` y `flutter test` en pull requests y pushes a `main` y `principal`.
+
+**Trabajo pendiente:** confirmar el resultado de la primera ejecución y corregir cualquier fallo de análisis o pruebas. Añadir pruebas nativas y análisis de dependencias.
 
 ### P1 — Archivos generados
 
@@ -59,10 +75,11 @@ Aura combina Flutter/Dart, servicios Android en Kotlin, componentes nativos C/C+
 | Área | Evidencia requerida | Estado |
 |---|---|---|
 | Telemetría opt-in | Pruebas unitarias y revisión de UX | Cambio implementado; ejecución local no disponible en esta sesión |
-| Flutter | `flutter analyze`, `flutter test` | Pendiente de CI |
+| Flutter | `flutter analyze`, `flutter test` | Workflow añadido; primera ejecución pendiente de confirmar |
 | VPN | Pruebas instrumentadas en dispositivos/emuladores | Pendiente |
 | IPv6/DNS/TLS/QUIC | Matriz de tráfico controlado | Pendiente |
-| Firma release | Validación de APK/AAB con certificado esperado | Pendiente |
+| Firma release | Validación de APK/AAB con certificado esperado | Cambio de workflow implementado; ejecución pendiente |
+| Permisos | Justificación y revisión de divulgación/consentimiento | Pendiente |
 | Dependencias | Auditoría de vulnerabilidades y licencias | Pendiente |
 | Rendimiento | CPU, RAM, batería y latencia en equipos representativos | Pendiente |
 
