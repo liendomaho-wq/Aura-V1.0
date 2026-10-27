@@ -173,8 +173,11 @@ void main() {
             '1 alerta DGA y 1 bloqueo de DNS cifrado'),
         findsOneWidget);
     expect(find.text('8.8.8.8'), findsOneWidget);
+    await tester.ensureVisible(find.text('Ejecutar autotest'));
+    await tester.pump();
     await tester.tap(find.text('Ejecutar autotest'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(
         find.textContaining('No se generó tráfico de prueba.'), findsOneWidget);
   });
