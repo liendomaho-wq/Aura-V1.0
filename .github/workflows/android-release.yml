@@ -1,10 +1,9 @@
 name: Aura Android Release
 
 on:
+  # Publish signed artifacts only for version tags or an explicit manual run.
+  # Routine branch pushes are covered by the separate Aura Flutter Quality workflow.
   push:
-    branches:
-      - main
-      - principal
     tags:
       - 'v*'
   workflow_dispatch:
