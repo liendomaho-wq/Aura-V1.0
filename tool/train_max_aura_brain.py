@@ -94,7 +94,10 @@ MIN_ADVERSARIAL_RECALL = 0.60
 
 def candidate_quality_gate_failures(metrics):
     failures = []
-    if metrics.get("evaluation_mode") != "stratified-test-split":
+    if metrics.get("evaluation_mode") not in {
+        "stratified-test-split",
+        "stratified-test-split-serialized-mobile-model",
+    }:
         failures.append("evaluation must use a stratified held-out test split")
 
     test_metrics = metrics.get("test_metrics")
@@ -773,6 +776,12 @@ def train_mobile_preset():
         ),
     }
     write_metrics(metrics, MOBILE_METRICS_JSON, MOBILE_METRICS_MARKDOWN)
+    try:
+        enforce_candidate_quality_gate(metrics)
+    except RuntimeError as error:
+        print(f"QUALITY_GATE=REJECTED: {error}")
+        raise SystemExit(2) from error
+    print("QUALITY_GATE=PASSED")
     print(f"MODEL_PRESET={MOBILE_MODEL_OUTPUT.relative_to(ROOT)}")
     print(f"MODEL_BYTES={len(model_bytes)}")
     print(f"METRICS_JSON={MOBILE_METRICS_JSON.relative_to(ROOT)}")
