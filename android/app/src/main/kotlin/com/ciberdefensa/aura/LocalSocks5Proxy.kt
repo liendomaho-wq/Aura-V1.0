@@ -195,6 +195,7 @@ internal class LocalSocks5Proxy(
 
     private fun handleUdpAssociate(control: Socket) {
         val relay = DatagramSocket(null)
+        var associationEstablished = false
         try {
             relay.reuseAddress = false
             relay.bind(InetSocketAddress(0))
@@ -207,6 +208,7 @@ internal class LocalSocks5Proxy(
                 advertised + byteArrayOf((relay.localPort shr 8).toByte(), relay.localPort.toByte())
             control.getOutputStream().write(response)
             control.getOutputStream().flush()
+            associationEstablished = true
             control.soTimeout = 0
 
             val buffer = ByteArray(MAX_UDP_PAYLOAD)
@@ -244,7 +246,8 @@ internal class LocalSocks5Proxy(
                 }
             }
         } catch (_: Exception) {
-            // A failed UDP association must not terminate the VPN service.
+            // Report setup failures so the SOCKS client does not wait for a timeout.
+            if (!associationEstablished) writeReply(control, 1)
         } finally {
             relay.close()
             activeResources.remove(relay)
