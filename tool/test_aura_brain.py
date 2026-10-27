@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from rapidfuzz.distance import Levenshtein
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tool"))
@@ -289,6 +290,22 @@ def _candidate_metrics(
         },
         "adversarial_test_class_counts": {"safe": 500, "threat": 500},
     }
+
+
+def test_nearest_domain_search_matches_brute_force_reference():
+    for domain in (
+        "google.com",
+        "goggle.com",
+        "x7z9q1wplmnb.xyz",
+        "long-randomized-subdomain.example",
+        "short.io",
+    ):
+        expected_distance = min(
+            Levenshtein.distance(domain, common_domain)
+            for common_domain in COMMON_DOMAINS
+        )
+        expected = min(expected_distance / max(len(domain), 1), 1.0)
+        assert levenshtein_distance_to_top_domains(domain) == pytest.approx(expected)
 
 
 def test_quality_gate_accepts_candidate_at_documented_boundaries():
