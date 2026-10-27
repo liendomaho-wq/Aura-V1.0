@@ -20,6 +20,8 @@ Aura combina Flutter/Dart, servicios Android en Kotlin, componentes nativos C/C+
 - El motor de integridad ahora trata una firma de aplicación ausente o inválida como estado crítico aunque un informe nativo contradictorio indique `isSecure=true`; se añadieron pruebas unitarias para esos casos.
 - El motor de detección de root ya no interpreta el binario `su` del host Linux/macOS como evidencia de root Android.
 - El commit `a3ea203` pasó `flutter analyze` y toda la suite Flutter en CI (run [40588530841](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/40588530841)).
+- El commit `bac0f41` pasó el workflow Flutter de calidad (análisis estático y pruebas) en el run [40588910406](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/40588910406).
+- El workflow de compilación Android de depuración pasó para `bac0f41`, incluyendo Kotlin/C/JNI, en el run [40588910379](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/40588910379). Esto valida compilación, no conectividad VPN en un dispositivo.
 
 ## Hallazgos priorizados
 
@@ -81,7 +83,9 @@ Referencias:
 
 **Observación:** el código nativo intenta limpiar buffers mutables, pero esto no garantiza borrar todas las copias creadas por el runtime, JNI o el proveedor criptográfico. La autenticidad de los modelos depende de una verificación de firma y de proteger correctamente la clave privada de firma.
 
-**Recomendación:** revisar generación, almacenamiento, rotación y recuperación de claves; preferir primitivas autenticadas modernas para nuevos formatos; probar fallos de firma, truncamiento, archivos grandes y downgrade. No cambiar formatos criptográficos existentes sin un plan de migración y pruebas de compatibilidad.
+**Observación adicional:** `encryptModel`/`decryptModel` usan AES-CBC con padding PKCS#7. CBC no autentica el ciphertext por sí solo; un descifrado exitoso no prueba que el contenido no haya sido alterado. La firma RSA del modelo aporta autenticidad cuando se verifica sobre exactamente los bytes firmados, pero no debe asumirse que protege automáticamente cada payload cifrado o cada uso futuro del modelo.
+
+**Recomendación:** revisar generación, almacenamiento, rotación y recuperación de claves; preferir AES-GCM u otra construcción AEAD para un formato nuevo. Para preservar compatibilidad, no cambiar el formato actual en caliente: diseñar un formato versionado con nonce, etiqueta de autenticación y migración explícita; rechazar datos no autenticados antes de utilizarlos. Añadir pruebas de round-trip y entradas inválidas; probar fallos de firma, truncamiento, archivos grandes y downgrade.
 
 ## Matriz de validación pendiente
 
