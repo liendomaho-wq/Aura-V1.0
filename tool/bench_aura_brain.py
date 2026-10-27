@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark warm and cold JSON-forest inference on the held-out test hosts."""
+"""Benchmark the newly trained mobile candidate on held-out test hosts."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from train_max_aura_brain import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-MODEL_PATH = ROOT / "assets/model/aura_brain_model.json"
+MODEL_PATH = ROOT / "tool/reports/aura_brain_model_mobile.json"
 TEST_PATH = ROOT / "data/splits/test.csv"
 REPORT_PATH = ROOT / "tool/reports/benchmark_mobile.json"
 EXPECTED_TREE_COUNT = 500
