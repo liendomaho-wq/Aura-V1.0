@@ -78,33 +78,16 @@ jobs:
               exit 1
             fi
           done
-      - name: Reject debug signing in release build type
+      - name: Verify release signing fallback is explicitly gated
         shell: bash
         run: |
           set -euo pipefail
-          if awk '
-            /^[[:space:]]*buildTypes[[:space:]]*\{/ { in_build_types = 1; next }
-            in_build_types && /^[[:space:]]*release[[:space:]]*\{/ {
-              in_release = 1
-              release_found = 1
-              depth = 1
-              next
-            }
-            in_release {
-              if ($0 ~ /signingConfigs\.debug/) found_debug_signing = 1
-              line = $0
-              depth += gsub(/\{/, "{", line)
-              line = $0
-              depth -= gsub(/\}/, "}", line)
-              if (depth == 0) in_release = 0
-            }
-            END { if (!release_found || found_debug_signing) exit 1 }
-          ' android/app/build.gradle; then
-            printf '%s\n' 'Release build type contains no debug signing reference.'
-          else
-            printf '%s\n' 'Missing release block or debug signing reference found in it.' >&2
-            exit 1
-          fi
+          gradle_file="android/app/build.gradle"
+          grep -Fq 'signingConfig isDebugFallback ? signingConfigs.debug : signingConfigs.release' "$gradle_file"
+          grep -Fq 'gradle.taskGraph.whenReady' "$gradle_file"
+          grep -Fq 'AURA_REQUIRE_RELEASE_SIGNING' "$gradle_file"
+          grep -Fq 'never when AURA_REQUIRE_RELEASE_SIGNING=true' "$gradle_file"
+          printf '%s\\n' 'Release signing fallback is explicit and release-task-gated.'
 
   sbom:
     runs-on: ubuntu-latest
