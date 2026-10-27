@@ -219,23 +219,7 @@ class AuraVpnService : VpnService() {
             established = createVpnBuilder().establish()
                 ?: throw IOException("Android no estableció la interfaz VPN.")
 
-            val configFile = File(filesDir, "aura-hev-socks5.yml")
-            configFile.writeText(
-                """
-                tunnel:
-                  name: aura0
-                  mtu: 1500
-                  ipv4: 10.0.0.2
-                  ipv6: 'fd00::2'
-                  icmp: 'off'
-                socks5:
-                  port: ${localProxy.port}
-                  address: 127.0.0.1
-                  udp: 'udp'
-                misc:
-                  log-level: error
-                """.trimIndent(),
-            )
+            val configFile = writeTunnelConfig(localProxy.port)
 
             vpnInterface = established
             TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
@@ -269,10 +253,31 @@ class AuraVpnService : VpnService() {
 
     private fun createLocalProxy(): LocalSocks5Proxy =
         LocalSocks5Proxy(
-            requestedPort = LocalSocks5Proxy.DEFAULT_PORT,
+            requestedPort = 0,
             protectTcpSocket = { socket -> protect(socket) },
             protectUdpSocket = { socket -> protect(socket) },
         )
+
+    private fun writeTunnelConfig(localPort: Int): File {
+        val configFile = File(filesDir, "aura-hev-socks5.yml")
+        configFile.writeText(
+            """
+            tunnel:
+              name: aura0
+              mtu: 1500
+              ipv4: 10.0.0.2
+              ipv6: 'fd00::2'
+              icmp: 'off'
+            socks5:
+              port: $localPort
+              address: 127.0.0.1
+              udp: 'udp'
+            misc:
+              log-level: error
+            """.trimIndent(),
+        )
+        return configFile
+    }
 
     private fun loadCachedBlocklist() {
         val cached = getSharedPreferences(BLOCKLIST_CACHE_PREFERENCES, MODE_PRIVATE)
@@ -331,6 +336,7 @@ class AuraVpnService : VpnService() {
             val localProxy = createLocalProxy()
             localProxy.start()
             localSocks5Proxy = localProxy
+            writeTunnelConfig(localProxy.port)
             TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
             if (!TProxyService.TProxyStartService(configFile.absolutePath, tun.fd)) {
                 localSocks5Proxy?.close()
