@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:aura_mobile_defens/ai_brain.dart';
 import 'package:aura_mobile_defens/providers/aura_state_provider.dart';
 import 'package:aura_mobile_defens/secure_vault.dart';
+import 'package:aura_mobile_defens/inference/aura_ai_inference.dart'
+    as shared_features;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -26,6 +28,73 @@ void main() {
     );
     expect(
       () => compareSemverTriplets('3.0', '3.0.0'),
+      throwsFormatException,
+    );
+  });
+
+  test('accepts enhanced model feature indices when schema matches', () {
+    final model = <String, Object?>{
+      'feature_order': shared_features.AuraAIInference.enhancedFeatureOrder,
+      'trees': List<Object?>.generate(
+        500,
+        (index) => <String, Object?>{
+          'root': index == 0
+              ? <String, Object?>{
+                  'type': 'split',
+                  'feature_index': 17,
+                  'threshold': 0.5,
+                  'left': <String, Object?>{'type': 'leaf', 'value': 0},
+                  'right': <String, Object?>{'type': 'leaf', 'value': 1},
+                }
+              : <String, Object?>{'type': 'leaf', 'value': 0},
+        },
+      ),
+    };
+
+    expect(
+      AuraAIBrain.validateModelStructure(jsonEncode(model))['trees'],
+      hasLength(500),
+    );
+  });
+
+  test('rejects model feature indices outside the declared schema', () {
+    final model = <String, Object?>{
+      'feature_order': shared_features.AuraAIInference.enhancedFeatureOrder,
+      'trees': List<Object?>.generate(
+        500,
+        (index) => <String, Object?>{
+          'root': index == 0
+              ? <String, Object?>{
+                  'type': 'split',
+                  'feature_index': 18,
+                  'threshold': 0.5,
+                  'left': <String, Object?>{'type': 'leaf', 'value': 0},
+                  'right': <String, Object?>{'type': 'leaf', 'value': 1},
+                }
+              : <String, Object?>{'type': 'leaf', 'value': 0},
+        },
+      ),
+    };
+
+    expect(
+      () => AuraAIBrain.validateModelStructure(jsonEncode(model)),
+      throwsFormatException,
+    );
+  });
+
+  test('rejects non-finite-range decision thresholds', () {
+    final model = <String, Object?>{
+      'decision_threshold': 1.1,
+      'trees': List<Object?>.generate(
+        500,
+        (_) => <String, Object?>{
+          'root': <String, Object?>{'type': 'leaf', 'value': 0},
+        },
+      ),
+    };
+
+    expect(
+      () => AuraAIBrain.validateModelStructure(jsonEncode(model)),
       throwsFormatException,
     );
   });
