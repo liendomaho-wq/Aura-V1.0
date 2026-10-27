@@ -26,6 +26,8 @@
 
 #ifdef __ANDROID__
 extern int hev_jni_protect_socket (int socket_fd);
+extern int hev_jni_resolve_host (const char *hostname, char *address,
+                                 size_t address_size);
 #endif
 
 static int connect_timeout = 10000;
@@ -269,6 +271,24 @@ static int
 hev_socks5_name_resolve_name (const char *name, struct sockaddr_in6 *saddr,
                               int *family)
 {
+#ifdef __ANDROID__
+    char resolved[INET6_ADDRSTRLEN] = { 0 };
+    int res = hev_jni_resolve_host (name, resolved, sizeof (resolved));
+    if (res <= 0)
+        return -1;
+
+    res = hev_socks5_name_resolve_ipv4 (resolved, saddr);
+    if (res == 0) {
+        *family = HEV_SOCKS5_ADDR_FAMILY_IPV4;
+        return 0;
+    }
+    res = hev_socks5_name_resolve_ipv6 (resolved, saddr);
+    if (res == 0) {
+        *family = HEV_SOCKS5_ADDR_FAMILY_IPV6;
+        return 0;
+    }
+    return -1;
+#else
     struct addrinfo *result = NULL;
     struct addrinfo hints = { 0 };
     int res = 0;
@@ -311,6 +331,7 @@ hev_socks5_name_resolve_name (const char *name, struct sockaddr_in6 *saddr,
 
     freeaddrinfo (result);
     return res;
+#endif
 }
 
 int
