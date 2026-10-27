@@ -9,7 +9,6 @@ on:
       - 'tool/test_aura_brain.py'
       - 'tool/requirements-train.txt'
       - 'data/**'
-      - '.github/workflows/model-training.yml'
   push:
     branches:
       - main
