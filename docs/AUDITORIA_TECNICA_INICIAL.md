@@ -15,6 +15,9 @@ Aura combina Flutter/Dart, servicios Android en Kotlin, componentes nativos C/C+
 - `clearEvents()` ya no falla si la clave de preferencias no existía; la operación de borrado es idempotente.
 - El flujo de publicación Android exige `AURA_REQUIRE_RELEASE_SIGNING=true` al compilar y verificar el artefacto.
 - Se añadió un workflow para ejecutar análisis estático y pruebas Flutter en pushes y pull requests.
+- La ejecución de CI del commit `f956af6` terminó correctamente: análisis estático y suite Flutter aprobados (run [40587999575](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/40587999575)).
+- Se retiraron del árbol Git 26 archivos generados y se confirmó que no quedan entradas rastreadas bajo `android/.gradle/`.
+- El motor de integridad ahora trata una firma de aplicación ausente o inválida como estado crítico aunque un informe nativo contradictorio indique `isSecure=true`; se añadieron pruebas unitarias para esos casos. La nueva modificación aún debe pasar CI.
 
 ## Hallazgos priorizados
 
@@ -75,10 +78,10 @@ Referencias:
 | Área | Evidencia requerida | Estado |
 |---|---|---|
 | Telemetría opt-in | Pruebas unitarias y revisión de UX | Cambio implementado; ejecución local no disponible en esta sesión |
-| Flutter | `flutter analyze`, `flutter test` | Workflow añadido; primera ejecución pendiente de confirmar |
+| Flutter | `flutter analyze`, `flutter test` | Aprobado en run 40587999575 para commit f956af6; nuevas modificaciones deben volver a validarse |
 | VPN | Pruebas instrumentadas en dispositivos/emuladores | Pendiente |
 | IPv6/DNS/TLS/QUIC | Matriz de tráfico controlado | Pendiente |
-| Firma release | Validación de APK/AAB con certificado esperado | Cambio de workflow implementado; ejecución pendiente |
+| Firma release | Validación de APK/AAB con certificado esperado | Cambio de workflow implementado; validación real de release pendiente |
 | Permisos | Justificación y revisión de divulgación/consentimiento | Pendiente |
 | Dependencias | Auditoría de vulnerabilidades y licencias | Pendiente |
 | Rendimiento | CPU, RAM, batería y latencia en equipos representativos | Pendiente |

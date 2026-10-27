@@ -59,6 +59,9 @@ class AuraSecurityEngine {
     final adbBlocked = antiTamperingReport?['adbBlocked'] == true;
     final debuggerBlocked = antiTamperingReport?['debuggerBlocked'] == true;
     final signatureValid = antiTamperingReport?['signatureValid'] == true;
+    // Treat a missing/invalid release signature as a compromised state even
+    // if a native report incorrectly claims that the environment is secure.
+    final signatureCheckFailed = antiTamperingReport != null && !signatureValid;
     final antiTamperingFailed = antiTamperingReport?['isSecure'] == false;
     final hostileEnvironment = hostileEnvironmentReport['isHostile'] == true;
     final compromised =
@@ -67,8 +70,9 @@ class AuraSecurityEngine {
         alteredEnvironment ||
         fridaDetected ||
         adbBlocked ||
-      antiTamperingFailed ||
-      hostileEnvironment;
+        signatureCheckFailed ||
+        antiTamperingFailed ||
+        hostileEnvironment;
     final level = compromised
         ? SystemThreatLevel.critical
         : nativeCheckFailed
@@ -92,6 +96,7 @@ class AuraSecurityEngine {
       'adbEnabled': antiTamperingReport?['adbEnabled'] == true,
       'adbBlocked': adbBlocked,
       'signatureValid': signatureValid,
+      'signatureCheckFailed': signatureCheckFailed,
       'antiTamperingCheckFailed': antiTamperingFailed,
       'localDebugFallback':
           antiTamperingReport?['localDebugFallback'] == true,
