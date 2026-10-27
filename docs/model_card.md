@@ -31,6 +31,18 @@ Estas métricas describen esa evaluación y no garantizan el mismo rendimiento e
 
 El manifiesto del dataset registra 484,685 dominios: 384,775 `threat` y 99,910 `safe`. Los splits deterministas usan semilla 42: train 339,279; val 72,703; test 72,703. Las fuentes documentadas son Phishing.Database (MIT) para amenazas y Majestic Million (CC BY 3.0) como baseline seguro. Las listas crudas y los splits son artefactos regenerables, no datos versionados en el repositorio.
 
+## Estado de producción y puerta de calidad
+
+El modelo publicado 3.0.0 es un clasificador léxico acotado, no una IA general ni un detector integral de malware. Su evaluación documentada no justifica presentarlo como protección completa: el falso positivo de 10,72 % puede afectar navegación legítima y el recall de 75,89 % implica que una fracción relevante de amenazas etiquetadas no se detectó en ese conjunto. Por tanto, se considera una línea base heredada, no una certificación de seguridad.
+
+El candidato 3.1.0 se entrena desde cero con un conjunto etiquetado reconstruible y 18 características, y no sustituye al modelo activo automáticamente. El pipeline rechaza un candidato si no cumple todos estos mínimos en conjuntos separados:
+
+- Holdout real, no conjunto semilla: tasa de falsos positivos ≤ 8 % y recall de amenazas ≥ 65 %.
+- Prueba adversarial separada: tasa de falsos positivos ≤ 15 % y recall de amenazas ≥ 60 %.
+- Ambas clases presentes en la prueba adversarial.
+
+Estos límites son puertas mínimas de ingeniería, no una garantía de rendimiento de producción. El modelo candidato no se promoverá sin revisar el informe, medir rendimiento y tamaño en Android, validar integridad y firma de publicación, y completar pruebas en dispositivo. Los assets firmados actuales no se eliminan ni sustituyen sin una firma válida y una ruta de reversión.
+
 ## Limitaciones
 
 - El modelo clasifica nombres de dominio; no inspecciona contenido, formularios ni reputación completa de páginas, y no es un detector de phishing basado en contenido.
