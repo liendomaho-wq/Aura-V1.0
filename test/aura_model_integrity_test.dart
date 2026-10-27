@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:aura_mobile_defens/ai_brain.dart';
-import 'package:aura_mobile_defens/providers/aura_state_provider.dart';
-import 'package:aura_mobile_defens/secure_vault.dart';
 import 'package:aura_mobile_defens/inference/aura_ai_inference.dart'
     as shared_features;
+import 'package:aura_mobile_defens/providers/aura_state_provider.dart';
+import 'package:aura_mobile_defens/secure_vault.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

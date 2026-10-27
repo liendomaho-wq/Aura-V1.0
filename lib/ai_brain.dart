@@ -438,7 +438,8 @@ class AuraAIBrain {
       final int featureCount;
       if (featureOrder == null) {
         // Models without an explicit schema are legacy v3 (six features).
-        featureCount = shared_features.AuraAIInference.legacyFeatureOrder.length;
+        featureCount =
+            shared_features.AuraAIInference.legacyFeatureOrder.length;
       } else if (featureOrder is List &&
           _sameModelFeatureOrder(
             featureOrder,
