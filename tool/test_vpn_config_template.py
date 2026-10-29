@@ -49,6 +49,20 @@ checks = {
     "JNI protects native sockets from VPN recursion": (
         "hev_jni_protect_socket (int socket_fd)" in jni
     ),
+    "loopback SOCKS relay requires per-session RFC 1929 credentials": (
+        "MessageDigest.isEqual(suppliedUser" in proxy
+        and "MessageDigest.isEqual(suppliedPassword" in proxy
+        and "username: '$username'" in service
+        and "password: '$password'" in service
+        and "SecureRandom().nextBytes(it)" in service
+    ),
+    "UDP framing rejects lengths that cannot fit the one-byte Hev header": (
+        "headerLength !in 8..255" in proxy
+    ),
+    "TCP relay closes upstream on client reset": (
+        "A client reset must also release the upstream socket." in proxy
+        and "down.get()" in proxy
+    ),
     "the old remote threat feed is not a startup dependency": (
         "THREAT_FEED_URL" not in service and "downloadThreatFeed" not in service
     ),
