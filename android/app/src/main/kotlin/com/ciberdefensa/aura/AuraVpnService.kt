@@ -23,6 +23,7 @@ import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.security.SecureRandom
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -183,8 +184,8 @@ class AuraVpnService : VpnService() {
             descriptor = createBuilder(network).establish()
                 ?: throw IOException("Android no pudo crear la interfaz TUN.")
             tun = descriptor
-            startProxy()
-            val path = writeConfig()
+            val credentials = startProxy()
+            val path = writeConfig(credentials.first, credentials.second)
             configPath = path
             TProxyService.TProxySetBlockedIps(emptyArray())
             if (!TProxyService.TProxyStartService(path, descriptor.fd))
@@ -211,17 +212,23 @@ class AuraVpnService : VpnService() {
         }
     }
 
-    private fun startProxy() {
+    private fun startProxy(): Pair<String, String> {
+        val random = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        val username = "aura"
+        val password = random.joinToString("") { "%02x".format(it) }
         val next = AuraLocalSocks5Proxy(
             physicalNetwork = { physicalNetwork },
             protectTcp = { protect(it) },
             protectUdp = { protect(it) },
+            username = username,
+            password = password,
         )
         next.start()
         proxy = next
+        return username to password
     }
 
-    private fun writeConfig(): String {
+    private fun writeConfig(username: String, password: String): String {
         val file = java.io.File(filesDir, "aura-local-tunnel.yml")
         file.writeText(
             """
@@ -234,6 +241,8 @@ class AuraVpnService : VpnService() {
             socks5:
               port: $PROXY_PORT
               address: $PROXY_HOST
+              username: '$username'
+              password: '$password'
               udp: 'tcp'
             misc:
               log-level: error
@@ -342,8 +351,8 @@ class AuraVpnService : VpnService() {
         val network = physicalNetwork ?: findPhysicalNetwork() ?: return false
         return try {
             physicalNetwork = network
-            startProxy()
-            val path = configPath ?: writeConfig().also { configPath = it }
+            val credentials = startProxy()
+            val path = writeConfig(credentials.first, credentials.second).also { configPath = it }
             TProxyService.TProxySetBlockedIps(emptyArray())
             if (!TProxyService.TProxyStartService(path, descriptor.fd))
                 throw IOException("No se pudo reanudar el motor TUN.")
@@ -386,8 +395,8 @@ class AuraVpnService : VpnService() {
             tun?.close()
             tun = createBuilder(network).establish()
                 ?: throw IOException("No se pudo recrear la interfaz TUN.")
-            startProxy()
-            val path = writeConfig(); configPath = path
+            val credentials = startProxy()
+            val path = writeConfig(credentials.first, credentials.second); configPath = path
             TProxyService.TProxySetBlockedIps(emptyArray())
             if (!TProxyService.TProxyStartService(path, tun!!.fd))
                 throw IOException("No se pudo reiniciar el motor.")
