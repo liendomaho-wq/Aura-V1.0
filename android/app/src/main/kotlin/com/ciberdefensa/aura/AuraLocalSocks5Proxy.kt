@@ -133,14 +133,14 @@ internal class AuraLocalSocks5Proxy(
         try {
             val network = physicalNetwork() ?: throw IOException("No physical network")
             val address = resolve(network, host)
-            outbound = Socket()
-            if (!protectTcp(outbound)) throw IOException("Could not protect outbound TCP socket")
-            network.bindSocket(outbound)
-            outbound.tcpNoDelay = true
-            outbound.connect(InetSocketAddress(address, destinationPort), 12_000)
+            val remote = Socket()
+            outbound = remote
+            if (!protectTcp(remote)) throw IOException("Could not protect outbound TCP socket")
+            network.bindSocket(remote)
+            remote.tcpNoDelay = true
+            remote.connect(InetSocketAddress(address, destinationPort), 12_000)
             client.soTimeout = 0
             writeReply(output, 0)
-            val remote = outbound
             val up = workers.submit {
                 copyStream(input, remote.getOutputStream())
                 try { remote.shutdownOutput() } catch (_: Exception) { }
