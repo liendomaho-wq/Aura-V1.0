@@ -147,6 +147,10 @@ class AuraVpnService : VpnService() {
     private fun startTunnel() {
         var descriptor: ParcelFileDescriptor? = null
         try {
+            val integrity = AuraAntiTampering.inspect(this)
+            if (integrity["isSecure"] != true) {
+                throw IOException("La comprobación de integridad de Aura no fue superada.")
+            }
             val network = findPhysicalNetwork()
                 ?: throw IOException("No se encontró una red física con Internet.")
             physicalNetwork = network
