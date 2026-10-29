@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - principal
+      - rebuild/local-vpn-engine
   pull_request:
     branches:
       - main
