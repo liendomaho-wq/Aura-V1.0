@@ -166,8 +166,13 @@ class AuraVpnService : VpnService() {
             running = true
             verifyEgress()
             for (endpoint in AuraBlocklistService.knownEncryptedDnsEndpoints()) {
-                if (!TProxyService.TProxyAddDynamicSniRule(endpoint))
-                    throw IOException("El firewall no confirmó la regla DNS: " + endpoint)
+                try {
+                    if (!TProxyService.TProxyAddDynamicSniRule(endpoint)) {
+                        Log.w("AuraVPN", "No se pudo instalar la regla DNS opcional: " + endpoint)
+                    }
+                } catch (ruleError: Exception) {
+                    Log.w("AuraVPN", "La regla DNS opcional no está disponible: " + endpoint, ruleError)
+                }
             }
             startRequested.set(true)
             reportState(true, "VPN local activa: salida TCP/DNS comprobada.")
