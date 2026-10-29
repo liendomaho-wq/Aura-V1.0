@@ -141,15 +141,20 @@ internal class AuraLocalSocks5Proxy(
             client.soTimeout = 0
             writeReply(output, 0)
             val remote = outbound
-            val up = workers.submit { copyStream(input, remote.getOutputStream(), remote, true) }
-            val down = workers.submit { copyStream(remote.getInputStream(), output, remote, false) }
-            try { up.get() } finally {
+            val up = workers.submit {
+                copyStream(input, remote.getOutputStream())
                 try { remote.shutdownOutput() } catch (_: Exception) { }
-                try { client.shutdownInput() } catch (_: Exception) { }
-                down.cancel(true)
             }
+            val down = workers.submit {
+                copyStream(remote.getInputStream(), output)
+                try { client.shutdownOutput() } catch (_: Exception) { }
+            }
+            up.get()
+            down.get()
         } catch (error: Exception) {
-            try { writeReply(output, 1) } catch (_: Exception) { }
+            if (outbound == null || !outbound.isConnected) {
+                try { writeReply(output, 1) } catch (_: Exception) { }
+            }
             throw error
         } finally {
             try { outbound?.close() } catch (_: Exception) { }
@@ -159,24 +164,13 @@ internal class AuraLocalSocks5Proxy(
     private fun copyStream(
         source: java.io.InputStream,
         destination: java.io.OutputStream,
-        socket: Socket,
-        outboundDirection: Boolean,
     ) {
         val buffer = ByteArray(32 * 1024)
-        try {
-            while (true) {
-                val count = source.read(buffer)
-                if (count < 0) break
-                destination.write(buffer, 0, count)
-                destination.flush()
-            }
-        } catch (_: Exception) {
-        } finally {
-            if (outboundDirection) {
-                try { socket.shutdownOutput() } catch (_: Exception) { }
-            } else {
-                try { socket.shutdownInput() } catch (_: Exception) { }
-            }
+        while (true) {
+            val count = source.read(buffer)
+            if (count < 0) return
+            destination.write(buffer, 0, count)
+            destination.flush()
         }
     }
 
@@ -268,9 +262,13 @@ internal class AuraLocalSocks5Proxy(
 
     private fun resolve(network: Network, host: String): InetAddress {
         return try {
-            InetAddress.getByName(host).takeIf { host == it.hostAddress || host.contains(':') || host.matches(Regex("^(?:\\d{1,3}\\.){3}\\d{1,3}$")) }
-                ?: network.getAllByName(host).firstOrNull()
-                ?: throw IOException("DNS resolution returned no addresses for $host")
+            val isIpv4 = host.matches(Regex("^(?:\\d{1,3}\\.){3}\\d{1,3}$"))
+            if (isIpv4 || host.contains(':')) {
+                InetAddress.getByName(host)
+            } else {
+                network.getAllByName(host).firstOrNull()
+                    ?: throw IOException("DNS resolution returned no addresses for $host")
+            }
         } catch (error: Exception) {
             throw IOException("Could not resolve $host on the physical network", error)
         }
