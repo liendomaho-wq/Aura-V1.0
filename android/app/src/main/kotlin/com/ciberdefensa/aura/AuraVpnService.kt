@@ -210,7 +210,19 @@ class AuraVpnService : VpnService() {
         try {
             underlyingNetwork = findUnderlyingNetwork()
                 ?: throw IOException("No se encontró una red física de salida para el túnel.")
-            replaceBlockedIps(downloadThreatFeed())
+            // The local firewall must start even when the optional threat feed is offline.
+            // An empty feed means no remote IP indicators are loaded; local DNS/SNI rules
+            // and the tunnel remain available.
+            try {
+                replaceBlockedIps(downloadThreatFeed())
+            } catch (feedError: Exception) {
+                replaceBlockedIps(emptySet())
+                Log.w(
+                    "AuraVPN",
+                    "Feed remoto no disponible; se inicia con protección local y sin IPs del feed.",
+                    feedError,
+                )
+            }
 
             established = createVpnBuilder().establish()
                 ?: throw IOException("Android no estableció la interfaz VPN.")
@@ -403,40 +415,64 @@ class AuraVpnService : VpnService() {
     }
 
     private fun verifyLocalSocks5Ready() {
-        val deadline = android.os.SystemClock.elapsedRealtime() + 5000
+        val deadline = android.os.SystemClock.elapsedRealtime() + 15000
         var lastFailure: Exception? = null
         while (android.os.SystemClock.elapsedRealtime() < deadline) {
             try {
                 Socket().use { socket ->
                     socket.connect(
                         InetSocketAddress(LOCAL_SOCKS5_HOST, LOCAL_SOCKS5_PORT),
-                        250,
+                        1000,
                     )
-                    socket.soTimeout = 500
-                    socket.getOutputStream().write(byteArrayOf(5, 1, 0))
-                    socket.getOutputStream().flush()
-                    val response = ByteArray(2)
-                    var offset = 0
-                    while (offset < response.size) {
-                        val count = socket.getInputStream().read(
-                            response,
-                            offset,
-                            response.size - offset,
-                        )
-                        if (count < 0) throw IOException("El proxy SOCKS5 local cerró el saludo.")
-                        offset += count
-                    }
-                    if (response[0].toInt() != 5 || response[1].toInt() != 0) {
+                    socket.soTimeout = 5000
+                    val output = socket.getOutputStream()
+                    val input = socket.getInputStream()
+
+                    // SOCKS5 no-authentication negotiation.
+                    output.write(byteArrayOf(5, 1, 0))
+                    output.flush()
+                    val greeting = ByteArray(2)
+                    readFully(input, greeting)
+                    if (greeting[0].toInt() != 5 || greeting[1].toInt() != 0) {
                         throw IOException("El proxy SOCKS5 local rechazó la negociación.")
+                    }
+
+                    // A real CONNECT probe verifies DNS resolution, protected outbound
+                    // sockets and the physical network path, not merely the listener.
+                    val host = "example.com".toByteArray(Charsets.US_ASCII)
+                    output.write(byteArrayOf(5, 1, 0, 3, host.size.toByte()))
+                    output.write(host)
+                    output.write(byteArrayOf(1, -69)) // TCP/443
+                    output.flush()
+
+                    val responseHeader = ByteArray(4)
+                    readFully(input, responseHeader)
+                    if (responseHeader[0].toInt() != 5 || responseHeader[1].toInt() != 0) {
+                        throw IOException(
+                            "El proxy SOCKS5 no pudo abrir una conexión TCP real (REP=" +
+                                responseHeader[1].toInt() + ").",
+                        )
                     }
                 }
                 return
             } catch (exception: Exception) {
                 lastFailure = exception
-                Thread.sleep(100)
+                Thread.sleep(250)
             }
         }
-        throw IOException("El proxy SOCKS5 local no quedó listo; túnel detenido.", lastFailure)
+        throw IOException(
+            "La VPN arrancó, pero falló la prueba de salida TCP/DNS por el proxy local.",
+            lastFailure,
+        )
+    }
+
+    private fun readFully(input: java.io.InputStream, buffer: ByteArray) {
+        var offset = 0
+        while (offset < buffer.size) {
+            val count = input.read(buffer, offset, buffer.size - offset)
+            if (count < 0) throw IOException("El proxy SOCKS5 cerró la conexión durante la prueba.")
+            offset += count
+        }
     }
 
     private fun downloadThreatFeed(): Set<String> {
