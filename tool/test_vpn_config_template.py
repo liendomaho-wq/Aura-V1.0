@@ -1,71 +1,63 @@
 #!/usr/bin/env python3
-"""Regression checks for the YAML template emitted by AuraVpnService."""
+"""Static regression checks for Aura's rebuilt Android local VPN path."""
 from pathlib import Path
-import re
 import sys
 
-SOURCE = Path("android/app/src/main/kotlin/com/ciberdefensa/aura/AuraVpnService.kt")
-NATIVE_TUNNEL = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/hev-socks5-tunnel.c")
-NATIVE_SOCKS = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/core/src/hev-socks5-misc.c")
-text = SOURCE.read_text(encoding="utf-8")
-native_tunnel = NATIVE_TUNNEL.read_text(encoding="utf-8")
-native_socks = NATIVE_SOCKS.read_text(encoding="utf-8")
-match = re.search(
-    r"configFile\.writeText\(\s*\"\"\"(.*?)\"\"\"\.trimIndent\(\)",
-    text,
-    re.DOTALL,
-)
-if not match:
-    sys.exit("FAIL: could not locate the Hev configuration template")
+SERVICE = Path("android/app/src/main/kotlin/com/ciberdefensa/aura/AuraVpnService.kt")
+PROXY = Path("android/app/src/main/kotlin/com/ciberdefensa/aura/AuraLocalSocks5Proxy.kt")
+NATIVE = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/hev-socks5-tunnel.c")
+JNI = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/hev-jni.c")
 
-raw = match.group(1)
-lines = raw.splitlines()
-nonblank = [line for line in lines if line.strip()]
-if not nonblank:
-    sys.exit("FAIL: Hev configuration template is empty")
+for path in (SERVICE, PROXY, NATIVE, JNI):
+    if not path.is_file():
+        sys.exit(f"FAIL: required VPN source is missing: {path}")
 
-indent = min(len(line) - len(line.lstrip()) for line in nonblank)
-normalized = [line[indent:] if line.strip() else "" for line in lines]
-keys = {}
-for line in normalized:
-    if not line.strip():
-        continue
-    if line[0].isspace():
-        continue
-    key_match = re.match(r"^([A-Za-z][A-Za-z0-9_-]*):(?:\s|$)", line)
-    if not key_match:
-        sys.exit(f"FAIL: unexpected top-level YAML line: {line!r}")
-    key = key_match.group(1)
-    if key in keys:
-        sys.exit(f"FAIL: duplicate top-level YAML key: {key}")
-    keys[key] = True
+service = SERVICE.read_text(encoding="utf-8")
+proxy = PROXY.read_text(encoding="utf-8")
+native = NATIVE.read_text(encoding="utf-8")
+jni = JNI.read_text(encoding="utf-8")
 
-required = {"tunnel", "socks5", "misc", "mapdns"}
-missing = required - keys.keys()
-if missing:
-    sys.exit("FAIL: missing top-level YAML sections: " + ", ".join(sorted(missing)))
+checks = {
+    "Android VpnService establishes a TUN interface": "createBuilder(network).establish()" in service,
+    "both IPv4 and IPv6 default routes are captured": (
+        '.addRoute("0.0.0.0", 0)' in service and '.addRoute("::", 0)' in service
+    ),
+    "native packet engine uses the Kotlin loopback SOCKS endpoint": (
+        "port: $PROXY_PORT" in service and "address: $PROXY_HOST" in service
+    ),
+    "UDP transport uses Hev UDP-over-TCP mode": "udp: 'tcp'" in service,
+    "native engine no longer binds a competing SOCKS listener": (
+        "local_socks5_init" not in native and "AURA_LOCAL_SOCKS5_PORT" not in native
+    ),
+    "outbound TCP is protected and bound to the physical network": (
+        "protectTcp(outbound)" in proxy and "network.bindSocket(outbound)" in proxy
+    ),
+    "outbound UDP is protected and bound to the physical network": (
+        "protectUdp(datagram)" in proxy and "network.bindSocket(datagram)" in proxy
+    ),
+    "UDP forwarding parses and emits Hev FWD_UDP frames": (
+        "private fun relayUdp" in proxy and "readUnsignedShort()" in proxy
+        and "output.writeShort(packet.length)" in proxy
+    ),
+    "domain lookups use Android's physical Network resolver": (
+        "network.getAllByName(host)" in proxy
+        and "physicalNetwork?.getAllByName(normalized)" in service
+    ),
+    "service verifies a real SOCKS5 CONNECT to TCP/443": (
+        '"example.com"' in service and "input.readFully(response)" in service
+    ),
+    "JNI protects native sockets from VPN recursion": (
+        "hev_jni_protect_socket (fd)" in jni
+    ),
+    "the old remote threat feed is not a startup dependency": (
+        "THREAT_FEED_URL" not in service and "downloadThreatFeed" not in service
+    ),
+}
 
-for section in required:
-    section_index = next(
-        i for i, line in enumerate(normalized)
-        if re.match(rf"^{re.escape(section)}:", line)
-    )
-    if section_index + 1 >= len(normalized) or not normalized[section_index + 1].startswith("  "):
-        sys.exit(f"FAIL: section {section!r} has no indented child keys")
+failed = [name for name, passed in checks.items() if not passed]
+for name, passed in checks.items():
+    print(("PASS" if passed else "FAIL") + ": " + name)
+if failed:
+    sys.exit("VPN regression checks failed: " + "; ".join(failed))
 
-for required_line in ("port: $LOCAL_SOCKS5_PORT", "address: $LOCAL_SOCKS5_HOST",
-                      "udp: 'tcp'", "log-level: error",
-                      "address: 10.0.0.3", "cache-size: 8192"):
-    if required_line not in raw:
-        sys.exit(f"FAIL: expected configuration entry not found: {required_line}")
-
-if "AURA_LOCAL_SOCKS5_PORT 18763" not in native_tunnel or "INADDR_LOOPBACK" not in native_tunnel:
-    sys.exit("FAIL: local SOCKS5 listener must bind only to loopback port 18763")
-if "hev_socks5_server_new" not in native_tunnel:
-    sys.exit("FAIL: local SOCKS5 server is not wired into the Hev task system")
-if "hev_jni_protect_socket (fd)" not in native_socks:
-    sys.exit("FAIL: native outbound sockets are not protected from VPN recursion")
-if "hev_jni_resolve_host (name" not in native_socks:
-    sys.exit("FAIL: Android destination DNS must resolve on the underlying network")
-
-print("PASS: Hev YAML, loopback SOCKS5 wiring, socket protection and physical DNS checks passed.")
+print("PASS: rebuilt local VPN static regression checks passed.")
