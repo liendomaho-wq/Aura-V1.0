@@ -68,4 +68,13 @@ if "hev_jni_protect_socket (fd)" not in native_socks:
 if "hev_jni_resolve_host (name" not in native_socks:
     sys.exit("FAIL: Android destination DNS must resolve on the underlying network")
 
-print("PASS: Hev YAML, loopback SOCKS5 wiring, socket protection and physical DNS checks passed.")
+if "try {\n                replaceBlockedIps(downloadThreatFeed())" not in text:
+    sys.exit("FAIL: the optional threat feed must not be a hard startup dependency")
+if "private fun verifyLocalSocks5Ready()" not in text or '"example.com"' not in text:
+    sys.exit("FAIL: VPN health check must exercise a real SOCKS5 CONNECT destination")
+if "readFully(input, responseHeader)" not in text:
+    sys.exit("FAIL: VPN health check must read the complete SOCKS5 CONNECT response header")
+if "Túnel VPN iniciado." not in text:
+    sys.exit("FAIL: successful start status must only be emitted after the egress health check")
+
+print("PASS: Hev YAML, protected loopback SOCKS5, physical DNS, optional feed and real TCP egress checks passed.")
