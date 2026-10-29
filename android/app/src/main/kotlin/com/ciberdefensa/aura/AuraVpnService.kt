@@ -20,6 +20,7 @@ import com.aura.cyberdefense.AuraNotificationService
 import hev.htproxy.TProxyService
 import java.io.DataInputStream
 import java.io.IOException
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.Executors
@@ -274,7 +275,13 @@ class AuraVpnService : VpnService() {
         if (normalized.isBlank() || normalized.length > 253 ||
             normalized.any { it.isWhitespace() || it == '/' }) return null
         return try {
-            physicalNetwork?.getAllByName(normalized)?.firstOrNull()?.hostAddress?.substringBefore('%')
+            val isIpv4 = normalized.matches(Regex("^(?:\\d{1,3}\\.){3}\\d{1,3}$"))
+            if (isIpv4 || normalized.contains(':')) {
+                InetAddress.getByName(normalized).hostAddress?.substringBefore('%')
+            } else {
+                physicalNetwork?.getAllByName(normalized)?.firstOrNull()
+                    ?.hostAddress?.substringBefore('%')
+            }
         } catch (error: Exception) {
             Log.w("AuraVPN", "Physical DNS resolution failed.", error)
             null
