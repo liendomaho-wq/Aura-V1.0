@@ -47,7 +47,7 @@ checks = {
         '"example.com"' in service and "input.readFully(response)" in service
     ),
     "JNI protects native sockets from VPN recursion": (
-        "hev_jni_protect_socket (fd)" in jni
+        "hev_jni_protect_socket (int socket_fd)" in jni
     ),
     "the old remote threat feed is not a startup dependency": (
         "THREAT_FEED_URL" not in service and "downloadThreatFeed" not in service
