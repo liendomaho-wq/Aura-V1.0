@@ -1071,7 +1071,6 @@ hev_socks5_tunnel_stop (void)
     int res;
 
     LOG_D ("socks5 tunnel stop");
-    local_socks5_stop ();
 
 retry:
     res = atomic_fetch_or (&tsync, SYNC_WAIT);
