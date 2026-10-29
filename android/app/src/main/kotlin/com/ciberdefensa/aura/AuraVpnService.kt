@@ -8,6 +8,7 @@ import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.Handler
@@ -85,16 +86,29 @@ class AuraVpnService : VpnService() {
             val caps = cm.getNetworkCapabilities(network) ?: return
             if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
                 caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return
+            val replacement = findPhysicalNetwork() ?: network
             val old = physicalNetwork
-            if (old == null) physicalNetwork = network
-            else if (old != network && running) worker.execute { restartOnNetwork(network) }
+            if (old == null) {
+                if (running) worker.execute { restartOnNetwork(replacement) }
+                else physicalNetwork = replacement
+            } else if (old != replacement && running) {
+                worker.execute { restartOnNetwork(replacement) }
+            }
         }
         override fun onLost(network: Network) {
-            if (physicalNetwork == network) {
+            if (physicalNetwork == network && running) {
                 physicalNetwork = null
-                if (running) {
-                    reportState(false, "Se perdió la red física; VPN detenida por seguridad.")
-                    worker.execute { stopResources() }
+                reportState(false, "Red física desconectada; buscando una ruta de salida.")
+                worker.execute {
+                    try { Thread.sleep(750) } catch (_: InterruptedException) { return@execute }
+                    val replacement = findPhysicalNetwork()
+                    if (replacement != null) {
+                        restartOnNetwork(replacement)
+                    } else {
+                        stopResources()
+                        reportState(false, "No hay red física disponible; VPN detenida.")
+                        stopSelf()
+                    }
                 }
             }
         }
@@ -105,7 +119,12 @@ class AuraVpnService : VpnService() {
         activeService = this
         panic = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PANIC_KEY, false)
         try {
-            getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(networkCallback)
+            getSystemService(ConnectivityManager::class.java).registerNetworkCallback(
+                NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .build(),
+                networkCallback,
+            )
             callbackRegistered = true
         } catch (error: Exception) {
             Log.w("AuraVPN", "Network callback unavailable.", error)
