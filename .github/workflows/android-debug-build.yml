@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - principal
+      - rebuild/vpn-from-zero
   pull_request:
     branches:
       - main

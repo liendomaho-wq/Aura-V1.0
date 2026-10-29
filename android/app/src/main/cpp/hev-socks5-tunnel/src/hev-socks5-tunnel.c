@@ -45,7 +45,6 @@
 #include "hev-config-const.h"
 #include "hev-socks5-session-tcp.h"
 #include "hev-socks5-session-udp.h"
-#include "hev-socks5-server.h"
 
 #include "hev-socks5-tunnel.h"
 
@@ -96,202 +95,6 @@ static HevTask *task_event;
 static HevTask *task_lwip_io;
 static HevTask *task_lwip_timer;
 static HevList session_set;
-
-/* Loopback-only SOCKS5 endpoint; UDP packets use Hev's UDP-over-TCP mode. */
-#define AURA_LOCAL_SOCKS5_PORT 18763
-
-typedef struct _AuraLocalSocks5Session AuraLocalSocks5Session;
-struct _AuraLocalSocks5Session {
-    int fd;
-    HevSocks5Server *server;
-    AuraLocalSocks5Session *next;
-};
-
-static atomic_int local_socks5_running = ATOMIC_VAR_INIT (0);
-static atomic_int local_socks5_accept_started = ATOMIC_VAR_INIT (0);
-static atomic_int local_socks5_listener_fd = ATOMIC_VAR_INIT (-1);
-static HevTask *local_socks5_accept_task;
-static AuraLocalSocks5Session *local_socks5_sessions;
-static pthread_mutex_t local_socks5_sessions_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-static void local_socks5_stop (void);
-
-static void
-local_socks5_session_entry (void *data)
-{
-    AuraLocalSocks5Session *session = data;
-    AuraLocalSocks5Session **cursor;
-
-    hev_socks5_server_run (session->server);
-
-    pthread_mutex_lock (&local_socks5_sessions_mutex);
-    cursor = &local_socks5_sessions;
-    while (*cursor && *cursor != session)
-        cursor = &(*cursor)->next;
-    if (*cursor == session)
-        *cursor = session->next;
-    pthread_mutex_unlock (&local_socks5_sessions_mutex);
-
-    hev_object_unref (HEV_OBJECT (session->server));
-    free (session);
-}
-
-static void
-local_socks5_accept_entry (void *data)
-{
-    HevTask *task = hev_task_self ();
-    int listener_fd;
-    int registered = 0;
-
-    (void)data;
-    atomic_store_explicit (&local_socks5_accept_started, 1, memory_order_release);
-    listener_fd = atomic_load_explicit (&local_socks5_listener_fd, memory_order_acquire);
-    if (listener_fd < 0)
-        return;
-
-    if (hev_task_add_fd (task, listener_fd, POLLIN) < 0)
-        goto exit;
-    registered = 1;
-
-    while (atomic_load_explicit (&local_socks5_running, memory_order_acquire)) {
-        struct sockaddr_storage peer;
-        socklen_t peer_len = sizeof (peer);
-        int client_fd = accept (listener_fd, (struct sockaddr *)&peer, &peer_len);
-        if (client_fd < 0) {
-            if (errno == EINTR)
-                continue;
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                hev_task_yield (HEV_TASK_WAITIO);
-                continue;
-            }
-            break;
-        }
-
-        if (!atomic_load_explicit (&local_socks5_running, memory_order_acquire)) {
-            close (client_fd);
-            break;
-        }
-
-        int flags = fcntl (client_fd, F_GETFL, 0);
-        if (flags < 0 || fcntl (client_fd, F_SETFL, flags | O_NONBLOCK) < 0) {
-            close (client_fd);
-            continue;
-        }
-
-        HevSocks5Server *server = hev_socks5_server_new (client_fd);
-        AuraLocalSocks5Session *session = calloc (1, sizeof (*session));
-        HevTask *client_task = hev_task_new (-1);
-        if (!server || !session || !client_task) {
-            if (server)
-                hev_object_unref (HEV_OBJECT (server));
-            else
-                close (client_fd);
-            free (session);
-            if (client_task)
-                hev_task_unref (client_task);
-            continue;
-        }
-
-        session->fd = client_fd;
-        session->server = server;
-        pthread_mutex_lock (&local_socks5_sessions_mutex);
-        if (!atomic_load_explicit (&local_socks5_running, memory_order_acquire)) {
-            pthread_mutex_unlock (&local_socks5_sessions_mutex);
-            hev_object_unref (HEV_OBJECT (server));
-            hev_task_unref (client_task);
-            free (session);
-            break;
-        }
-        session->next = local_socks5_sessions;
-        local_socks5_sessions = session;
-        pthread_mutex_unlock (&local_socks5_sessions_mutex);
-
-        hev_task_run (client_task, local_socks5_session_entry, session);
-    }
-
-exit:
-    if (registered)
-        hev_task_del_fd (task, listener_fd);
-    {
-        int expected = listener_fd;
-        if (atomic_compare_exchange_strong_explicit (
-                &local_socks5_listener_fd, &expected, -1,
-                memory_order_acq_rel, memory_order_acquire))
-            close (listener_fd);
-    }
-    atomic_store_explicit (&local_socks5_running, 0, memory_order_release);
-}
-
-static int
-local_socks5_init (void)
-{
-    struct sockaddr_in address = { 0 };
-    int one = 1;
-    int fd;
-    int flags;
-    HevTask *task;
-
-    fd = socket (AF_INET, SOCK_STREAM, 0);
-    if (fd < 0)
-        return -1;
-
-    setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof (one));
-    flags = fcntl (fd, F_GETFL, 0);
-    if (flags < 0 || fcntl (fd, F_SETFL, flags | O_NONBLOCK) < 0) {
-        close (fd);
-        return -1;
-    }
-
-    address.sin_family = AF_INET;
-    address.sin_port = htons (AURA_LOCAL_SOCKS5_PORT);
-    address.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
-    if (bind (fd, (struct sockaddr *)&address, sizeof (address)) < 0 ||
-        listen (fd, 64) < 0) {
-        close (fd);
-        return -1;
-    }
-
-    task = hev_task_new (-1);
-    if (!task) {
-        close (fd);
-        return -1;
-    }
-
-    atomic_store_explicit (&local_socks5_listener_fd, fd, memory_order_release);
-    atomic_store_explicit (&local_socks5_accept_started, 0, memory_order_release);
-    atomic_store_explicit (&local_socks5_running, 1, memory_order_release);
-    local_socks5_accept_task = task;
-    hev_task_run (task, local_socks5_accept_entry, NULL);
-    return 0;
-}
-
-static void
-local_socks5_stop (void)
-{
-    AuraLocalSocks5Session *session;
-    int was_running = atomic_exchange_explicit (
-        &local_socks5_running, 0, memory_order_acq_rel);
-
-    if (was_running && local_socks5_accept_task) {
-        if (!atomic_load_explicit (&local_socks5_accept_started, memory_order_acquire)) {
-            int fd = atomic_exchange_explicit (
-                &local_socks5_listener_fd, -1, memory_order_acq_rel);
-            if (fd >= 0)
-                close (fd);
-        } else {
-            int fd = atomic_load_explicit (
-                &local_socks5_listener_fd, memory_order_acquire);
-            if (fd >= 0)
-                shutdown (fd, SHUT_RDWR);
-        }
-        hev_task_wakeup (local_socks5_accept_task);
-    }
-
-    pthread_mutex_lock (&local_socks5_sessions_mutex);
-    for (session = local_socks5_sessions; session; session = session->next)
-        shutdown (session->fd, SHUT_RDWR);
-    pthread_mutex_unlock (&local_socks5_sessions_mutex);
-}
 
 static int
 compare_ipv4 (const void *left, const void *right)
@@ -1202,12 +1005,6 @@ hev_socks5_tunnel_init (int tun_fd)
     if (res < 0)
         goto exit;
 
-    res = local_socks5_init ();
-    if (res < 0) {
-        LOG_E ("local SOCKS5 listener on 127.0.0.1:%d failed", AURA_LOCAL_SOCKS5_PORT);
-        goto exit;
-    }
-
     signal (SIGPIPE, SIG_IGN);
 
     hev_task_mutex_init (&mutex);
@@ -1225,7 +1022,6 @@ void
 hev_socks5_tunnel_fini (void)
 {
     LOG_D ("socks5 tunnel fini");
-    local_socks5_stop ();
 
 retry:
     if (atomic_fetch_and (&tsync, ~(SYNC_SEND | SYNC_SENT)) & SYNC_WAIT) {
@@ -1275,7 +1071,6 @@ hev_socks5_tunnel_stop (void)
     int res;
 
     LOG_D ("socks5 tunnel stop");
-    local_socks5_stop ();
 
 retry:
     res = atomic_fetch_or (&tsync, SYNC_WAIT);
