@@ -100,14 +100,20 @@ class AuraVpnService : VpnService() {
                 physicalNetwork = null
                 reportState(false, "Red física desconectada; buscando una ruta de salida.")
                 worker.execute {
-                    try { Thread.sleep(750) } catch (_: InterruptedException) { return@execute }
-                    val replacement = findPhysicalNetwork()
-                    if (replacement != null) {
-                        restartOnNetwork(replacement)
-                    } else {
-                        stopResources()
-                        reportState(false, "No hay red física disponible; VPN detenida.")
-                        stopSelf()
+                    try {
+                        Thread.sleep(750)
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                    }
+                    if (!Thread.currentThread().isInterrupted) {
+                        val replacement = findPhysicalNetwork()
+                        if (replacement != null) {
+                            restartOnNetwork(replacement)
+                        } else {
+                            stopResources()
+                            reportState(false, "No hay red física disponible; VPN detenida.")
+                            stopSelf()
+                        }
                     }
                 }
             }
