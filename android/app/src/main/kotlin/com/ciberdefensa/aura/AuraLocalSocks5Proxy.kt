@@ -15,6 +15,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -32,6 +33,8 @@ internal class AuraLocalSocks5Proxy(
     private val physicalNetwork: () -> Network?,
     private val protectTcp: (Socket) -> Boolean,
     private val protectUdp: (DatagramSocket) -> Boolean,
+    private val username: String,
+    private val password: String,
     private val port: Int = 18763,
 ) {
     private val running = AtomicBoolean(false)
@@ -95,15 +98,34 @@ internal class AuraLocalSocks5Proxy(
 
         if (input.readUnsignedByte() != 5) throw IOException("SOCKS version mismatch")
         val methodCount = input.readUnsignedByte()
+        if (methodCount == 0) throw IOException("SOCKS client offered no authentication methods")
         val methods = ByteArray(methodCount)
         input.readFully(methods)
-        if (methods.none { (it.toInt() and 0xff) == 0 }) {
+        if (methods.none { (it.toInt() and 0xff) == 2 }) {
             output.write(byteArrayOf(5, 0xff.toByte()))
             output.flush()
-            throw IOException("No supported SOCKS authentication method")
+            throw IOException("SOCKS client did not offer required username/password authentication")
         }
-        output.write(byteArrayOf(5, 0))
+        output.write(byteArrayOf(5, 2))
         output.flush()
+
+        // RFC 1929 authentication prevents other apps on the device from using
+        // Aura's loopback relay as an unauthenticated open proxy.
+        if (input.readUnsignedByte() != 1) throw IOException("Invalid SOCKS auth version")
+        val userLength = input.readUnsignedByte()
+        if (userLength == 0) throw IOException("Empty SOCKS username")
+        val suppliedUser = ByteArray(userLength)
+        input.readFully(suppliedUser)
+        val passwordLength = input.readUnsignedByte()
+        if (passwordLength == 0) throw IOException("Empty SOCKS password")
+        val suppliedPassword = ByteArray(passwordLength)
+        input.readFully(suppliedPassword)
+        val validUser = MessageDigest.isEqual(suppliedUser, username.toByteArray(Charsets.UTF_8))
+        val validPassword = MessageDigest.isEqual(suppliedPassword, password.toByteArray(Charsets.UTF_8))
+        val authenticated = validUser && validPassword
+        output.write(byteArrayOf(1, if (authenticated) 0 else 1))
+        output.flush()
+        if (!authenticated) throw IOException("SOCKS authentication failed")
 
         val version = input.readUnsignedByte()
         val command = input.readUnsignedByte()
@@ -141,15 +163,22 @@ internal class AuraLocalSocks5Proxy(
             remote.connect(InetSocketAddress(address, destinationPort), 12_000)
             client.soTimeout = 0
             writeReply(output, 0)
-            val up = workers.submit {
-                copyStream(input, remote.getOutputStream())
-                try { remote.shutdownOutput() } catch (_: Exception) { }
+            workers.execute {
+                try {
+                    copyStream(input, remote.getOutputStream())
+                } catch (error: Exception) {
+                    // A client reset must also release the upstream socket.
+                    try { remote.close() } catch (_: Exception) { }
+                } finally {
+                    try { remote.shutdownOutput() } catch (_: Exception) { }
+                }
             }
             val down = workers.submit {
                 copyStream(remote.getInputStream(), output)
                 try { client.shutdownOutput() } catch (_: Exception) { }
             }
-            up.get()
+            // Wait for the remote half to finish. If it closes first, the client
+            // and upstream socket are closed by the enclosing finally block.
             down.get()
         } catch (error: Exception) {
             if (outbound == null || !outbound.isConnected) {
@@ -212,7 +241,7 @@ internal class AuraLocalSocks5Proxy(
             while (running.get() && !client.isClosed) {
                 val length = try { input.readUnsignedShort() } catch (_: EOFException) { break }
                 val headerLength = input.readUnsignedByte()
-                if (length !in 1..65_507 || headerLength !in 8..260) {
+                if (length !in 1..65_507 || headerLength !in 8..255) {
                     throw IOException("Invalid UDP frame")
                 }
                 val encodedAddress = ByteArray(headerLength - 3)
