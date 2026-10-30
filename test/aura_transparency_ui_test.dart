@@ -110,9 +110,12 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('¿Por qué se bloqueó?'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey<String>(
-      'verdict-explanation-card-verdict-1',
-    )));
+    final threatCard = find.byKey(
+      const ValueKey<String>('verdict-explanation-card-verdict-1'),
+    );
+    await tester.ensureVisible(threatCard);
+    await tester.pump();
+    await tester.tap(threatCard);
     await _pumpAuraFrames(tester);
 
     expect(
@@ -158,13 +161,12 @@ void main() {
     state.addExplanation(safeExplanation);
     await _pumpAuraFrames(tester);
     expect(find.text('¿Por qué se consideró seguro?'), findsOneWidget);
-    await tester.tap(
-      find.byKey(
-        ValueKey<String>(
-          'verdict-explanation-card-${safeExplanation.id}',
-        ),
-      ),
+    final safeCard = find.byKey(
+      ValueKey<String>('verdict-explanation-card-${safeExplanation.id}'),
     );
+    await tester.ensureVisible(safeCard);
+    await tester.pump();
+    await tester.tap(safeCard);
     await _pumpAuraFrames(tester);
     expect(
       find.text('Posible typosquatting (señal auxiliar) · 0.10'),
