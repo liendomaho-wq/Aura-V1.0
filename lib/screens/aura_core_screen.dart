@@ -764,6 +764,11 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                         Text('${state.blockedEvents} amenazas bloqueadas · '
                           '${state.sniObservedEvents} eventos de red observados',
                           style: const TextStyle(color: AuraTokens.textMuted, fontSize: 10)),
+                        const SizedBox(height: 3),
+                        Text(
+                          'VPN local opcional · ${state.isVpnActive ? 'activa' : 'inactiva'}',
+                          style: const TextStyle(color: AuraTokens.textMuted, fontSize: 10),
+                        ),
                       ],
                     ),
                   ),
