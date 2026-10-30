@@ -641,39 +641,6 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
     final vpnActive = state.isVpnActive;
     final quickActionsEnabled = !_isRunning && _isAuthenticated;
 
-    Widget statusTile(String label, String value, Color valueColor) =>
-        Expanded(
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 3),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              border: Border.all(color: const Color(0xFF1B3A2A)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Color(0xFF5A7A6A),
-                    fontFamily: 'monospace',
-                    fontSize: 9,
-                  ),
-                ),
-                Text(
-                  value,
-                  style: TextStyle(
-                    color: valueColor,
-                    fontFamily: 'monospace',
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-
     OutlinedButton quickAction(String label, VoidCallback? onPressed) =>
         OutlinedButton(
           onPressed: quickActionsEnabled ? onPressed : null,
