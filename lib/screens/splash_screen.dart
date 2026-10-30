@@ -7,6 +7,7 @@ import '../agent/agent_controller.dart';
 import '../ai_brain.dart';
 import '../secure_vault.dart';
 import '../theme/aura_tokens.dart';
+import '../widgets/aura_avatar.dart';
 import 'aura_core_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -249,52 +250,7 @@ class _SplashScreenState extends State<SplashScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    AnimatedBuilder(
-                      animation: _animationController,
-                      builder: (context, child) {
-                        final pulse = _animationController.value;
-                        return Container(
-                          width: 130,
-                          height: 130,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: (_isAuthFailed
-                                      ? AuraTokens.danger
-                                      : AuraTokens.accent)
-                                  .withValues(
-                                alpha: 0.2 + pulse * 0.3,
-                              ),
-                              width: 1.5,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: (_isAuthFailed
-                                        ? AuraTokens.danger
-                                        : AuraTokens.accent)
-                                    .withValues(
-                                  alpha: 0.1 + pulse * 0.25,
-                                ),
-                                blurRadius: 40 + pulse * 25,
-                                spreadRadius: 2 + pulse * 6,
-                              ),
-                            ],
-                          ),
-                          child: Center(
-                            child: Icon(
-                              Icons.security_rounded,
-                              size: 72,
-                              color: (_isAuthFailed
-                                      ? AuraTokens.danger
-                                      : AuraTokens.accent)
-                                  .withValues(
-                                alpha: 0.7 + pulse * 0.3,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                    const AuraAvatar(size: 148),
                     const SizedBox(height: AuraTokens.s8),
                     const Text(
                       'AURA',
