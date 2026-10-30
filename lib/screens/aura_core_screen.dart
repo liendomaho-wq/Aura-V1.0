@@ -994,8 +994,7 @@ class _LocalTelemetryPanel extends StatelessWidget {
               const Text(
                 'Sin escaneos ni bloqueos registrados.',
                 style: TextStyle(
-                  color: _terminalGreen,
-                  fontFamily: 'monospace',
+                  color: AuraTokens.textMuted,
                   fontSize: 10,
                 ),
               )
@@ -1435,42 +1434,51 @@ class _SyslogLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final terminalPrefix = event.data?['terminal_prefix'] as String?;
     final isThinking = event.data?['terminal_thinking'] == true;
-    final defaultPrefix = switch (event.kind) {
-      AgentEventKind.thought => '[  INF  ] ',
-      AgentEventKind.action => '[  NET  ] ',
-      AgentEventKind.success => '[  OK   ] ',
-      AgentEventKind.warning => '[  WARN ] ',
-      AgentEventKind.error => '[  CRIT ] ',
-    };
-    final prefix = terminalPrefix ?? defaultPrefix;
-    final color = isThinking ? _terminalYellow : _terminalGreen;
+    final isUser = terminalPrefix == '[USER]';
+    final isAura = terminalPrefix == '[AURA]';
     final timestamp = '${event.ts.hour.toString().padLeft(2, '0')}:'
         '${event.ts.minute.toString().padLeft(2, '0')}:'
         '${event.ts.second.toString().padLeft(2, '0')}';
+    final textColor = event.kind == AgentEventKind.error
+        ? AuraTokens.danger
+        : event.kind == AgentEventKind.warning
+            ? AuraTokens.warning
+            : AuraTokens.textPrimary;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 11),
-      child: SelectableText.rich(
-        TextSpan(
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 340),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: isUser ? const Color(0xFF173A70) : AuraTokens.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isAura ? AuraTokens.accent.withAlpha(65) : Colors.white.withAlpha(14),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextSpan(
-              text: '$timestamp ',
-              style: const TextStyle(color: _terminalGreen),
-            ),
-            TextSpan(
-              text: prefix,
-              style: TextStyle(color: color, fontWeight: FontWeight.w700),
-            ),
-            TextSpan(
-              text: event.message,
-              style: TextStyle(color: color),
+            if (!isUser)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 5),
+                child: Text(
+                  isThinking ? 'AURA · ANALIZANDO' : 'AURA · $timestamp',
+                  style: const TextStyle(
+                    color: AuraTokens.accent,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.7,
+                  ),
+                ),
+              ),
+            SelectableText(
+              event.message,
+              style: TextStyle(color: textColor, fontSize: 13, height: 1.45),
             ),
           ],
-        ),
-        style: const TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 12,
-          height: 1.45,
         ),
       ),
     );
@@ -1497,8 +1505,8 @@ class _TerminalInput extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 9, 10, 8),
       decoration: const BoxDecoration(
-        color: const Color(0xFF000000),
-        border: Border(top: BorderSide(color: Color(0xFF17352B))),
+        color: AuraTokens.surface,
+        border: Border(top: BorderSide(color: AuraTokens.accent.withAlpha(55))),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1510,14 +1518,13 @@ class _TerminalInput extends StatelessWidget {
               autofocus: true,
               textInputAction: TextInputAction.send,
               onSubmitted: onSubmitted,
-              cursorColor: _terminalGreen,
+              cursorColor: AuraTokens.accent,
               style: const TextStyle(
-                color: _terminalGreen,
-                fontFamily: 'monospace',
-                fontSize: 12,
+                color: AuraTokens.textPrimary,
+                fontSize: 14,
               ),
               decoration: const InputDecoration(
-                hintText: 'comando o consulta táctica',
+                hintText: 'Dile a Aura qué necesitas proteger…',
                 hintStyle: TextStyle(
                   color: _terminalGreen,
                   fontFamily: 'monospace',
@@ -1535,8 +1542,8 @@ class _TerminalInput extends StatelessWidget {
             padding: EdgeInsets.zero,
             icon: Icon(
               isListening ? Icons.hearing : Icons.mic_none,
-              color: _terminalGreen,
-              size: 18,
+              color: AuraTokens.accent,
+              size: 20,
             ),
           ),
         ],
