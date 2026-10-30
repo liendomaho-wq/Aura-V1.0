@@ -43,7 +43,7 @@ class AuraApp extends StatelessWidget {
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: AuraTokens.bg,
-        fontFamily: 'monospace',
+        fontFamily: 'sans-serif',
       ),
       home: const SplashScreen(),
     );
