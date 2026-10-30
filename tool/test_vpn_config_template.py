@@ -10,6 +10,29 @@ NATIVE_SOCKS = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/core/src/hev
 text = SOURCE.read_text(encoding="utf-8")
 native_tunnel = NATIVE_TUNNEL.read_text(encoding="utf-8")
 native_socks = NATIVE_SOCKS.read_text(encoding="utf-8")
+
+# A remote threat-feed outage must not prevent Android from establishing the VPN.
+start_match = re.search(
+    r"private fun startTunnel\\(\\) \\{(.*?)\\n    @Synchronized",
+    text,
+    re.DOTALL,
+)
+if not start_match:
+    sys.exit("FAIL: could not locate AuraVpnService.startTunnel")
+if "downloadThreatFeed()" in start_match.group(1):
+    sys.exit("FAIL: VPN startup must not synchronously depend on the remote IP feed")
+if "feedRefresh.execute { refreshThreatFeed() }" not in text:
+    sys.exit("FAIL: initial threat-feed refresh must run asynchronously")
+refresh_match = re.search(
+    r"private fun refreshThreatFeed\\(\\) \\{(.*?)\\n    \\}",
+    text,
+    re.DOTALL,
+)
+if not refresh_match or "TProxyIsRunning()" not in refresh_match.group(1):
+    sys.exit("FAIL: refreshed IP rules must only be applied to a running tunnel")
+if "cobertura reducida" not in refresh_match.group(1):
+    sys.exit("FAIL: feed failures must be reported as reduced protection coverage")
+
 match = re.search(
     r"configFile\.writeText\(\s*\"\"\"(.*?)\"\"\"\.trimIndent\(\)",
     text,
