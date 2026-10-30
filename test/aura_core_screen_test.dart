@@ -87,8 +87,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(calls, <String>['startShield']);
     expect(state.isVpnActive, isTrue);
+    // The status is rendered as one complete label, not a standalone 'ON'.
     expect(find.text('DEFENSA: ON'), findsOneWidget);
-    expect(find.text('ON'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
     await tester.pumpAndSettle();
