@@ -34,6 +34,12 @@ workflows:
           cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
           flutter --version
           flutter pub get
+      - name: Run Aura security regression checks and Flutter tests
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          python3 tool/test_vpn_config_template.py
+          flutter test --reporter expanded
       - name: Build Android Release artifact
         script: |
           set -euo pipefail
