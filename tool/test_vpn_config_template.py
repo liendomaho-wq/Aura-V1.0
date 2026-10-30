@@ -6,10 +6,12 @@ import sys
 
 SOURCE = Path("android/app/src/main/kotlin/com/ciberdefensa/aura/AuraVpnService.kt")
 ANTI_TAMPERING_SOURCE = Path("android/app/src/main/kotlin/com/ciberdefensa/aura/MainActivity.kt")
+CRYPTO_SOURCE = Path("lib/crypto/aura_crypto_layer.dart")
 NATIVE_TUNNEL = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/hev-socks5-tunnel.c")
 NATIVE_SOCKS = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/core/src/hev-socks5-misc.c")
 text = SOURCE.read_text(encoding="utf-8")
 anti_tampering = ANTI_TAMPERING_SOURCE.read_text(encoding="utf-8")
+crypto_source = CRYPTO_SOURCE.read_text(encoding="utf-8")
 native_tunnel = NATIVE_TUNNEL.read_text(encoding="utf-8")
 native_socks = NATIVE_SOCKS.read_text(encoding="utf-8")
 
@@ -127,3 +129,20 @@ if "System.exit(0)" in anti_tampering:
     sys.exit("FAIL: integrity checks must not abruptly terminate the app process")
 
 print("PASS: anti-tampering checks are non-destructive to stored secrets.")
+
+# New model envelopes must authenticate the IV and ciphertext before native decryption.
+if "_authenticatedEnvelopePrefix = 'aura2:'" not in crypto_source:
+    sys.exit("FAIL: new encrypted model payloads must use the versioned authenticated envelope")
+if "crypto.Hmac(crypto.sha256, macKey)" not in crypto_source:
+    sys.exit("FAIL: model envelopes must use HMAC-SHA-256")
+secure_decrypt = re.search(
+    r"static Future<String> decryptModelSecure\(.*?\n  }\n\n  static Uint8List _deriveKey",
+    crypto_source,
+    re.DOTALL,
+)
+if not secure_decrypt:
+    sys.exit("FAIL: could not locate the native model decryption method")
+if secure_decrypt.group(0).find("_verifyEnvelopeTag(") > secure_decrypt.group(0).find("_nativeCryptoChannel.invokeMethod"):
+    sys.exit("FAIL: model authentication must complete before native decryption")
+
+print("PASS: model encryption authenticates payloads before native decryption.")
