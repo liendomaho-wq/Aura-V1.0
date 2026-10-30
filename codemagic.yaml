@@ -34,6 +34,11 @@ workflows:
           cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
           flutter --version
           flutter pub get
+      - name: Analyze Flutter and Dart code
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          flutter analyze --no-pub
       - name: Run Aura security regression checks and Flutter tests
         script: |
           set -euo pipefail
