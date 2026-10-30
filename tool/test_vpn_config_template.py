@@ -31,7 +31,7 @@ if "connection.instanceFollowRedirects = false" not in text:
     sys.exit("FAIL: threat-feed downloads must not follow redirects")
 if "MAX_THREAT_FEED_BYTES = 4 * 1024 * 1024" not in text:
     sys.exit("FAIL: threat-feed downloads must have a strict byte limit")
-if "connection.contentLengthLong > MAX_THREAT_FEED_BYTES" in text:
+if "declaredLength > MAX_THREAT_FEED_BYTES" not in text:
     sys.exit("FAIL: declared threat-feed size must be checked before reading")
 if "output.size() + count > MAX_THREAT_FEED_BYTES" not in text:
     sys.exit("FAIL: streamed threat-feed bytes must be bounded")
