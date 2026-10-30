@@ -27,6 +27,17 @@ if "downloadThreatFeed()" in start_match.group(1):
     sys.exit("FAIL: VPN startup must not synchronously depend on the remote IP feed")
 if "feedRefresh.execute { refreshThreatFeed() }" not in text:
     sys.exit("FAIL: initial threat-feed refresh must run asynchronously")
+if "connection.instanceFollowRedirects = false" not in text:
+    sys.exit("FAIL: threat-feed downloads must not follow redirects")
+if "MAX_THREAT_FEED_BYTES = 4 * 1024 * 1024" not in text:
+    sys.exit("FAIL: threat-feed downloads must have a strict byte limit")
+if "connection.contentLengthLong > MAX_THREAT_FEED_BYTES" in text:
+    sys.exit("FAIL: declared threat-feed size must be checked before reading")
+if "output.size() + count > MAX_THREAT_FEED_BYTES" not in text:
+    sys.exit("FAIL: streamed threat-feed bytes must be bounded")
+if 'connection.url.protocol.equals("https", ignoreCase = true)' not in text:
+    sys.exit("FAIL: threat-feed transport must remain HTTPS")
+
 refresh_match = re.search(
     r"private fun refreshThreatFeed\(\) \{(.*?)\n    \}",
     text,
