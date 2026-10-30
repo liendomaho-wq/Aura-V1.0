@@ -118,7 +118,8 @@ class AuraAIBrain {
       'assets/model/aura_brain_model.json.sig';
   static const String _installedModelFileName = 'aura_brain_model.enc';
   static const int _maxModelBytes = 5 * 1024 * 1024;
-  static const int _maxEncryptedModelHexBytes = 2 * (_maxModelBytes + 2 * 16);
+  static const int _maxEncryptedModelHexBytes =
+      2 * (_maxModelBytes + 16 + 16 + 32) + 'aura2:'.length;
   static const MethodChannel _engineChannel =
       MethodChannel('com.aura.cyberdefense/engine');
   static const MethodChannel _shieldChannel =
