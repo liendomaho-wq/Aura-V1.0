@@ -9,6 +9,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+Future<void> _pumpAuraFrames(WidgetTester tester) async {
+  // Aura's avatar intentionally loops forever; settle() can never complete.
+  // Advance a bounded number of frames while allowing async startup work to run.
+  for (var frame = 0; frame < 8; frame++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -71,7 +79,7 @@ void main() {
         child: const MaterialApp(home: AuraCoreScreen()),
       ),
     );
-    await tester.pumpAndSettle();
+    await _pumpAuraFrames(tester);
 
     // Seed the provider after the screen's authentication/initialization
     // lifecycle; those startup steps may reset per-session counters.
@@ -94,7 +102,7 @@ void main() {
         },
       });
     }
-    await tester.pumpAndSettle();
+    await _pumpAuraFrames(tester);
 
     await tester.scrollUntilVisible(
       find.text('¿Por qué se bloqueó?'),
@@ -105,7 +113,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>(
       'verdict-explanation-card-verdict-1',
     )));
-    await tester.pumpAndSettle();
+    await _pumpAuraFrames(tester);
 
     expect(
         find.text('Índice 6 · min_normalized_levenshtein; '
@@ -119,7 +127,7 @@ void main() {
     );
 
     await tester.tap(find.text('SHA-256: d190dddf…'));
-    await tester.pumpAndSettle();
+    await _pumpAuraFrames(tester);
     expect(
       find.text(
         'd190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2',
@@ -127,10 +135,10 @@ void main() {
       findsOneWidget,
     );
     await tester.tap(find.text('Cerrar'));
-    await tester.pumpAndSettle();
+    await _pumpAuraFrames(tester);
 
     await tester.tap(find.text('Reportar falso positivo'));
-    await tester.pumpAndSettle();
+    await _pumpAuraFrames(tester);
     expect(state.explanationHistory.single.reportedFalsePositive, isTrue);
     expect(find.text('Reportado localmente'), findsOneWidget);
     expect(
@@ -148,7 +156,7 @@ void main() {
           'd190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2',
     );
     state.addExplanation(safeExplanation);
-    await tester.pumpAndSettle();
+    await _pumpAuraFrames(tester);
     expect(find.text('¿Por qué se consideró seguro?'), findsOneWidget);
     await tester.tap(
       find.byKey(
@@ -157,7 +165,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await _pumpAuraFrames(tester);
     expect(
       find.text('Posible typosquatting (señal auxiliar) · 0.10'),
       findsOneWidget,
@@ -173,7 +181,7 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey<String>('coverage-audit-toggle')),
     );
-    await tester.pumpAndSettle();
+    await _pumpAuraFrames(tester);
     expect(find.text('Auditoría de cobertura'), findsOneWidget);
     expect(
         find.textContaining('1 SNI observados, 1 bloqueo, '
@@ -182,7 +190,7 @@ void main() {
         findsOneWidget);
     expect(find.text('8.8.8.8'), findsOneWidget);
     await tester.tap(find.text('Ejecutar autotest'));
-    await tester.pumpAndSettle();
+    await _pumpAuraFrames(tester);
     expect(
         find.textContaining('No se generó tráfico de prueba.'), findsOneWidget);
   });
