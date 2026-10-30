@@ -1478,7 +1478,7 @@ class _TerminalInput extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 9, 10, 8),
       decoration: BoxDecoration(
         color: AuraTokens.surface,
-        border: Border(top: BorderSide(color: AuraTokens.accent.withAlpha(55))),
+        border: Border(top: BorderSide(color: AuraTokens.accent)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
