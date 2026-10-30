@@ -20,7 +20,6 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import java.io.File
-import java.security.KeyStore
 import java.security.MessageDigest
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -37,10 +36,6 @@ internal fun isPackageVisibilityLimited(apiLevel: Int, visibleAppCount: Int): Bo
     apiLevel >= Build.VERSION_CODES.R && visibleAppCount < 5
 
 object AuraAntiTampering {
-    private const val ANDROIDX_MASTER_KEY_ALIAS = "_androidx_security_master_key_"
-    private const val FLUTTER_SECURE_STORAGE_KEY_SUFFIX =
-        ".FlutterSecureStoragePluginKey"
-
     fun inspect(context: Context): Map<String, Any> {
         val allowedCertificates = BuildConfig.AURA_ALLOWED_CERT_SHA256
             .split(',')
@@ -95,24 +90,6 @@ object AuraAntiTampering {
         )
     }
 
-    fun enforce(context: Context): Map<String, Any> {
-        val report = try {
-            inspect(context)
-        } catch (exception: Exception) {
-            android.util.Log.e("AuraIntegrity", "Integrity inspection failed.", exception)
-            mapOf(
-                "isSecure" to false,
-                "inspectionFailed" to true,
-            )
-        }
-        if (report["isSecure"] != true) {
-            destroyLocalKeystoreKeys(context)
-            android.util.Log.e("AuraIntegrity", "Integrity check failed; terminating process.")
-            System.exit(0)
-        }
-        return report
-    }
-
     private fun installedSignerDigests(context: Context): Set<String> {
         val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val packageInfo = context.packageManager.getPackageInfo(
@@ -135,27 +112,6 @@ object AuraAntiTampering {
         }.toSet()
     }
 
-    private fun destroyLocalKeystoreKeys(context: Context) {
-        try {
-            val keyStore = KeyStore.getInstance("AndroidKeyStore")
-            keyStore.load(null)
-            val knownAliases = setOf(
-                ANDROIDX_MASTER_KEY_ALIAS,
-                context.packageName + FLUTTER_SECURE_STORAGE_KEY_SUFFIX,
-            )
-            knownAliases.forEach { alias ->
-                if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
-            }
-
-            val aliases = keyStore.aliases()
-            while (aliases.hasMoreElements()) {
-                val alias = aliases.nextElement()
-                if (alias.startsWith("aura_")) keyStore.deleteEntry(alias)
-            }
-        } catch (exception: Exception) {
-            android.util.Log.e("AuraIntegrity", "Could not wipe Aura Keystore keys.", exception)
-        }
-    }
 }
 
 class MainActivity: FlutterFragmentActivity() {
