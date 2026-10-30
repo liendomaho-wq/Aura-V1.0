@@ -20,6 +20,24 @@ void main() {
       expect(AuraCryptoLayer.decryptModel(encrypted, key), plaintext);
     });
 
+    test('uses an authenticated v2 envelope and rejects tag tampering', () {
+      final encrypted = AuraCryptoLayer.encryptModel(
+        plaintext,
+        key,
+        iv: IV(Uint8List.fromList(List<int>.generate(16, (index) => index))),
+      );
+      expect(encrypted, startsWith('aura2:'));
+      expect(AuraCryptoLayer.decryptModel(encrypted, key), plaintext);
+
+      final lastNibble = encrypted.substring(encrypted.length - 1);
+      final tampered = encrypted.substring(0, encrypted.length - 1) +
+          (lastNibble == '0' ? '1' : '0');
+      expect(
+        () => AuraCryptoLayer.decryptModel(tampered, key),
+        throwsA(isA<AuraCryptoException>()),
+      );
+    });
+
     test('rejects empty keys when encrypting or decrypting', () {
       expect(
         () => AuraCryptoLayer.encryptModel(plaintext, ''),
