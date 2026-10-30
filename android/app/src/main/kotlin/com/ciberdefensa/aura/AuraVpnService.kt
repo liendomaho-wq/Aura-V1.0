@@ -46,6 +46,7 @@ class AuraVpnService : VpnService() {
         private const val VPN_STATE_PREFERENCES = "aura_vpn_state"
         private const val PANIC_ISOLATION_KEY = "panic_isolation_active"
         private const val MAX_BLOCKED_IPS = 8192
+        private const val MAX_THREAT_FEED_BYTES = 4 * 1024 * 1024
         private val dnsMetricsLock = Any()
         @Volatile private var activeService: AuraVpnService? = null
         private var auditedDnsRequests = 0L
@@ -448,20 +449,45 @@ class AuraVpnService : VpnService() {
         connection.connectTimeout = 15000
         connection.readTimeout = 15000
         connection.useCaches = false
+        // Threat intelligence must never be accepted after an HTTPS-to-HTTP redirect.
+        connection.instanceFollowRedirects = false
 
         try {
+            if (!connection.url.protocol.equals("https", ignoreCase = true)) {
+                throw IOException("El feed de amenazas debe permanecer en HTTPS.")
+            }
             if (connection.responseCode != HttpURLConnection.HTTP_OK) {
                 throw IOException("El feed de amenazas devolvió HTTP ${connection.responseCode}.")
             }
-            return connection.inputStream.bufferedReader().useLines { lines ->
-                lines.asSequence()
-                    .map { it.substringBefore('#').trim() }
-                    .filter(::isIpAddress)
-                    .take(MAX_BLOCKED_IPS)
-                    .toCollection(HashSet())
-            }.also {
-                if (it.isEmpty()) throw IOException("El feed no contiene direcciones IP válidas.")
+            val declaredLength = connection.contentLengthLong
+            if (declaredLength > MAX_THREAT_FEED_BYTES) {
+                throw IOException("El feed de amenazas supera el límite de tamaño permitido.")
             }
+
+            val feedBytes = connection.inputStream.use { input ->
+                val output = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    if (output.size() + count > MAX_THREAT_FEED_BYTES) {
+                        throw IOException("El feed de amenazas supera el límite de tamaño permitido.")
+                    }
+                    output.write(buffer, 0, count)
+                }
+                output.toByteArray()
+            }
+
+            return feedBytes.toString(Charsets.UTF_8).lineSequence()
+                .map { it.substringBefore('#').trim() }
+                .filter(::isIpAddress)
+                .take(MAX_BLOCKED_IPS)
+                .toCollection(HashSet())
+                .also {
+                    if (it.isEmpty()) {
+                        throw IOException("El feed no contiene direcciones IP válidas.")
+                    }
+                }
         } finally {
             connection.disconnect()
         }
