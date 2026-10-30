@@ -92,3 +92,28 @@ if "hev_jni_resolve_host (name" not in native_socks:
     sys.exit("FAIL: Android destination DNS must resolve on the underlying network")
 
 print("PASS: Hev YAML, loopback SOCKS5 wiring, socket protection and physical DNS checks passed.")
+
+# Secure-storage upgrade must preserve v9 secrets while migrating to authenticated encryption.
+PUBSPEC = Path("pubspec.yaml").read_text(encoding="utf-8")
+VAULT = Path("lib/secure_vault.dart").read_text(encoding="utf-8")
+if not re.search(r"^\s*flutter_secure_storage:\s*\^10\.3\.4\s*$", PUBSPEC, re.MULTILINE):
+    sys.exit("FAIL: secure storage must stay on the v10 migration bridge until legacy data is verified")
+options_match = re.search(
+    r"static const AndroidOptions _androidOptions = AndroidOptions\((.*?)\);",
+    VAULT,
+    re.DOTALL,
+)
+if not options_match:
+    sys.exit("FAIL: could not locate SecureVault Android migration options")
+options = options_match.group(1)
+for required_option in (
+    "resetOnError: false",
+    "migrateOnAlgorithmChange: true",
+    "migrateWithBackup: true",
+):
+    if required_option not in options:
+        sys.exit(f"FAIL: SecureVault migration must include {required_option}")
+if "encryptedSharedPreferences:" in options:
+    sys.exit("FAIL: do not pin the deprecated EncryptedSharedPreferences backend")
+
+print("PASS: SecureVault uses crash-safe v9-to-v10 AES-GCM migration without silent reset.")
