@@ -10,9 +10,13 @@ class AuraSecureVault {
   static const int maxAuditLogs = 500;
   static int _modelKeyGeneration = 0;
   static Future<String>? _sharedModelMasterKeyLoad;
+  // v10 migrates the legacy v9 EncryptedSharedPreferences data to
+  // RSA-OAEP key wrapping + AES-GCM storage. Keep a crash-safe backup during
+  // migration and never silently erase secrets if the keystore reports an error.
   static const AndroidOptions _androidOptions = AndroidOptions(
-    encryptedSharedPreferences: true,
-    resetOnError: true,
+    resetOnError: false,
+    migrateOnAlgorithmChange: true,
+    migrateWithBackup: true,
   );
   static Future<void> _writeQueue = Future<void>.value();
 
