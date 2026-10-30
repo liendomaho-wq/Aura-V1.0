@@ -5,9 +5,11 @@ import re
 import sys
 
 SOURCE = Path("android/app/src/main/kotlin/com/ciberdefensa/aura/AuraVpnService.kt")
+ANTI_TAMPERING_SOURCE = Path("android/app/src/main/kotlin/com/ciberdefensa/aura/MainActivity.kt")
 NATIVE_TUNNEL = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/hev-socks5-tunnel.c")
 NATIVE_SOCKS = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/core/src/hev-socks5-misc.c")
 text = SOURCE.read_text(encoding="utf-8")
+anti_tampering = ANTI_TAMPERING_SOURCE.read_text(encoding="utf-8")
 native_tunnel = NATIVE_TUNNEL.read_text(encoding="utf-8")
 native_socks = NATIVE_SOCKS.read_text(encoding="utf-8")
 
@@ -117,3 +119,11 @@ if "encryptedSharedPreferences:" in options:
     sys.exit("FAIL: do not pin the deprecated EncryptedSharedPreferences backend")
 
 print("PASS: SecureVault uses crash-safe v9-to-v10 AES-GCM migration without silent reset.")
+
+# Integrity failures must never erase encryption keys or force-kill the process.
+if "destroyLocalKeystoreKeys" in anti_tampering or "KeyStore.getInstance(\"AndroidKeyStore\")" in anti_tampering:
+    sys.exit("FAIL: integrity checks must not destroy SecureVault/Android Keystore keys")
+if "System.exit(0)" in anti_tampering:
+    sys.exit("FAIL: integrity checks must not abruptly terminate the app process")
+
+print("PASS: anti-tampering checks are non-destructive to stored secrets.")
