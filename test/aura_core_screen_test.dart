@@ -8,6 +8,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+Future<void> _pumpAuraFrames(WidgetTester tester) async {
+  // Aura's avatar intentionally loops forever; settle() can never complete.
+  // Advance a bounded number of frames while allowing async startup work to run.
+  for (var frame = 0; frame < 8; frame++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -61,7 +69,7 @@ void main() {
         child: const MaterialApp(home: AuraCoreScreen()),
       ),
     );
-    await tester.pumpAndSettle();
+    await _pumpAuraFrames(tester);
 
     expect(networkEventSink, isNotNull);
     networkEventSink!.success(<String, Object>{
@@ -71,7 +79,7 @@ void main() {
       'action': 'ALLOWED',
     });
     await tester.pump();
-    await tester.pumpAndSettle();
+    await _pumpAuraFrames(tester);
     expect(state.telemetryEvents.single['requested_domain'], 'example.com');
     expect(find.text('TELEMETRÍA LOCAL'), findsOneWidget);
     expect(find.text('REGISTRO LOCAL PAUSADO'), findsOneWidget);
@@ -84,19 +92,19 @@ void main() {
     expect(find.byType(AuraAvatar), findsOneWidget);
     expect(find.textContaining('VPN local opcional'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
-    await tester.pumpAndSettle();
+    await _pumpAuraFrames(tester);
     expect(calls, <String>['startShield']);
     expect(state.isVpnActive, isTrue);
     // The status is rendered as one complete label, not a standalone 'ON'.
     expect(find.text('DEFENSA: ON'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
-    await tester.pumpAndSettle();
+    await _pumpAuraFrames(tester);
     expect(calls, <String>['startShield', 'stopShield']);
     expect(state.isVpnActive, isFalse);
 
     await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
-    await tester.pumpAndSettle();
+    await _pumpAuraFrames(tester);
     expect(state.isVpnActive, isTrue);
     networkEventSink!.success(<String, Object>{
       'timestamp': 2,
@@ -107,7 +115,7 @@ void main() {
       'action': 'VPN_REVOKED',
     });
     await tester.pump();
-    await tester.pumpAndSettle();
+    await _pumpAuraFrames(tester);
     expect(state.isVpnActive, isFalse);
     expect(find.text('DEFENSA: OFF'), findsOneWidget);
     expect(
