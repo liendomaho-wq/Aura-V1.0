@@ -1,6 +1,7 @@
 import 'package:aura_mobile_defens/providers/aura_state_provider.dart';
 import 'package:aura_mobile_defens/services/aura_local_telemetry.dart';
 import 'package:aura_mobile_defens/screens/aura_core_screen.dart';
+import 'package:aura_mobile_defens/widgets/aura_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -79,8 +80,9 @@ void main() {
     expect(await AuraLocalTelemetry.loadEvents(), isEmpty);
 
     expect(find.text('DEFENSA: OFF'), findsOneWidget);
-    expect(find.text('TÚNEL'), findsOneWidget);
-    expect(find.text('OFF'), findsOneWidget);
+    expect(find.text('Hola, soy Aura.'), findsOneWidget);
+    expect(find.byType(AuraAvatar), findsOneWidget);
+    expect(find.textContaining('VPN local opcional'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
     await tester.pumpAndSettle();
     expect(calls, <String>['startShield']);
