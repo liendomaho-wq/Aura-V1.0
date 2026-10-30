@@ -210,8 +210,9 @@ class AuraVpnService : VpnService() {
         try {
             underlyingNetwork = findUnderlyingNetwork()
                 ?: throw IOException("No se encontró una red física de salida para el túnel.")
-            replaceBlockedIps(downloadThreatFeed())
 
+            // El túnel no debe depender de que un feed remoto esté disponible al arrancar.
+            // La lista se carga en segundo plano y se aplica cuando el motor ya está activo.
             established = createVpnBuilder().establish()
                 ?: throw IOException("Android no estableció la interfaz VPN.")
 
@@ -254,7 +255,10 @@ class AuraVpnService : VpnService() {
                 }
             }
             scheduleFeedRefresh()
-            reportState(true, "Túnel VPN iniciado.")
+            reportState(
+                true,
+                "Túnel VPN iniciado; las fuentes de reputación IP se están actualizando.",
+            )
             Log.i("AuraVPN", "Hev tun2socks conectado al proxy SOCKS5.")
         } catch (e: Exception) {
             Log.e("AuraVPN", "No se pudo iniciar el escudo VPN.", e)
@@ -496,15 +500,41 @@ class AuraVpnService : VpnService() {
     private fun scheduleFeedRefresh() {
         if (feedRefreshScheduled) return
         feedRefreshScheduled = true
-        feedRefresh.scheduleWithFixedDelay({
-            try {
-                val updated = downloadThreatFeed()
-                replaceBlockedIps(updated)
+
+        // Primera descarga inmediata pero asíncrona: no bloquea el consentimiento ni
+        // el establecimiento del túnel cuando el teléfono está offline o el feed cae.
+        feedRefresh.execute { refreshThreatFeed() }
+        feedRefresh.scheduleWithFixedDelay(
+            { refreshThreatFeed() },
+            60,
+            60,
+            TimeUnit.MINUTES,
+        )
+    }
+
+    private fun refreshThreatFeed() {
+        try {
+            val updated = downloadThreatFeed()
+            replaceBlockedIps(updated)
+            if (tunnelStarted && TProxyService.TProxyIsRunning()) {
                 TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
-            } catch (e: Exception) {
-                Log.w("AuraVPN", "No se pudo actualizar el feed; se conserva la lista anterior.", e)
             }
-        }, 1, 60, TimeUnit.MINUTES)
+            if (tunnelStarted) {
+                reportState(true, "Túnel activo; feed de reputación IP actualizado.")
+            }
+        } catch (e: Exception) {
+            Log.w(
+                "AuraVPN",
+                "No se pudo actualizar el feed; se conserva la lista IP verificada anterior.",
+                e,
+            )
+            if (tunnelStarted && blockedIpSnapshot().isEmpty()) {
+                reportState(
+                    true,
+                    "Túnel activo con cobertura reducida: feed de reputación IP no disponible.",
+                )
+            }
+        }
     }
 
     private fun reportState(
