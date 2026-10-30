@@ -13,7 +13,7 @@ native_socks = NATIVE_SOCKS.read_text(encoding="utf-8")
 
 # A remote threat-feed outage must not prevent Android from establishing the VPN.
 start_match = re.search(
-    r"private fun startTunnel\\(\\) \\{(.*?)\\n    @Synchronized",
+    r"private fun startTunnel\(\) \{(.*?)\n    @Synchronized",
     text,
     re.DOTALL,
 )
@@ -24,7 +24,7 @@ if "downloadThreatFeed()" in start_match.group(1):
 if "feedRefresh.execute { refreshThreatFeed() }" not in text:
     sys.exit("FAIL: initial threat-feed refresh must run asynchronously")
 refresh_match = re.search(
-    r"private fun refreshThreatFeed\\(\\) \\{(.*?)\\n    \\}",
+    r"private fun refreshThreatFeed\(\) \{(.*?)\n    \}",
     text,
     re.DOTALL,
 )
