@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
-import '../theme/aura_tokens.dart';
 
 /// A lightweight animated identity for Aura. It is intentionally local:
 /// no remote image, network request, or additional package is required.
