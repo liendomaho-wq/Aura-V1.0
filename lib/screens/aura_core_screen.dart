@@ -15,6 +15,7 @@ import '../network_auditor.dart';
 import '../providers/aura_state_provider.dart';
 import '../services/aura_local_telemetry.dart';
 import '../theme/aura_tokens.dart';
+import '../widgets/aura_avatar.dart';
 
 const Color _terminalGreen = Color(0xFF00FF00);
 const Color _terminalYellow = Color(0xFFFFFF00);
@@ -690,12 +691,12 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
         );
 
     return Scaffold(
-      backgroundColor: const Color(0xFF000000),
+      backgroundColor: AuraTokens.bg,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 48),
+            const SizedBox(height: 12),
             Row(
               children: [
                 IconButton(
@@ -775,37 +776,29 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
               ],
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
               child: Row(
                 children: [
-                  statusTile(
-                    'TÚNEL',
-                    state.isVpnActive ? 'ON' : 'OFF',
-                    state.isVpnActive ? _terminalGreen : _terminalYellow,
-                  ),
-                  statusTile(
-                    'SNI',
-                    '${state.sniObservedEvents}',
-                    const Color(0xFF00FFFF),
-                  ),
-                  statusTile(
-                    'BLOQUEOS',
-                    '${state.blockedEvents}',
-                    state.blockedEvents > 0
-                        ? const Color(0xFFFF3B30)
-                        : _terminalGreen,
-                  ),
-                  statusTile(
-                    'DGA',
-                    '${state.dgaAlertEvents}',
-                    state.dgaAlertEvents > 0
-                        ? _terminalYellow
-                        : _terminalGreen,
-                  ),
-                  statusTile(
-                    'QUIC',
-                    '${state.quicBlocked}',
-                    state.quicBlocked > 0 ? _terminalYellow : _terminalGreen,
+                  AuraAvatar(size: 88, isThinking: _isRunning || _isListening),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Hola, soy Aura.',
+                          style: TextStyle(color: AuraTokens.textPrimary,
+                            fontSize: 22, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 4),
+                        Text(_isRunning ? 'Estoy trabajando en tu solicitud…'
+                          : _isListening ? 'Te estoy escuchando…'
+                          : 'Tu inteligencia de ciberdefensa está en línea.',
+                          style: const TextStyle(color: AuraTokens.accent, fontSize: 12)),
+                        const SizedBox(height: 8),
+                        Text('${state.blockedEvents} amenazas bloqueadas · '
+                          '${state.sniObservedEvents} eventos de red observados',
+                          style: const TextStyle(color: AuraTokens.textMuted, fontSize: 10)),
+                      ],
+                    ),
                   ),
                 ],
               ),
