@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
-
 /// A lightweight animated identity for Aura. It is intentionally local:
 /// no remote image, network request, or additional package is required.
 class AuraAvatar extends StatefulWidget {
@@ -50,33 +49,35 @@ class _AuraAvatarState extends State<AuraAvatar>
   @override
   Widget build(BuildContext context) {
     return Semantics(
+      container: true,
+      excludeSemantics: true,
       label: widget.isThinking ? 'Aura está analizando' : 'Aura está disponible',
       image: true,
       child: SizedBox.square(
         dimension: widget.size,
         child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) => CustomPaint(
-          painter: _AuraAvatarPainter(
-            phase: _controller.value,
-            thinking: widget.isThinking,
-          ),
-          child: Center(
-            child: Text(
-              'A',
-              style: TextStyle(
-                fontSize: widget.size * 0.38,
-                fontWeight: FontWeight.w200,
-                letterSpacing: -3,
-                color: Colors.white.withValues(alpha: 0.96),
-                shadows: const [
-                  Shadow(color: Color(0xFF00D9FF), blurRadius: 18),
-                  Shadow(color: Color(0xFF765BFF), blurRadius: 28),
-                ],
+          animation: _controller,
+          builder: (context, child) => CustomPaint(
+            painter: _AuraAvatarPainter(
+              phase: _controller.value,
+              thinking: widget.isThinking,
+            ),
+            child: Center(
+              child: Text(
+                'A',
+                style: TextStyle(
+                  fontSize: widget.size * 0.38,
+                  fontWeight: FontWeight.w200,
+                  letterSpacing: -3,
+                  color: Colors.white.withValues(alpha: 0.96),
+                  shadows: const [
+                    Shadow(color: Color(0xFF00D9FF), blurRadius: 18),
+                    Shadow(color: Color(0xFF765BFF), blurRadius: 28),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
         ),
       ),
     );
