@@ -104,7 +104,7 @@ class AuraVpnService : VpnService() {
         }
 
         override fun onLost(network: Network) {
-            enqueueUnderlyingNetworkRefresh()
+            enqueueUnderlyingNetworkRefresh(excludedNetwork = network)
         }
 
         override fun onCapabilitiesChanged(
@@ -423,20 +423,20 @@ class AuraVpnService : VpnService() {
         }
     }
 
-    private fun enqueueUnderlyingNetworkRefresh() {
+    private fun enqueueUnderlyingNetworkRefresh(excludedNetwork: Network? = null) {
         if (worker.isShutdown) return
         try {
-            worker.execute { refreshUnderlyingNetwork() }
+            worker.execute { refreshUnderlyingNetwork(excludedNetwork) }
         } catch (_: java.util.concurrent.RejectedExecutionException) {
             // Service teardown won the race with a final connectivity callback.
         }
     }
 
     @Synchronized
-    private fun refreshUnderlyingNetwork() {
+    private fun refreshUnderlyingNetwork(excludedNetwork: Network? = null) {
         if (serviceShuttingDown) return
         val previous = underlyingNetwork
-        val selected = findUnderlyingNetwork()
+        val selected = findUnderlyingNetwork(excludedNetwork)
         if (selected == previous) return
 
         underlyingNetwork = selected
@@ -462,9 +462,10 @@ class AuraVpnService : VpnService() {
         }
     }
 
-    private fun findUnderlyingNetwork(): Network? {
+    private fun findUnderlyingNetwork(excludedNetwork: Network? = null): Network? {
         val connectivity = getSystemService(ConnectivityManager::class.java)
         val candidates = connectivity.allNetworks.mapNotNull { network ->
+            if (network == excludedNetwork) return@mapNotNull null
             val capabilities = connectivity.getNetworkCapabilities(network) ?: return@mapNotNull null
             if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
                 !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) ||
