@@ -125,4 +125,30 @@ void main() {
       findsOneWidget,
     );
   });
+  testWidgets('Aura avatar exposes its idle state to accessibility', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    addTearDown(semantics.dispose);
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: AuraAvatar(size: 96)),
+      ),
+    );
+    expect(find.bySemanticsLabel('Aura está disponible'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.bySemanticsLabel('Aura está disponible'), findsOneWidget);
+  });
+
+  testWidgets('Aura avatar announces its analysis state', (tester) async {
+    final semantics = tester.ensureSemantics();
+    addTearDown(semantics.dispose);
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: AuraAvatar(size: 96, isThinking: true)),
+      ),
+    );
+    expect(find.bySemanticsLabel('Aura está analizando'), findsOneWidget);
+  });
+
 }
