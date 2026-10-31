@@ -43,6 +43,8 @@ abstract class AuraTools {
   static const int _maxModelBytes = 5 * 1024 * 1024;
   static const MethodChannel _engineChannel =
       MethodChannel('com.aura.cyberdefense/engine');
+  static const MethodChannel _securityChannel =
+      MethodChannel('com.ciberdefensa.aura/security');
     static const MethodChannel _panicChannel =
       MethodChannel('com.aura.cyberdefense/panic');
   static final AuraSecureVault _secureVault = AuraSecureVault();
@@ -55,6 +57,48 @@ abstract class AuraTools {
       switch (step.name) {
         case 'update_defenses':
           return await _updateDefenses(onProgress);
+        case 'scan_apps':
+          final report = await _securityChannel.invokeMapMethod<String, dynamic>(
+            'scanActiveSensitiveServices',
+          );
+          if (report == null) {
+            return const ToolResult(
+              summary: 'Android no devolvió un informe del escáner de aplicaciones.',
+              data: <String, dynamic>{'ok': false, 'error': 'empty_scan_report'},
+            );
+          }
+          final activeServices = report['count'] is int ? report['count'] as int : 0;
+          final suspicious = report['suspicious_app_count'] is int
+              ? report['suspicious_app_count'] as int
+              : 0;
+          final signatureIssues = report['signature_issue_count'] is int
+              ? report['signature_issue_count'] as int
+              : 0;
+          final obfuscated = report['obfuscated_app_count'] is int
+              ? report['obfuscated_app_count'] as int
+              : 0;
+          return ToolResult(
+            summary: 'Escaneo local completado: $activeServices apps con servicios sensibles activos, $suspicious con combinación de permisos de alto riesgo, $signatureIssues incidencias de firma y $obfuscated con indicadores de ofuscación. Son señales para revisar, no prueba de malware.',
+            data: <String, dynamic>{
+              'ok': true,
+              'scan_type': 'installed_app_static_review',
+              'timestamp': report['timestamp'],
+              'active_service_app_count': activeServices,
+              'suspicious_app_count': suspicious,
+              'signature_issue_count': signatureIssues,
+              'obfuscated_app_count': obfuscated,
+              'applications': report['applications'] ?? const <dynamic>[],
+              'suspicious_apps': report['suspicious_apps'] ?? const <dynamic>[],
+              'signature_issues': report['signature_issues'] ?? const <dynamic>[],
+              'obfuscated_apps': report['obfuscated_apps'] ?? const <dynamic>[],
+              'limitations': <String>[
+                'Los permisos solicitados no demuestran que estén concedidos o abusados.',
+                'Una firma distinta o múltiples firmantes no prueban por sí solos una aplicación maliciosa.',
+                'La entropía y los identificadores ofuscados son heurísticas y pueden producir falsos positivos.',
+                'El análisis no ejecuta ni descompila código y no sustituye Play Protect.',
+              ],
+            },
+          );
         case 'toggle_defenses':
           return await _toggleDefenses(step.arguments);
         case 'block_domain':
