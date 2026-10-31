@@ -36,7 +36,7 @@
 - [x] Etiquetas semánticas accesibles para estados disponible/analizando del avatar.
 - [x] Respetar la preferencia Android de reducir animaciones.
 - [x] Pruebas widget de estados accesibles y movimiento reducido añadidas a CI.
-- [ ] Confirmar ejecución verde de estas nuevas pruebas en Codemagic.
+- [x] Confirmar ejecución verde de las pruebas de estabilidad y accesibilidad en Codemagic (confirmación del usuario, 2026-10-30).
 - [ ] Validar el avatar, accesibilidad, batería y estabilidad en dispositivos físicos.
 
 ### Etapa 2 — agente ejecutor
@@ -51,11 +51,12 @@
 - [x] Inspección SNI y reglas dinámicas de dominio en el firewall nativo.
 - [x] Descarga del feed IP HTTPS con límites de tamaño y actualización asíncrona.
 - [x] Pruebas nativas para reglas de dominio, allowlist, entradas inválidas y ClientHello malformado/incompleto.
-- [ ] Confirmar ejecución verde de la suite nativa ampliada en Codemagic.
+- [x] Confirmar ejecución verde de la suite nativa ampliada en Codemagic (confirmación del usuario, 2026-10-30).
 - [x] Integrar descarte de TCP/853 (DoT) y UDP/853 (DoQ) en el lector de paquetes TUN antes de entregar el paquete a lwIP.
 - [x] Integrar descarte de UDP/443 hacia una lista explícita de resolutores DoH conocidos, con evento de auditoría del destino y transporte.
 - [x] Añadir pruebas unitarias de la política de transporte: TCP/853, UDP/853 y UDP/443 solo para resolutores marcados.
 - [ ] Añadir pruebas de integración del analizador de paquetes IPv4/IPv6 (fragmentos, extensiones, longitudes y paquetes malformados).
+- [x] Validar los límites declarados de longitud IPv4/IPv6 antes de inspeccionar puertos DoT/DoQ/DoH; rechazar datagramas truncados, longitudes incoherentes y jumbogramas IPv6 aún no soportados.
 - [ ] Evaluar DoH sobre TCP/443 y resolutores no incluidos en la lista; no afirmar cobertura general de DoH.
 - [ ] Validar DoT/DoQ/DoH en dispositivos físicos y comprobar falsos positivos, fugas y compatibilidad.
 - [ ] Definir política explícita para ECH; actualmente solo se identifica su extensión, no se descifra.
@@ -84,5 +85,6 @@
 - El flujo de eventos se presenta como conversación en lugar de líneas de terminal.
 - El compositor usa lenguaje natural y mantiene entrada de voz.
 - Los módulos existentes no se han eliminado.
-- El rediseño todavía requiere ejecución de Flutter analyze, pruebas, build Android y validación en dispositivo.
+- CodeMagic completó correctamente la compilación y las pruebas tras la corrección de SemanticsHandle, según confirmación del usuario el 2026-10-30.
+- La validación física de avatar, accesibilidad, batería, túnel, fugas DNS y cambios de red continúa pendiente.
 - La reconstrucción VPN de la rama `rebuild/vpn-from-zero` continúa separada hasta completar validación técnica; no se incorpora automáticamente a main por no disponer aún de una compilación y pruebas físicas confirmadas.
