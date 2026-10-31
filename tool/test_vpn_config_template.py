@@ -166,3 +166,36 @@ if secure_decrypt.group(0).find("_verifyEnvelopeTag(") > secure_decrypt.group(0)
     sys.exit("FAIL: model authentication must complete before native decryption")
 
 print("PASS: model encryption authenticates payloads before native decryption.")
+
+# The VPN must track physical connectivity without selecting another VPN as its underlay.
+for required_network_guard in (
+    "NetworkRequest.Builder()",
+    "NetworkCapabilities.NET_CAPABILITY_NOT_VPN",
+    "registerNetworkCallback(request, underlyingNetworkCallback)",
+    "unregisterNetworkCallback(underlyingNetworkCallback)",
+    "override fun onAvailable(network: Network)",
+    "override fun onLost(network: Network)",
+    "override fun onCapabilitiesChanged(",
+    "setUnderlyingNetworks(selected?.let { arrayOf(it) } ?: emptyArray())",
+    "serviceShuttingDown = true",
+    "if (serviceShuttingDown) return",
+):
+    if required_network_guard not in text:
+        sys.exit(
+            "FAIL: VPN physical-network lifecycle is missing "
+            + required_network_guard
+        )
+
+network_selection = re.search(
+    r"private fun findUnderlyingNetwork\\(\\): Network\\? \\{(.*?)\\n    \\}",
+    text,
+    re.DOTALL,
+)
+if not network_selection:
+    sys.exit("FAIL: could not locate physical network selection")
+if "NET_CAPABILITY_NOT_VPN" not in network_selection.group(1):
+    sys.exit("FAIL: VPN must never select another VPN as its physical underlay")
+if "TRANSPORT_VPN" not in network_selection.group(1):
+    sys.exit("FAIL: VPN transport must be explicitly excluded from underlay selection")
+
+print("PASS: VPN tracks physical network availability and unregisters callbacks safely.")
