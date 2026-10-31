@@ -115,7 +115,7 @@ class AuraIntentParser {
     caseSensitive: false,
   );
   static final RegExp _scanAppsCommand = RegExp(
-    r'\\b(?:analiza|analizar|escanea|escanear|revisa|revisar)\\s+(?:las?\\s+)?(?:apps|aplicaciones|aplicativos)\\b|\\b(?:escaneo|an[aá]lisis)\\s+de\\s+(?:apps|aplicaciones)\\b',
+    r'\b(?:analiza|analizar|escanea|escanear|revisa|revisar)\s+(?:(?:las?|los)\s+)?(?:apps|aplicaciones|aplicativos)\b|\b(?:escaneo|an[aá]lisis)\s+de\s+(?:apps|aplicaciones)\b|\b(?:scan|scan apps|scan applications)\b',
     caseSensitive: false,
   );
   static final RegExp _updateDefensesCommand = RegExp(
