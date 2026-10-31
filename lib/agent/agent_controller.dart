@@ -200,9 +200,11 @@ class AgentController {
     try {
       final status =
           await _biometricChannel.invokeMethod<Map<dynamic, dynamic>>(
-                'getLocalAuthStatus',
-              ) ??
-              const <dynamic, dynamic>{};
+            'getLocalAuthStatus',
+          );
+      if (status == null) {
+        throw StateError('Android devolvió un estado de autenticación vacío.');
+      }
       return status.map((key, value) => MapEntry(key.toString(), value));
     } on PlatformException catch (error) {
       reportError(
