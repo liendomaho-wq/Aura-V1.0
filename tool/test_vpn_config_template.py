@@ -17,7 +17,7 @@ native_socks = NATIVE_SOCKS.read_text(encoding="utf-8")
 manifest = Path("android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
 
 # Aura communicates with remote services only over authenticated HTTPS.
-application_tag = re.search(r"<application\\b([^>]*)>", manifest, re.DOTALL)
+application_tag = re.search(r"<application\b([^>]*)>", manifest, re.DOTALL)
 if not application_tag or not re.search(
     r'android:usesCleartextTraffic="false"',
     application_tag.group(1),
