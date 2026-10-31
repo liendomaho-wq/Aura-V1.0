@@ -46,7 +46,8 @@ object AuraAppGenomeScanner {
     private const val OBFUSCATED_IDENTIFIER_RATIO_THRESHOLD = 0.5
     private const val MIN_IDENTIFIERS_FOR_RATIO = 20
     private const val MAX_DEX_TABLE_ITEMS_FOR_PARSING = 250_000
-    private const val MAX_DEX_PARSE_SIZE_BYTES = 64 * 1024 * 1024
+    private const val MAX_DEX_PARSE_SIZE_BYTES = 16 * 1024 * 1024
+    private const val MAX_DEX_FILES_PER_APP = 8
     private const val ACCESSIBILITY_PERMISSION =
         "android.permission.BIND_ACCESSIBILITY_SERVICE"
     private const val NOTIFICATION_PERMISSION =
@@ -290,6 +291,7 @@ object AuraAppGenomeScanner {
                         while (entries.hasMoreElements()) {
                             val entry = entries.nextElement()
                             if (!entry.isDirectory && DEX_ENTRY_PATTERN.matches(entry.name)) {
+                                if (dexFileCount >= MAX_DEX_FILES_PER_APP) break
                                 val dexData = readDexEntry(apk, entry)
                                 dexFileCount++
                                 maxEntropy = maxOf(maxEntropy, dexData.entropy)
@@ -344,6 +346,11 @@ object AuraAppGenomeScanner {
                 val bytesRead = input.read(buffer)
                 if (bytesRead < 0) break
                 totalBytes += bytesRead
+                if (totalBytes > MAX_DEX_PARSE_SIZE_BYTES) {
+                    canParse = false
+                    dexBuffer.reset()
+                    break
+                }
                 for (index in 0 until bytesRead) {
                     frequencies[buffer[index].toInt() and 0xFF]++
                 }
@@ -357,6 +364,8 @@ object AuraAppGenomeScanner {
                 }
             }
         }
+
+        if (!canParse) return DexAnalysis(entropy = 0.0, identifiers = null)
 
         val entropy = if (totalBytes == 0L) {
             0.0
