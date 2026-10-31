@@ -380,7 +380,7 @@ class AgentController {
         const helpMessage = 'ÓRDENES DISPONIBLES — ACTIVAR DEFENSAS · '
             'DESACTIVAR DEFENSAS · BLOQUEAR <dominio> · AISLAR <paquete> · '
             'AISLAMIENTO DE EMERGENCIA · REANUDAR LA RED · ACTUALIZAR '
-            'DEFENSAS · ESTADO · PURGA CRIPTOGRÁFICA';
+            'DEFENSAS · ESCANEAR APLICACIONES · ESTADO · PURGA CRIPTOGRÁFICA';
         _emit(intent.toEvent());
         _emit(
           AgentEvent(
