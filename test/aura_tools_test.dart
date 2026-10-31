@@ -129,4 +129,41 @@ void main() {
     );
     expect(result.data['ok'], isFalse);
   });
+
+  test('unexpected native scan errors return a failed result without leaking details', () async {
+    messenger.setMockMethodCallHandler(securityChannel, (_) async {
+      throw StateError('private filesystem path /data/user/0/aura');
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(name: 'scan_apps', arguments: <String, dynamic>{}),
+    );
+
+    expect(result.data['ok'], isFalse);
+    expect(result.data['error'], 'operation_failed');
+    expect(result.data['tool'], 'scan_apps');
+    expect(result.data['security_level'], 'warning');
+    expect(result.summary, contains('No se confirmó ningún cambio'));
+    expect(result.summary, isNot(contains('/data/user/0/aura')));
+    expect(result.data.toString(), isNot(contains('/data/user/0/aura')));
+  });
+
+  test('unexpected VPN tool errors do not escape the agent tool boundary',
+      () async {
+    messenger.setMockMethodCallHandler(shieldChannel, (_) async {
+      throw StateError('native service crashed');
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(
+        name: 'toggle_defenses',
+        arguments: <String, dynamic>{'activate': true},
+      ),
+    );
+
+    expect(result.data['ok'], isFalse);
+    expect(result.data['error'], 'operation_failed');
+    expect(result.data['tool'], 'toggle_defenses');
+    expect(result.data['security_level'], 'warning');
+  });
 }
