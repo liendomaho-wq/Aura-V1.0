@@ -23,6 +23,19 @@ void main() {
     );
   });
 
+  test('empty native authentication status also fails closed', () async {
+    const channel = MethodChannel('com.aura.cyberdefense/biometrics');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (_) async => null);
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+    final status = await AgentController.instance.getLocalAuthStatus();
+
+    expect(status['nativeAuthAvailable'], isFalse);
+    expect(status['deviceSecure'], isTrue);
+  });
+
   test('help devuelve exactamente la lista de órdenes solicitada', () async {
     const expected = 'ÓRDENES DISPONIBLES — ACTIVAR DEFENSAS · '
         'DESACTIVAR DEFENSAS · BLOQUEAR <dominio> · AISLAR <paquete> · '
