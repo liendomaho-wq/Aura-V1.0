@@ -85,6 +85,24 @@ void main() {
       );
     });
 
+    test('rejects oversized encoded ciphertext before decoding it', () {
+      final oversizedHex = List<String>.filled(
+        2 * (16 + 5 * 1024 * 1024 + 16 + 32) + 2,
+        '0',
+      ).join();
+
+      expect(
+        () => AuraCryptoLayer.decryptModel(oversizedHex, key),
+        throwsA(
+          isA<AuraCryptoException>().having(
+            (error) => error.message,
+            'message',
+            contains('5 MiB'),
+          ),
+        ),
+      );
+    });
+
     test('HKDF rejects empty input key material and invalid output length', () {
       expect(
         () => AuraCryptoLayer.deriveKeyHKDF(
