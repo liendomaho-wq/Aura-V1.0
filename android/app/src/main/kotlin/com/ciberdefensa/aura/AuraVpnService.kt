@@ -97,6 +97,7 @@ class AuraVpnService : VpnService() {
 
     @Volatile private var underlyingNetwork: Network? = null
     @Volatile private var networkCallbackRegistered = false
+    @Volatile private var serviceShuttingDown = false
     private val underlyingNetworkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             enqueueUnderlyingNetworkRefresh()
@@ -175,6 +176,7 @@ class AuraVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        serviceShuttingDown = true
         unregisterUnderlyingNetworkCallback()
         feedRefresh.shutdownNow()
         integrityMonitor.shutdownNow()
@@ -432,7 +434,7 @@ class AuraVpnService : VpnService() {
 
     @Synchronized
     private fun refreshUnderlyingNetwork() {
-        if (isDestroyed) return
+        if (serviceShuttingDown) return
         val previous = underlyingNetwork
         val selected = findUnderlyingNetwork()
         if (selected == previous) return
