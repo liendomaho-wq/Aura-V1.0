@@ -52,8 +52,12 @@
 - [x] Descarga del feed IP HTTPS con límites de tamaño y actualización asíncrona.
 - [x] Pruebas nativas para reglas de dominio, allowlist, entradas inválidas y ClientHello malformado/incompleto.
 - [ ] Confirmar ejecución verde de la suite nativa ampliada en Codemagic.
-- [ ] Implementar y validar filtrado DoT por puerto TCP/853 en el camino real de paquetes.
-- [ ] Determinar una estrategia técnicamente válida para DoQ y DNS sobre HTTPS; la inspección SNI no cubre todos los resolutores ni ECH.
+- [x] Integrar descarte de TCP/853 (DoT) y UDP/853 (DoQ) en el lector de paquetes TUN antes de entregar el paquete a lwIP.
+- [x] Integrar descarte de UDP/443 hacia una lista explícita de resolutores DoH conocidos, con evento de auditoría del destino y transporte.
+- [x] Añadir pruebas unitarias de la política de transporte: TCP/853, UDP/853 y UDP/443 solo para resolutores marcados.
+- [ ] Añadir pruebas de integración del analizador de paquetes IPv4/IPv6 (fragmentos, extensiones, longitudes y paquetes malformados).
+- [ ] Evaluar DoH sobre TCP/443 y resolutores no incluidos en la lista; no afirmar cobertura general de DoH.
+- [ ] Validar DoT/DoQ/DoH en dispositivos físicos y comprobar falsos positivos, fugas y compatibilidad.
 - [ ] Definir política explícita para ECH; actualmente solo se identifica su extensión, no se descifra.
 - [ ] Completar detección y tratamiento de QUIC/HTTP3 sin atribuir bloqueos que el túnel no ejecuta.
 - [ ] Corregir/validar la señalización de conexiones directas por IP.
