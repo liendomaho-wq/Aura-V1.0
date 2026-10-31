@@ -60,6 +60,7 @@ class AgentController {
       'Puedo pedir que se reanude el forwarding del túnel VPN configurado.',
       'Puedo purgar cachés del modelo y datos sensibles almacenados por la app.',
       'Puedo buscar una actualización del modelo, validar su integridad e instalarla localmente.',
+      'Puedo revisar aplicaciones instaladas, servicios sensibles, permisos solicitados, firmas y señales heurísticas de ofuscación.',
       'Puedo recibir una instrucción dictada cuando el reconocimiento de voz está habilitado.',
       'Mis acciones respetan los límites de Android; algunas requieren consentimiento o configuración previa.',
     ],
