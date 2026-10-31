@@ -4,23 +4,34 @@ import 'package:flutter_tts/flutter_tts.dart';
 class AuraVoiceEngine {
   final FlutterTts _flutterTts = FlutterTts();
   late final Future<void> _initialization;
+  bool _available = true;
 
   AuraVoiceEngine() {
     _initialization = _initializeVoice();
   }
 
   Future<void> _initializeVoice() async {
-    await _flutterTts.setLanguage('es-ES');
-    await _flutterTts.setSpeechRate(0.55);
-    await _flutterTts.setVolume(1.0);
-    await _flutterTts.setPitch(1.05);
+    try {
+      await _flutterTts.setLanguage('es-ES');
+      await _flutterTts.setSpeechRate(0.55);
+      await _flutterTts.setVolume(1.0);
+      await _flutterTts.setPitch(1.05);
+    } on Object {
+      // Tests, desktop targets and devices without a TTS plugin remain usable.
+      _available = false;
+    }
   }
 
   Future<void> speak(String text) async {
-    if (text.isNotEmpty) {
-      await _initialization;
+    if (text.isEmpty) return;
+    await _initialization;
+    if (!_available) return;
+    try {
       await _flutterTts.stop();
       await _flutterTts.speak(text);
+    } on Object {
+      // Voice is optional; never interrupt the text-based agent response.
+      _available = false;
     }
   }
 
@@ -64,6 +75,12 @@ class AuraVoiceEngine {
   }
 
   Future<void> stop() async {
-    await _flutterTts.stop();
+    await _initialization;
+    if (!_available) return;
+    try {
+      await _flutterTts.stop();
+    } on Object {
+      _available = false;
+    }
   }
 }
