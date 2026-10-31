@@ -10,6 +10,7 @@ import android.os.Looper
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import android.util.Log
@@ -95,6 +96,23 @@ class AuraVpnService : VpnService() {
     }
 
     @Volatile private var underlyingNetwork: Network? = null
+    @Volatile private var networkCallbackRegistered = false
+    private val underlyingNetworkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            enqueueUnderlyingNetworkRefresh()
+        }
+
+        override fun onLost(network: Network) {
+            enqueueUnderlyingNetworkRefresh()
+        }
+
+        override fun onCapabilitiesChanged(
+            network: Network,
+            networkCapabilities: NetworkCapabilities,
+        ) {
+            enqueueUnderlyingNetworkRefresh()
+        }
+    }
     private val worker = Executors.newSingleThreadExecutor()
     private val feedRefresh: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor()
@@ -115,6 +133,7 @@ class AuraVpnService : VpnService() {
         super.onCreate()
         activeService = this
         AuraNetworkStream.setApplicationContext(applicationContext)
+        registerUnderlyingNetworkCallback()
         panicIsolationActive = getSharedPreferences(
             VPN_STATE_PREFERENCES,
             MODE_PRIVATE,
@@ -156,6 +175,7 @@ class AuraVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        unregisterUnderlyingNetworkCallback()
         feedRefresh.shutdownNow()
         integrityMonitor.shutdownNow()
         worker.shutdownNow()
@@ -375,11 +395,77 @@ class AuraVpnService : VpnService() {
         .addRoute("::", 0)
         .addDnsServer("10.0.0.3")
 
+    private fun registerUnderlyingNetworkCallback() {
+        val connectivity = getSystemService(ConnectivityManager::class.java) ?: return
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .build()
+        try {
+            connectivity.registerNetworkCallback(request, underlyingNetworkCallback)
+            networkCallbackRegistered = true
+        } catch (exception: Exception) {
+            Log.e("AuraVPN", "No se pudo registrar el seguimiento de la red física.", exception)
+        }
+    }
+
+    private fun unregisterUnderlyingNetworkCallback() {
+        if (!networkCallbackRegistered) return
+        val connectivity = getSystemService(ConnectivityManager::class.java) ?: return
+        try {
+            connectivity.unregisterNetworkCallback(underlyingNetworkCallback)
+        } catch (exception: Exception) {
+            Log.w("AuraVPN", "No se pudo retirar el callback de red.", exception)
+        } finally {
+            networkCallbackRegistered = false
+        }
+    }
+
+    private fun enqueueUnderlyingNetworkRefresh() {
+        if (worker.isShutdown) return
+        try {
+            worker.execute { refreshUnderlyingNetwork() }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            // Service teardown won the race with a final connectivity callback.
+        }
+    }
+
+    @Synchronized
+    private fun refreshUnderlyingNetwork() {
+        if (isDestroyed) return
+        val previous = underlyingNetwork
+        val selected = findUnderlyingNetwork()
+        if (selected == previous) return
+
+        underlyingNetwork = selected
+        try {
+            // Keep Android's VPN routing metadata aligned with the physical network.
+            // An empty array explicitly means there is currently no usable underlay.
+            setUnderlyingNetworks(selected?.let { arrayOf(it) } ?: emptyArray())
+        } catch (exception: Exception) {
+            Log.e("AuraVPN", "No se pudo actualizar la red subyacente de la VPN.", exception)
+            reportState(false, "No se pudo actualizar la red física; compruebe la conexión.")
+            return
+        }
+
+        if (selected == null) {
+            Log.w("AuraVPN", "Se perdió la red física; el túnel local permanece sin salida.")
+            reportState(false, "Sin red física disponible; el tráfico no puede salir del túnel.")
+        } else if (tunnelStarted && TProxyService.TProxyIsRunning()) {
+            Log.i("AuraVPN", "Red física del túnel actualizada.")
+            reportState(
+                true,
+                "Túnel local activo; red física actualizada. Las conexiones existentes pueden reconectarse.",
+            )
+        }
+    }
+
     private fun findUnderlyingNetwork(): Network? {
         val connectivity = getSystemService(ConnectivityManager::class.java)
         val candidates = connectivity.allNetworks.mapNotNull { network ->
             val capabilities = connectivity.getNetworkCapabilities(network) ?: return@mapNotNull null
             if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+                !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) ||
                 capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
             ) {
                 null
