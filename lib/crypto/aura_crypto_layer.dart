@@ -413,10 +413,588 @@ abstract final class AuraCryptoLayer {
       final encodedPayload = authenticated
           ? encryptedHex.substring(_authenticatedEnvelopePrefix.length)
           : encryptedHex;
+      final maxEncodedPayloadLength = 2 *
+          (_ivLength + _maxModelCiphertextBytes +
+              (authenticated ? _hmacLength : 0));
       if (encodedPayload.isEmpty ||
           encodedPayload.length.isOdd ||
+          encodedPayload.length > maxEncodedPayloadLength ||
+          !RegExp(r'^[0-9a-fA-F]+
+      try {
+        final tagLength = authenticated ? _hmacLength : 0;
+        final ciphertextLength =
+            payload.length - _ivLength - tagLength;
+        if (ciphertextLength < _aesBlockLength ||
+            ciphertextLength % _aesBlockLength != 0 ||
+            ciphertextLength > _maxModelCiphertextBytes) {
+          throw const AuraCryptoException(
+            'La longitud del ciphertext AES no es válida o supera 5 MiB.',
+          );
+        }
+        final ivBytes = Uint8List.sublistView(payload, 0, _ivLength);
+        final ciphertextBytes = Uint8List.sublistView(
+          payload,
+          _ivLength,
+          _ivLength + ciphertextLength,
+        );
+        if (authenticated) {
+          final suppliedTag = Uint8List.sublistView(
+            payload,
+            _ivLength + ciphertextLength,
+          );
+          if (!_verifyEnvelopeTag(
+            secureKey,
+            ivBytes,
+            ciphertextBytes,
+            suppliedTag,
+          )) {
+            throw const AuraCryptoException(
+              'La autenticación HMAC del modelo falló; el contenido fue alterado.',
+            );
+          }
+        }
+
+        final derivedKey = _deriveKey(secureKey);
+        try {
+          return Encrypter(
+            AES(Key(derivedKey), mode: AESMode.cbc, padding: 'PKCS7'),
+          ).decrypt(
+            Encrypted(Uint8List.fromList(ciphertextBytes)),
+            iv: IV(Uint8List.fromList(ivBytes)),
+          );
+        } finally {
+          secureZeroMemory(derivedKey);
+        }
+      } finally {
+        secureZeroMemory(payload);
+      }
+    } on AuraCryptoException {
+      rethrow;
+    } on Object catch (error) {
+      throw AuraCryptoException('No se pudo descifrar el modelo.', error);
+    }
+  }
+
+  static Uint8List _decodeHex(String value) => Uint8List.fromList(
+        List<int>.generate(
+          value.length ~/ 2,
+          (index) => int.parse(
+            value.substring(index * 2, index * 2 + 2),
+            radix: 16,
+          ),
+          growable: false,
+        ),
+      );
+
+  static Uint8List _deriveMacKey(String secureKey) {
+    final inputKeyMaterial = Uint8List.fromList(utf8.encode(secureKey));
+    final salt = Uint8List.fromList(utf8.encode(_derivationSalt));
+    final info = Uint8List.fromList(
+      utf8.encode('aura-model-hmac-sha-256-v2'),
+    );
+    try {
+      return deriveKeyHKDF(
+        ikm: inputKeyMaterial,
+        salt: salt,
+        info: info,
+      );
+    } finally {
+      secureZeroMemory(inputKeyMaterial);
+      secureZeroMemory(salt);
+      secureZeroMemory(info);
+    }
+  }
+
+  static Uint8List _createEnvelopeTag(
+    String secureKey,
+    Uint8List ivBytes,
+    Uint8List ciphertextBytes,
+  ) {
+    final macKey = _deriveMacKey(secureKey);
+    final authenticatedData = Uint8List.fromList(<int>[
+      ...utf8.encode(_authenticatedEnvelopeLabel),
+      ...ivBytes,
+      ...ciphertextBytes,
+    ]);
+    try {
+      return Uint8List.fromList(
+        crypto.Hmac(crypto.sha256, macKey)
+            .convert(authenticatedData)
+            .bytes,
+      );
+    } finally {
+      secureZeroMemory(macKey);
+      secureZeroMemory(authenticatedData);
+    }
+  }
+
+  static bool _verifyEnvelopeTag(
+    String secureKey,
+    Uint8List ivBytes,
+    Uint8List ciphertextBytes,
+    Uint8List suppliedTag,
+  ) {
+    if (suppliedTag.length != _hmacLength) return false;
+    final expectedTag = _createEnvelopeTag(
+      secureKey,
+      ivBytes,
+      ciphertextBytes,
+    );
+    try {
+      return _bytesEqual(expectedTag, suppliedTag);
+    } finally {
+      secureZeroMemory(expectedTag);
+    }
+  }
+
+  static Future<String> decryptModelSecure(
+    String encryptedHex,
+    String secureKey,
+  ) async {
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      return decryptModel(encryptedHex, secureKey);
+    }
+
+    Uint8List? payload;
+    Uint8List? derivedKey;
+    Uint8List? ivBytes;
+    Uint8List? ciphertext;
+    Uint8List? plaintextBytes;
+    try {
+      final authenticated =
+          encryptedHex.startsWith(_authenticatedEnvelopePrefix);
+      final encodedPayload = authenticated
+          ? encryptedHex.substring(_authenticatedEnvelopePrefix.length)
+          : encryptedHex;
+      final maxEncodedPayloadLength = 2 *
+          (_ivLength + _maxModelCiphertextBytes +
+              (authenticated ? _hmacLength : 0));
+      if (secureKey.isEmpty ||
+          encodedPayload.isEmpty ||
+          encodedPayload.length.isOdd ||
+          encodedPayload.length > maxEncodedPayloadLength ||
+          !RegExp(r'^[0-9a-fA-F]+
+      final tagLength = authenticated ? _hmacLength : 0;
+      final ciphertextLength =
+          payload.length - _ivLength - tagLength;
+      if (ciphertextLength < _aesBlockLength ||
+          ciphertextLength % _aesBlockLength != 0 ||
+          ciphertextLength > _maxModelCiphertextBytes) {
+        throw const AuraCryptoException(
+          'La longitud del ciphertext AES no es válida.',
+        );
+      }
+
+      ivBytes = Uint8List.fromList(payload.sublist(0, _ivLength));
+      ciphertext = Uint8List.fromList(
+        payload.sublist(_ivLength, _ivLength + ciphertextLength),
+      );
+      if (authenticated) {
+        final suppliedTag = Uint8List.fromList(
+          payload.sublist(_ivLength + ciphertextLength),
+        );
+        try {
+          if (!_verifyEnvelopeTag(
+            secureKey,
+            ivBytes,
+            ciphertext,
+            suppliedTag,
+          )) {
+            throw const AuraCryptoException(
+              'La autenticación HMAC del modelo falló; el contenido fue alterado.',
+            );
+          }
+        } finally {
+          secureZeroMemory(suppliedTag);
+        }
+      }
+
+      derivedKey = _deriveKey(secureKey);
+      plaintextBytes = await _nativeCryptoChannel.invokeMethod<Uint8List>(
+        'decryptModelNative',
+        <String, Object>{
+          'encryptedData': ciphertext,
+          'keyBytes': derivedKey,
+          'ivBytes': ivBytes,
+        },
+      );
+      if (plaintextBytes == null || plaintextBytes.isEmpty) {
+        throw const AuraCryptoException(
+          'El descifrado nativo devolvió un resultado vacío.',
+        );
+      }
+      return utf8.decode(plaintextBytes);
+    } on AuraCryptoException {
+      rethrow;
+    } on Object catch (error) {
+      throw AuraCryptoException(
+        'No se pudo descifrar el modelo nativamente.',
+        error,
+      );
+    } finally {
+      if (payload != null) secureZeroMemory(payload);
+      if (derivedKey != null) secureZeroMemory(derivedKey);
+      if (ivBytes != null) secureZeroMemory(ivBytes);
+      if (ciphertext != null) secureZeroMemory(ciphertext);
+      if (plaintextBytes != null) secureZeroMemory(plaintextBytes);
+    }
+  }
+
+  static Uint8List _deriveKey(String secureKey) {
+    final inputKeyMaterial = Uint8List.fromList(utf8.encode(secureKey));
+    final salt = Uint8List.fromList(utf8.encode(_derivationSalt));
+    final info = Uint8List.fromList(utf8.encode(_derivationInfo));
+    try {
+      return deriveKeyHKDF(
+        ikm: inputKeyMaterial,
+        salt: salt,
+        info: info,
+      );
+    } finally {
+      secureZeroMemory(inputKeyMaterial);
+      secureZeroMemory(salt);
+      secureZeroMemory(info);
+    }
+  }
+}
+).hasMatch(encodedPayload)) {
+        throw const AuraCryptoException(
+          'El payload hexadecimal no es válido o supera 5 MiB.',
+        );
+      }
+
+      final payload = _decodeHex(encodedPayload);
+      try {
+        final tagLength = authenticated ? _hmacLength : 0;
+        final ciphertextLength =
+            payload.length - _ivLength - tagLength;
+        if (ciphertextLength < _aesBlockLength ||
+            ciphertextLength % _aesBlockLength != 0 ||
+            ciphertextLength > _maxModelCiphertextBytes) {
+          throw const AuraCryptoException(
+            'La longitud del ciphertext AES no es válida o supera 5 MiB.',
+          );
+        }
+        final ivBytes = Uint8List.sublistView(payload, 0, _ivLength);
+        final ciphertextBytes = Uint8List.sublistView(
+          payload,
+          _ivLength,
+          _ivLength + ciphertextLength,
+        );
+        if (authenticated) {
+          final suppliedTag = Uint8List.sublistView(
+            payload,
+            _ivLength + ciphertextLength,
+          );
+          if (!_verifyEnvelopeTag(
+            secureKey,
+            ivBytes,
+            ciphertextBytes,
+            suppliedTag,
+          )) {
+            throw const AuraCryptoException(
+              'La autenticación HMAC del modelo falló; el contenido fue alterado.',
+            );
+          }
+        }
+
+        final derivedKey = _deriveKey(secureKey);
+        try {
+          return Encrypter(
+            AES(Key(derivedKey), mode: AESMode.cbc, padding: 'PKCS7'),
+          ).decrypt(
+            Encrypted(Uint8List.fromList(ciphertextBytes)),
+            iv: IV(Uint8List.fromList(ivBytes)),
+          );
+        } finally {
+          secureZeroMemory(derivedKey);
+        }
+      } finally {
+        secureZeroMemory(payload);
+      }
+    } on AuraCryptoException {
+      rethrow;
+    } on Object catch (error) {
+      throw AuraCryptoException('No se pudo descifrar el modelo.', error);
+    }
+  }
+
+  static Uint8List _decodeHex(String value) => Uint8List.fromList(
+        List<int>.generate(
+          value.length ~/ 2,
+          (index) => int.parse(
+            value.substring(index * 2, index * 2 + 2),
+            radix: 16,
+          ),
+          growable: false,
+        ),
+      );
+
+  static Uint8List _deriveMacKey(String secureKey) {
+    final inputKeyMaterial = Uint8List.fromList(utf8.encode(secureKey));
+    final salt = Uint8List.fromList(utf8.encode(_derivationSalt));
+    final info = Uint8List.fromList(
+      utf8.encode('aura-model-hmac-sha-256-v2'),
+    );
+    try {
+      return deriveKeyHKDF(
+        ikm: inputKeyMaterial,
+        salt: salt,
+        info: info,
+      );
+    } finally {
+      secureZeroMemory(inputKeyMaterial);
+      secureZeroMemory(salt);
+      secureZeroMemory(info);
+    }
+  }
+
+  static Uint8List _createEnvelopeTag(
+    String secureKey,
+    Uint8List ivBytes,
+    Uint8List ciphertextBytes,
+  ) {
+    final macKey = _deriveMacKey(secureKey);
+    final authenticatedData = Uint8List.fromList(<int>[
+      ...utf8.encode(_authenticatedEnvelopeLabel),
+      ...ivBytes,
+      ...ciphertextBytes,
+    ]);
+    try {
+      return Uint8List.fromList(
+        crypto.Hmac(crypto.sha256, macKey)
+            .convert(authenticatedData)
+            .bytes,
+      );
+    } finally {
+      secureZeroMemory(macKey);
+      secureZeroMemory(authenticatedData);
+    }
+  }
+
+  static bool _verifyEnvelopeTag(
+    String secureKey,
+    Uint8List ivBytes,
+    Uint8List ciphertextBytes,
+    Uint8List suppliedTag,
+  ) {
+    if (suppliedTag.length != _hmacLength) return false;
+    final expectedTag = _createEnvelopeTag(
+      secureKey,
+      ivBytes,
+      ciphertextBytes,
+    );
+    try {
+      return _bytesEqual(expectedTag, suppliedTag);
+    } finally {
+      secureZeroMemory(expectedTag);
+    }
+  }
+
+  static Future<String> decryptModelSecure(
+    String encryptedHex,
+    String secureKey,
+  ) async {
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      return decryptModel(encryptedHex, secureKey);
+    }
+
+    Uint8List? payload;
+    Uint8List? derivedKey;
+    Uint8List? ivBytes;
+    Uint8List? ciphertext;
+    Uint8List? plaintextBytes;
+    try {
+      final authenticated =
+          encryptedHex.startsWith(_authenticatedEnvelopePrefix);
+      final encodedPayload = authenticated
+          ? encryptedHex.substring(_authenticatedEnvelopePrefix.length)
+          : encryptedHex;
+      if (secureKey.isEmpty ||
+          encodedPayload.isEmpty ||
+          encodedPayload.length.isOdd ||
           !RegExp(r'^[0-9a-fA-F]+$').hasMatch(encodedPayload)) {
-        throw const AuraCryptoException('El payload hexadecimal no es válido.');
+        throw const AuraCryptoException('El payload cifrado no es válido.');
+      }
+
+      payload = _decodeHex(encodedPayload);
+      final tagLength = authenticated ? _hmacLength : 0;
+      final ciphertextLength =
+          payload.length - _ivLength - tagLength;
+      if (ciphertextLength < _aesBlockLength ||
+          ciphertextLength % _aesBlockLength != 0 ||
+          ciphertextLength > _maxModelCiphertextBytes) {
+        throw const AuraCryptoException(
+          'La longitud del ciphertext AES no es válida.',
+        );
+      }
+
+      ivBytes = Uint8List.fromList(payload.sublist(0, _ivLength));
+      ciphertext = Uint8List.fromList(
+        payload.sublist(_ivLength, _ivLength + ciphertextLength),
+      );
+      if (authenticated) {
+        final suppliedTag = Uint8List.fromList(
+          payload.sublist(_ivLength + ciphertextLength),
+        );
+        try {
+          if (!_verifyEnvelopeTag(
+            secureKey,
+            ivBytes,
+            ciphertext,
+            suppliedTag,
+          )) {
+            throw const AuraCryptoException(
+              'La autenticación HMAC del modelo falló; el contenido fue alterado.',
+            );
+          }
+        } finally {
+          secureZeroMemory(suppliedTag);
+        }
+      }
+
+      derivedKey = _deriveKey(secureKey);
+      plaintextBytes = await _nativeCryptoChannel.invokeMethod<Uint8List>(
+        'decryptModelNative',
+        <String, Object>{
+          'encryptedData': ciphertext,
+          'keyBytes': derivedKey,
+          'ivBytes': ivBytes,
+        },
+      );
+      if (plaintextBytes == null || plaintextBytes.isEmpty) {
+        throw const AuraCryptoException(
+          'El descifrado nativo devolvió un resultado vacío.',
+        );
+      }
+      return utf8.decode(plaintextBytes);
+    } on AuraCryptoException {
+      rethrow;
+    } on Object catch (error) {
+      throw AuraCryptoException(
+        'No se pudo descifrar el modelo nativamente.',
+        error,
+      );
+    } finally {
+      if (payload != null) secureZeroMemory(payload);
+      if (derivedKey != null) secureZeroMemory(derivedKey);
+      if (ivBytes != null) secureZeroMemory(ivBytes);
+      if (ciphertext != null) secureZeroMemory(ciphertext);
+      if (plaintextBytes != null) secureZeroMemory(plaintextBytes);
+    }
+  }
+
+  static Uint8List _deriveKey(String secureKey) {
+    final inputKeyMaterial = Uint8List.fromList(utf8.encode(secureKey));
+    final salt = Uint8List.fromList(utf8.encode(_derivationSalt));
+    final info = Uint8List.fromList(utf8.encode(_derivationInfo));
+    try {
+      return deriveKeyHKDF(
+        ikm: inputKeyMaterial,
+        salt: salt,
+        info: info,
+      );
+    } finally {
+      secureZeroMemory(inputKeyMaterial);
+      secureZeroMemory(salt);
+      secureZeroMemory(info);
+    }
+  }
+}
+).hasMatch(encodedPayload)) {
+        throw const AuraCryptoException(
+          'El payload cifrado no es válido o supera 5 MiB.',
+        );
+      }
+
+      payload = _decodeHex(encodedPayload);
+      final tagLength = authenticated ? _hmacLength : 0;
+      final ciphertextLength =
+          payload.length - _ivLength - tagLength;
+      if (ciphertextLength < _aesBlockLength ||
+          ciphertextLength % _aesBlockLength != 0 ||
+          ciphertextLength > _maxModelCiphertextBytes) {
+        throw const AuraCryptoException(
+          'La longitud del ciphertext AES no es válida.',
+        );
+      }
+
+      ivBytes = Uint8List.fromList(payload.sublist(0, _ivLength));
+      ciphertext = Uint8List.fromList(
+        payload.sublist(_ivLength, _ivLength + ciphertextLength),
+      );
+      if (authenticated) {
+        final suppliedTag = Uint8List.fromList(
+          payload.sublist(_ivLength + ciphertextLength),
+        );
+        try {
+          if (!_verifyEnvelopeTag(
+            secureKey,
+            ivBytes,
+            ciphertext,
+            suppliedTag,
+          )) {
+            throw const AuraCryptoException(
+              'La autenticación HMAC del modelo falló; el contenido fue alterado.',
+            );
+          }
+        } finally {
+          secureZeroMemory(suppliedTag);
+        }
+      }
+
+      derivedKey = _deriveKey(secureKey);
+      plaintextBytes = await _nativeCryptoChannel.invokeMethod<Uint8List>(
+        'decryptModelNative',
+        <String, Object>{
+          'encryptedData': ciphertext,
+          'keyBytes': derivedKey,
+          'ivBytes': ivBytes,
+        },
+      );
+      if (plaintextBytes == null || plaintextBytes.isEmpty) {
+        throw const AuraCryptoException(
+          'El descifrado nativo devolvió un resultado vacío.',
+        );
+      }
+      return utf8.decode(plaintextBytes);
+    } on AuraCryptoException {
+      rethrow;
+    } on Object catch (error) {
+      throw AuraCryptoException(
+        'No se pudo descifrar el modelo nativamente.',
+        error,
+      );
+    } finally {
+      if (payload != null) secureZeroMemory(payload);
+      if (derivedKey != null) secureZeroMemory(derivedKey);
+      if (ivBytes != null) secureZeroMemory(ivBytes);
+      if (ciphertext != null) secureZeroMemory(ciphertext);
+      if (plaintextBytes != null) secureZeroMemory(plaintextBytes);
+    }
+  }
+
+  static Uint8List _deriveKey(String secureKey) {
+    final inputKeyMaterial = Uint8List.fromList(utf8.encode(secureKey));
+    final salt = Uint8List.fromList(utf8.encode(_derivationSalt));
+    final info = Uint8List.fromList(utf8.encode(_derivationInfo));
+    try {
+      return deriveKeyHKDF(
+        ikm: inputKeyMaterial,
+        salt: salt,
+        info: info,
+      );
+    } finally {
+      secureZeroMemory(inputKeyMaterial);
+      secureZeroMemory(salt);
+      secureZeroMemory(info);
+    }
+  }
+}
+).hasMatch(encodedPayload)) {
+        throw const AuraCryptoException(
+          'El payload hexadecimal no es válido o supera 5 MiB.',
+        );
       }
 
       final payload = _decodeHex(encodedPayload);
