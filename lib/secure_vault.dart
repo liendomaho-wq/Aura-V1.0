@@ -20,6 +20,20 @@ class AuraSecureVault {
   );
   static Future<void> _writeQueue = Future<void>.value();
 
+  /// Serializes mutations and key creation across every vault instance.
+  /// The queue itself never remains failed; each caller receives its own error.
+  static Future<T> _enqueue<T>(Future<T> Function() operation) {
+    final completion = Completer<T>();
+    _writeQueue = _writeQueue.then((_) async {
+      try {
+        completion.complete(await operation());
+      } on Object catch (error, stackTrace) {
+        completion.completeError(error, stackTrace);
+      }
+    });
+    return completion.future;
+  }
+
   final FlutterSecureStorage _storage;
   final bool _usesDefaultStorage;
   Future<String>? _modelMasterKeyLoad;
@@ -33,12 +47,12 @@ class AuraSecureVault {
   Future<String> getOrCreateModelMasterKey() {
     if (_usesDefaultStorage) {
       return _sharedModelMasterKeyLoad ??=
-          _loadOrCreateModelMasterKey();
+          _enqueue(_loadOrCreateModelMasterKey);
     }
     if (_modelMasterKeyLoad == null ||
         _cachedModelKeyGeneration != _modelKeyGeneration) {
       _cachedModelKeyGeneration = _modelKeyGeneration;
-      _modelMasterKeyLoad = _loadOrCreateModelMasterKey();
+      _modelMasterKeyLoad = _enqueue(_loadOrCreateModelMasterKey);
     }
     return _modelMasterKeyLoad!;
   }
@@ -79,10 +93,8 @@ class AuraSecureVault {
     }
   }
 
-  Future<void> saveAuditLogs(List<Map<String, dynamic>> newLogs) {
-    final completion = Completer<void>();
-    _writeQueue = _writeQueue.then((_) async {
-      try {
+  Future<void> saveAuditLogs(List<Map<String, dynamic>> newLogs) =>
+      _enqueue(() async {
         final history = await getAuditLogs();
         final combined = <Map<String, dynamic>>[
           ...history,
@@ -95,13 +107,7 @@ class AuraSecureVault {
           key: _auditLogsKey,
           value: jsonEncode(bounded),
         );
-        completion.complete();
-      } catch (error, stackTrace) {
-        completion.completeError(error, stackTrace);
-      }
-    });
-    return completion.future;
-  }
+      });
 
   Future<List<Map<String, dynamic>>> getAuditLogs() async {
     final encoded = await _storage.read(key: _auditLogsKey);
@@ -129,25 +135,23 @@ class AuraSecureVault {
 
   Future<List<Map<String, dynamic>>> readLogsSecurely() => getAuditLogs();
 
-  Future<void> clearLogsSecurely() => _storage.delete(key: _auditLogsKey);
+  Future<void> clearLogsSecurely() =>
+      _enqueue(() => _storage.delete(key: _auditLogsKey));
 
   Future<void> purgeSensitiveData() {
-    final completion = Completer<void>();
-    _writeQueue = _writeQueue.then((_) async {
-      try {
-        await _storage.deleteAll();
-        if ((await _storage.readAll()).isNotEmpty) {
-          throw StateError('SecureVault conserva datos después de la purga.');
-        }
-        _modelKeyGeneration++;
-        _sharedModelMasterKeyLoad = null;
-        _modelMasterKeyLoad = null;
-        _cachedModelKeyGeneration = -1;
-        completion.complete();
-      } catch (error, stackTrace) {
-        completion.completeError(error, stackTrace);
+    // Invalidate cached futures immediately. Any key request arriving after
+    // this point is queued behind the purge and cannot resurrect a pre-purge
+    // key while deleteAll() is in progress.
+    _modelKeyGeneration++;
+    _sharedModelMasterKeyLoad = null;
+    _modelMasterKeyLoad = null;
+    _cachedModelKeyGeneration = -1;
+
+    return _enqueue(() async {
+      await _storage.deleteAll();
+      if ((await _storage.readAll()).isNotEmpty) {
+        throw StateError('SecureVault conserva datos después de la purga.');
       }
     });
-    return completion.future;
   }
 }
