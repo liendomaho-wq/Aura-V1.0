@@ -487,14 +487,17 @@ AAB: `AURA_BUILD_FORMAT=aab bash tool/compile_aura.sh`. Comprueba `CERT_SHA256`,
 
 ## 11. Roadmap
 
-Pendientes propuestos, no funciones completadas:
+Estado de seguimiento (2026-10-30):
 
-- Incisión #6: Aura Agéntica (registro de herramientas y clasificador de intenciones).
-- Incisión #7: Suite 3D / núcleo neuronal holográfico.
+- Fase 1: experiencia conversacional y avatar local implementados; se añadieron etiquetas semánticas para estados disponible/analizando y respeto de la preferencia Android de reducir animaciones. Las nuevas pruebas widget deben confirmarse en Codemagic y el comportamiento debe validarse en dispositivos físicos.
+- Fase 2: VPN local opcional, captura IPv4/IPv6, inspección SNI, reglas dinámicas y feed IP HTTPS acotado presentes en el código. La suite nativa de SNI amplía cobertura de allowlist, límites de dominio, ClientHello incompleto y extensiones malformadas; su ejecución CI debe confirmarse.
+- Pendiente de red: filtrado real y validado de DoT/TCP 853; estrategia para DoH/DoQ; tratamiento explícito de QUIC/HTTP3; política ECH; señalización de conexiones IP directas; pruebas de fugas, reconexión y estabilidad en dispositivos.
+- Incisión #6: Aura Agéntica (registro de herramientas, política central de permisos, planificación y verificación de acciones).
+- Incisión #7: evolución visual del avatar; cualquier efecto 3D debe priorizar rendimiento, accesibilidad y consumo.
 - Revisar permisos y manifiesto para Android 14+ y APIs 34/36; el build actual declara `compileSdk 36` y `targetSdk 36`.
-- Ampliar y validar en dispositivos reales la cobertura DoH/DoQ, QUIC, ECH y resolutores fuera de las direcciones conocidas.
-- Refactor de nombres de `AuraAIInference` y clases relacionadas manteniendo contrato/tests.
-- Añadir cobertura de tests reproducible y benchmark en dispositivos reales.
+- Entrenar y evaluar el modelo candidato de 18 características; el asset móvil publicado continúa en versión 3.0.0 hasta completar el proceso reproducible y la validación.
+- Refactor de nombres de `AuraAIInference` y clases relacionadas manteniendo contratos y pruebas.
+- Añadir cobertura reproducible y benchmarks en dispositivos Android reales.
 
 ## 12. Código crítico auditado
 
