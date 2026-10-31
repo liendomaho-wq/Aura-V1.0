@@ -43,6 +43,14 @@ void main() {
     expect(intent.toEvent().kind, AgentEventKind.action);
   });
 
+  test('la orden literal ESCANEAR APLICACIONES activa scan_apps', () async {
+    final intent = await AuraIntentParser.parse('ESCANEAR APLICACIONES');
+
+    expect(intent.name, 'scan_apps');
+    expect(intent.kind, AuraIntentKind.scanApps);
+    expect(intent.entities, isEmpty);
+  });
+
   test('bloquear un dominio sigue usando block_domain', () async {
     final intent =
         await AuraIntentParser.parse('bloquea evil.example.com');
