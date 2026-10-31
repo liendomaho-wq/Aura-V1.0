@@ -59,6 +59,21 @@ void main() {
       );
     });
 
+    test('rejects model plaintext larger than the 5 MiB safety limit', () {
+      final oversizedJson = '{"payload":"${List<String>.filled(5 * 1024 * 1024, 'x').join()}"}';
+
+      expect(
+        () => AuraCryptoLayer.encryptModel(oversizedJson, key),
+        throwsA(
+          isA<AuraCryptoException>().having(
+            (error) => error.message,
+            'message',
+            contains('5 MiB'),
+          ),
+        ),
+      );
+    });
+
     test('rejects malformed hex and truncated AES payloads', () {
       expect(
         () => AuraCryptoLayer.decryptModel('not-hex', key),
