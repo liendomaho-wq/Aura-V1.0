@@ -44,6 +44,7 @@ workflows:
           set -euo pipefail
           cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
           python3 tool/test_vpn_config_template.py
+          python3 tool/test_aura_sni_firewall.py
           flutter test --reporter expanded
       - name: Build Android Release artifact
         script: |
