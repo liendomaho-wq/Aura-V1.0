@@ -43,6 +43,7 @@
 - [x] Inventario tipado básico de herramientas y esquemas de entrada/salida.
 - [x] Exponer el escáner nativo de aplicaciones como herramienta `scan_apps` del agente, con informe estructurado y límites explícitos de interpretación.
 - [x] Reconocer en lenguaje natural órdenes para analizar/escanea/revisar aplicaciones y reflejar la acción en el historial.
+- [x] Acotar el análisis DEX a 16 MiB por archivo y un máximo de ocho entradas DEX por aplicación para reducir riesgo de consumo excesivo ante APK anómalos.
 - [ ] Añadir cancelación, progreso granular y límites temporales al escaneo nativo de APK/Dex.
 - Política central de permisos y confirmaciones.
 - Plan de tareas con progreso, cancelación y recuperación.
