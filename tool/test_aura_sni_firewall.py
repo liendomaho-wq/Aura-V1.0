@@ -34,6 +34,13 @@ def _inspect(library, client_hello):
     return result, output.value.decode("ascii")
 
 
+def _sni_client_hello(hostname):
+    encoded_hostname = hostname.encode("ascii")
+    names = b"\\x00" + len(encoded_hostname).to_bytes(2, "big") + encoded_hostname
+    server_name = len(names).to_bytes(2, "big") + names
+    return _client_hello(_extension(0x0000, server_name))
+
+
 class AuraSniFirewallTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -64,6 +71,8 @@ class AuraSniFirewallTest(unittest.TestCase):
             ctypes.c_size_t,
         ]
         cls.library.aura_inspect_tls_sni.restype = ctypes.c_int
+        cls.library.aura_add_dynamic_sni_rule.argtypes = [ctypes.c_char_p]
+        cls.library.aura_add_dynamic_sni_rule.restype = ctypes.c_int
 
     @classmethod
     def tearDownClass(cls):
