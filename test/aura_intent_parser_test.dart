@@ -34,6 +34,15 @@ void main() {
     expect(intent.toEvent().kind, AgentEventKind.thought);
   });
 
+  test('escanear aplicaciones activa la herramienta de auditoría', () async {
+    final intent = await AuraIntentParser.parse('analiza las aplicaciones instaladas');
+
+    expect(intent.name, 'scan_apps');
+    expect(intent.kind, AuraIntentKind.scanApps);
+    expect(intent.entities, isEmpty);
+    expect(intent.toEvent().kind, AgentEventKind.action);
+  });
+
   test('bloquear un dominio sigue usando block_domain', () async {
     final intent =
         await AuraIntentParser.parse('bloquea evil.example.com');
