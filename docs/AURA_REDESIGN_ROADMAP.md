@@ -29,11 +29,15 @@
 ## Etapas de implementación
 
 ### Etapa 1 — experiencia y estabilidad
-- Identidad visual midnight/cyan/violet.
-- Avatar animado local, sin dependencia de red ni SDK adicional.
-- Conversación principal y composición de mensajes.
-- Conservar historial, telemetría, auditoría, controles de privacidad y accesibilidad existentes.
-- Validar Flutter analyze, pruebas unitarias/widget y compilación Android.
+- [x] Identidad visual midnight/cyan/violet.
+- [x] Avatar animado local, sin dependencia de red ni SDK adicional.
+- [x] Conversación principal y composición de mensajes.
+- [x] Mantener historial, telemetría, auditoría y controles de privacidad existentes.
+- [x] Etiquetas semánticas accesibles para estados disponible/analizando del avatar.
+- [x] Respetar la preferencia Android de reducir animaciones.
+- [x] Pruebas widget de estados accesibles y movimiento reducido añadidas a CI.
+- [ ] Confirmar ejecución verde de estas nuevas pruebas en Codemagic.
+- [ ] Validar el avatar, accesibilidad, batería y estabilidad en dispositivos físicos.
 
 ### Etapa 2 — agente ejecutor
 - Inventario tipado de herramientas y esquemas de entrada/salida.
@@ -42,11 +46,20 @@
 - Verificación post-acción y bitácora de resultados.
 - Pruebas de prompt injection y entradas maliciosas provenientes de feeds.
 
-### Etapa 3 — módulos Android
-- Auditoría de aplicaciones y permisos realmente expuestos por Android.
-- Protección web/DNS con feeds firmados y actualización segura.
-- Privacidad, indicadores de rastreo y revisión de ajustes accesibles.
-- Diagnóstico de red y VPN local opcional, con pruebas de fugas y estabilidad.
+### Etapa 3 — módulos Android y protección de red
+- [x] VPN local opcional con rutas IPv4/IPv6 y túnel SOCKS5 local.
+- [x] Inspección SNI y reglas dinámicas de dominio en el firewall nativo.
+- [x] Descarga del feed IP HTTPS con límites de tamaño y actualización asíncrona.
+- [x] Pruebas nativas para reglas de dominio, allowlist, entradas inválidas y ClientHello malformado/incompleto.
+- [ ] Confirmar ejecución verde de la suite nativa ampliada en Codemagic.
+- [ ] Implementar y validar filtrado DoT por puerto TCP/853 en el camino real de paquetes.
+- [ ] Determinar una estrategia técnicamente válida para DoQ y DNS sobre HTTPS; la inspección SNI no cubre todos los resolutores ni ECH.
+- [ ] Definir política explícita para ECH; actualmente solo se identifica su extensión, no se descifra.
+- [ ] Completar detección y tratamiento de QUIC/HTTP3 sin atribuir bloqueos que el túnel no ejecuta.
+- [ ] Corregir/validar la señalización de conexiones directas por IP.
+- [ ] Auditoría de fugas DNS/IPv4/IPv6, reconexión, cambio de red y revocación VPN en dispositivos físicos.
+- [ ] Medir consumo de batería, estabilidad prolongada y compatibilidad por versión Android.
+- [ ] Revisar feeds: firma/procedencia, caducidad, rollback y falsos positivos.
 
 ### Etapa 4 — inteligencia avanzada
 - Correlación de eventos, reputación y detección de anomalías.
