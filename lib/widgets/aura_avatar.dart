@@ -32,6 +32,16 @@ class _AuraAvatarState extends State<AuraAvatar>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+      _controller.stop();
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
