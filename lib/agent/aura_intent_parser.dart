@@ -7,6 +7,7 @@ enum AuraIntentKind {
   resumeNetwork,
   cryptographicPurge,
   updateDefenses,
+  scanApps,
   greet,
   identity,
   capabilities,
@@ -44,6 +45,7 @@ class AuraIntent {
           AuraIntentKind.resumeNetwork ||
           AuraIntentKind.cryptographicPurge ||
           AuraIntentKind.updateDefenses ||
+          AuraIntentKind.scanApps ||
           AuraIntentKind.toggleDefenses => AgentEventKind.action,
           AuraIntentKind.greet ||
           AuraIntentKind.identity ||
@@ -110,6 +112,10 @@ class AuraIntentParser {
   );
   static final RegExp _helpCommand = RegExp(
     r'\b(ayuda|help|comandos|[oó]rdenes|que puedes hacer|qué puedes hacer)\b',
+    caseSensitive: false,
+  );
+  static final RegExp _scanAppsCommand = RegExp(
+    r'\\b(?:analiza|analizar|escanea|escanear|revisa|revisar)\\s+(?:las?\\s+)?(?:apps|aplicaciones|aplicativos)\\b|\\b(?:escaneo|an[aá]lisis)\\s+de\\s+(?:apps|aplicaciones)\\b',
     caseSensitive: false,
   );
   static final RegExp _updateDefensesCommand = RegExp(
@@ -288,6 +294,13 @@ class AuraIntentParser {
         kind: AuraIntentKind.help,
         entities: <String, dynamic>{},
         confidence: 0.9,
+      );
+    } else if (_scanAppsCommand.hasMatch(text)) {
+      intent = AuraIntent(
+        name: 'scan_apps',
+        kind: AuraIntentKind.scanApps,
+        entities: <String, dynamic>{},
+        confidence: 0.95,
       );
     } else if (_updateDefensesCommand.hasMatch(text)) {
       intent = AuraIntent(
