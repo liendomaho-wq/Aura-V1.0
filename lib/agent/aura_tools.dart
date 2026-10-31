@@ -206,7 +206,26 @@ abstract class AuraTools {
     } on MissingPluginException catch (error) {
       return ToolResult(
         summary: error.message ?? 'El canal nativo de Aura no está disponible.',
-        data: <String, dynamic>{'ok': false, 'error': 'missing_plugin'},
+        data: <String, dynamic>{
+          'ok': false,
+          'error': 'missing_plugin',
+          'tool': step.name,
+        },
+      );
+    } on Object catch (error) {
+      // Native, storage, filesystem and network failures must become an
+      // explicit unsuccessful result; never let a tool failure look successful
+      // or crash the agent command loop. Avoid returning exception text because
+      // platform errors can contain paths, hostnames or other sensitive data.
+      return ToolResult(
+        summary: 'No se pudo completar la operación. No se confirmó ningún cambio; revisa el estado antes de reintentar.',
+        data: <String, dynamic>{
+          'ok': false,
+          'error': 'operation_failed',
+          'error_type': error.runtimeType.toString(),
+          'tool': step.name,
+          'security_level': 'warning',
+        },
       );
     }
   }
