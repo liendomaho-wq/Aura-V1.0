@@ -4,6 +4,24 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('missing native authentication channel fails closed', () async {
+    const channel = MethodChannel('com.aura.cyberdefense/biometrics');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, null);
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+    final controller = AgentController.instance;
+    final status = await controller.getLocalAuthStatus();
+
+    expect(status['nativeAuthAvailable'], isFalse);
+    expect(status['deviceSecure'], isTrue);
+    expect(
+      await controller.authenticateDeviceCredential(),
+      isFalse,
+    );
+  });
+
   test('help devuelve exactamente la lista de órdenes solicitada', () async {
     const expected = 'ÓRDENES DISPONIBLES — ACTIVAR DEFENSAS · '
         'DESACTIVAR DEFENSAS · BLOQUEAR <dominio> · AISLAR <paquete> · '
