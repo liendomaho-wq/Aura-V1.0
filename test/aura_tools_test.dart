@@ -6,11 +6,43 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const shieldChannel = MethodChannel('com.ciberdefensa.aura/shield');
+  const securityChannel = MethodChannel('com.ciberdefensa.aura/security');
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
 
   tearDown(() {
     messenger.setMockMethodCallHandler(shieldChannel, null);
+    messenger.setMockMethodCallHandler(securityChannel, null);
+  });
+
+  test('scan_apps devuelve informe nativo y advierte sobre límites heurísticos', () async {
+    messenger.setMockMethodCallHandler(securityChannel, (call) async {
+      expect(call.method, 'scanActiveSensitiveServices');
+      return <String, dynamic>{
+        'timestamp': 123,
+        'count': 1,
+        'applications': <dynamic>[
+          <String, dynamic>{'package_name': 'com.example.app'},
+        ],
+        'suspicious_app_count': 1,
+        'suspicious_apps': <dynamic>[],
+        'signature_issue_count': 0,
+        'signature_issues': <dynamic>[],
+        'obfuscated_app_count': 0,
+        'obfuscated_apps': <dynamic>[],
+      };
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(name: 'scan_apps', arguments: <String, dynamic>{}),
+    );
+
+    expect(result.data['ok'], isTrue);
+    expect(result.data['scan_type'], 'installed_app_static_review');
+    expect(result.data['active_service_app_count'], 1);
+    expect(result.data['suspicious_app_count'], 1);
+    expect(result.data['limitations'], isA<List<String>>());
+    expect(result.summary, contains('no prueba de malware'));
   });
 
   test('toggle_defenses activa el VPN y devuelve el estado confirmado',
