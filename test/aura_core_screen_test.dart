@@ -125,47 +125,56 @@ void main() {
       findsOneWidget,
     );
   });
+
   testWidgets('Aura avatar exposes its idle state to accessibility', (
     tester,
   ) async {
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(body: AuraAvatar(size: 96)),
-      ),
-    );
-    expect(find.bySemanticsLabel('Aura está disponible'), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(find.bySemanticsLabel('Aura está disponible'), findsOneWidget);
+    try {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(body: AuraAvatar(size: 96)),
+        ),
+      );
+      expect(find.bySemanticsLabel('Aura está disponible'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.bySemanticsLabel('Aura está disponible'), findsOneWidget);
+    } finally {
+      semantics.dispose();
+    }
   });
 
   testWidgets('Aura avatar announces its analysis state', (tester) async {
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(body: AuraAvatar(size: 96, isThinking: true)),
-      ),
-    );
-    expect(find.bySemanticsLabel('Aura está analizando'), findsOneWidget);
+    try {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(body: AuraAvatar(size: 96, isThinking: true)),
+        ),
+      );
+      expect(find.bySemanticsLabel('Aura está analizando'), findsOneWidget);
+    } finally {
+      semantics.dispose();
+    }
   });
 
   testWidgets('Aura avatar respects reduced-motion accessibility settings', (
     tester,
   ) async {
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
-    await tester.pumpWidget(
-      const MediaQuery(
-        data: MediaQueryData(disableAnimations: true),
-        child: MaterialApp(
-          home: Scaffold(body: AuraAvatar(size: 96)),
+    try {
+      await tester.pumpWidget(
+        const MediaQuery(
+          data: MediaQueryData(disableAnimations: true),
+          child: MaterialApp(
+            home: Scaffold(body: AuraAvatar(size: 96)),
+          ),
         ),
-      ),
-    );
-    await tester.pump(const Duration(seconds: 2));
-    expect(find.bySemanticsLabel('Aura está disponible'), findsOneWidget);
+      );
+      await tester.pump(const Duration(seconds: 2));
+      expect(find.bySemanticsLabel('Aura está disponible'), findsOneWidget);
+    } finally {
+      semantics.dispose();
+    }
   });
-
 }
