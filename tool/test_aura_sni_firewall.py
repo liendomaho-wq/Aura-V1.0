@@ -61,10 +61,27 @@ class AuraSniFirewallTest(unittest.TestCase):
             ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t,
         ]
         cls.library.aura_set_dynamic_sni_allowlist.restype = ctypes.c_int
+        cls.library.aura_is_encrypted_dns_transport.argtypes = [
+            ctypes.c_uint8, ctypes.c_uint16, ctypes.c_bool,
+        ]
+        cls.library.aura_is_encrypted_dns_transport.restype = ctypes.c_bool
 
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(cls.temp_dir)
+
+    def test_dot_tcp_853_and_doq_udp_853_are_filtered(self):
+        policy = self.library.aura_is_encrypted_dns_transport
+        self.assertTrue(policy(6, 853, False))
+        self.assertTrue(policy(17, 853, False))
+        self.assertFalse(policy(6, 443, True))
+        self.assertFalse(policy(17, 53, True))
+
+    def test_known_doh_resolvers_are_filtered_only_on_udp_443(self):
+        policy = self.library.aura_is_encrypted_dns_transport
+        self.assertTrue(policy(17, 443, True))
+        self.assertFalse(policy(17, 443, False))
+        self.assertFalse(policy(6, 443, True))
 
     def test_ech_is_reported_without_claiming_it_was_decrypted(self):
         packet = _client_hello(_extension(0xFE0D, b"encrypted-client-hello"))
