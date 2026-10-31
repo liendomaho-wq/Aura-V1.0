@@ -39,9 +39,12 @@ class _AuraAvatarState extends State<AuraAvatar>
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox.square(
-      dimension: widget.size,
-      child: AnimatedBuilder(
+    return Semantics(
+      label: widget.isThinking ? 'Aura está analizando' : 'Aura está disponible',
+      image: true,
+      child: SizedBox.square(
+        dimension: widget.size,
+        child: AnimatedBuilder(
         animation: _controller,
         builder: (context, child) => CustomPaint(
           painter: _AuraAvatarPainter(
@@ -63,6 +66,7 @@ class _AuraAvatarState extends State<AuraAvatar>
               ),
             ),
           ),
+        ),
         ),
       ),
     );
