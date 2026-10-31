@@ -8,7 +8,7 @@ void main() {
     const expected = 'ÓRDENES DISPONIBLES — ACTIVAR DEFENSAS · '
         'DESACTIVAR DEFENSAS · BLOQUEAR <dominio> · AISLAR <paquete> · '
         'AISLAMIENTO DE EMERGENCIA · REANUDAR LA RED · ACTUALIZAR DEFENSAS · '
-        'ESTADO · PURGA CRIPTOGRÁFICA';
+        'ESCANEAR APLICACIONES · ESTADO · PURGA CRIPTOGRÁFICA';
     final controller = AgentController.instance;
     final previousLength = controller.history.length;
 
