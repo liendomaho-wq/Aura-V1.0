@@ -151,4 +151,21 @@ void main() {
     expect(find.bySemanticsLabel('Aura está analizando'), findsOneWidget);
   });
 
+  testWidgets('Aura avatar respects reduced-motion accessibility settings', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    addTearDown(semantics.dispose);
+    await tester.pumpWidget(
+      const MediaQuery(
+        data: MediaQueryData(disableAnimations: true),
+        child: MaterialApp(
+          home: Scaffold(body: AuraAvatar(size: 96)),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.bySemanticsLabel('Aura está disponible'), findsOneWidget);
+  });
+
 }
