@@ -40,7 +40,10 @@
 - [ ] Validar el avatar, accesibilidad, batería y estabilidad en dispositivos físicos.
 
 ### Etapa 2 — agente ejecutor
-- Inventario tipado de herramientas y esquemas de entrada/salida.
+- [x] Inventario tipado básico de herramientas y esquemas de entrada/salida.
+- [x] Exponer el escáner nativo de aplicaciones como herramienta `scan_apps` del agente, con informe estructurado y límites explícitos de interpretación.
+- [x] Reconocer en lenguaje natural órdenes para analizar/escanea/revisar aplicaciones y reflejar la acción en el historial.
+- [ ] Añadir cancelación, progreso granular y límites temporales al escaneo nativo de APK/Dex.
 - Política central de permisos y confirmaciones.
 - Plan de tareas con progreso, cancelación y recuperación.
 - Verificación post-acción y bitácora de resultados.
@@ -70,13 +73,15 @@
 - [ ] Revisar feeds: firma/procedencia, caducidad, rollback y falsos positivos.
 
 ### Etapa 4 — inteligencia avanzada
-- Correlación de eventos, reputación y detección de anomalías.
+- [x] Integrar en el flujo del agente el informe existente de apps con servicios sensibles activos, permisos solicitados de alto riesgo, incidencias de firma y heurísticas de ofuscación.
+- [ ] Correlación de eventos, reputación y detección de anomalías.
 - IA local para clasificación privada y funcionamiento degradado.
 - Modelo remoto opcional para razonamiento complejo, con minimización de datos y consentimiento.
 - Evaluación de precisión, falsos positivos, latencia y consumo energético.
 
 ### Etapa 5 — validación y publicación
 - CI de Flutter y Android.
+- [ ] Ejecutar CodeMagic tras la integración de `scan_apps` y confirmar el nuevo commit verde.
 - Matriz de dispositivos/versiones Android sin root.
 - Pruebas de red, DNS, IPv4/IPv6, reconexión, batería y privacidad.
 - Verificación de APK firmado y reproducible en Codemagic.
