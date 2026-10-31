@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:encrypt/encrypt.dart';
@@ -420,15 +421,16 @@ abstract final class AuraCryptoLayer {
           encodedPayload.length.isOdd ||
           encodedPayload.length > maxEncodedPayloadLength ||
           !RegExp(r'^[0-9a-fA-F]+
+
+      final payload = _decodeHex(encodedPayload);
       try {
         final tagLength = authenticated ? _hmacLength : 0;
         final ciphertextLength =
             payload.length - _ivLength - tagLength;
         if (ciphertextLength < _aesBlockLength ||
-            ciphertextLength % _aesBlockLength != 0 ||
-            ciphertextLength > _maxModelCiphertextBytes) {
+            ciphertextLength % _aesBlockLength != 0) {
           throw const AuraCryptoException(
-            'La longitud del ciphertext AES no es válida o supera 5 MiB.',
+            'La longitud del ciphertext AES no es válida.',
           );
         }
         final ivBytes = Uint8List.sublistView(payload, 0, _ivLength);
@@ -574,6 +576,8 @@ abstract final class AuraCryptoLayer {
           encodedPayload.length.isOdd ||
           encodedPayload.length > maxEncodedPayloadLength ||
           !RegExp(r'^[0-9a-fA-F]+
+
+      payload = _decodeHex(encodedPayload);
       final tagLength = authenticated ? _hmacLength : 0;
       final ciphertextLength =
           payload.length - _ivLength - tagLength;
@@ -669,10 +673,9 @@ abstract final class AuraCryptoLayer {
         final ciphertextLength =
             payload.length - _ivLength - tagLength;
         if (ciphertextLength < _aesBlockLength ||
-            ciphertextLength % _aesBlockLength != 0 ||
-            ciphertextLength > _maxModelCiphertextBytes) {
+            ciphertextLength % _aesBlockLength != 0) {
           throw const AuraCryptoException(
-            'La longitud del ciphertext AES no es válida o supera 5 MiB.',
+            'La longitud del ciphertext AES no es válida.',
           );
         }
         final ivBytes = Uint8List.sublistView(payload, 0, _ivLength);
@@ -1003,10 +1006,9 @@ abstract final class AuraCryptoLayer {
         final ciphertextLength =
             payload.length - _ivLength - tagLength;
         if (ciphertextLength < _aesBlockLength ||
-            ciphertextLength % _aesBlockLength != 0 ||
-            ciphertextLength > _maxModelCiphertextBytes) {
+            ciphertextLength % _aesBlockLength != 0) {
           throw const AuraCryptoException(
-            'La longitud del ciphertext AES no es válida o supera 5 MiB.',
+            'La longitud del ciphertext AES no es válida.',
           );
         }
         final ivBytes = Uint8List.sublistView(payload, 0, _ivLength);
