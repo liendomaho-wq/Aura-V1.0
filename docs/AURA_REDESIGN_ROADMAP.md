@@ -57,6 +57,9 @@
 - [x] Añadir pruebas unitarias de la política de transporte: TCP/853, UDP/853 y UDP/443 solo para resolutores marcados.
 - [ ] Añadir pruebas de integración del analizador de paquetes IPv4/IPv6 (fragmentos, extensiones, longitudes y paquetes malformados).
 - [x] Validar los límites declarados de longitud IPv4/IPv6 antes de inspeccionar puertos DoT/DoQ/DoH; rechazar datagramas truncados, longitudes incoherentes y jumbogramas IPv6 aún no soportados.
+- [x] Limitar el análisis de cabeceras de extensión IPv6 a la longitud declarada del paquete y a un máximo de ocho extensiones/296 bytes.
+- [ ] Resolver explícitamente el tratamiento de fragmentos no iniciales: actualmente no se correlacionan con el primer fragmento, por lo que no se debe afirmar cobertura completa frente a evasión por fragmentación.
+- [ ] Añadir pruebas de regresión específicas del parser TUN (no solo pruebas de política SNI) para IPv4/IPv6, fragmentos, cabeceras de extensión y paquetes truncados.
 - [ ] Evaluar DoH sobre TCP/443 y resolutores no incluidos en la lista; no afirmar cobertura general de DoH.
 - [ ] Validar DoT/DoQ/DoH en dispositivos físicos y comprobar falsos positivos, fugas y compatibilidad.
 - [ ] Definir política explícita para ECH; actualmente solo se identifica su extensión, no se descifra.
