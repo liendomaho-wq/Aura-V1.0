@@ -189,7 +189,7 @@ for required_network_guard in (
         )
 
 network_selection = re.search(
-    r"private fun findUnderlyingNetwork\(\): Network\? \{(.*?)\n    \}",
+    r"private fun findUnderlyingNetwork\([^)]*\): Network\? \{(.*?)\n    \}",
     text,
     re.DOTALL,
 )
@@ -199,5 +199,9 @@ if "NET_CAPABILITY_NOT_VPN" not in network_selection.group(1):
     sys.exit("FAIL: VPN must never select another VPN as its physical underlay")
 if "TRANSPORT_VPN" not in network_selection.group(1):
     sys.exit("FAIL: VPN transport must be explicitly excluded from underlay selection")
+if "excludedNetwork: Network? = null" not in network_selection.group(0):
+    sys.exit("FAIL: physical network selection must support excluding a lost network")
+if "network == excludedNetwork" not in network_selection.group(1):
+    sys.exit("FAIL: a lost physical network must not be selected again during callback races")
 
 print("PASS: VPN tracks physical network availability and unregisters callbacks safely.")
