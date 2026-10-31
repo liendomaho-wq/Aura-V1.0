@@ -18,6 +18,8 @@ AuraTlsSniResult aura_inspect_tls_sni (const uint8_t *payload,
                                       uint32_t payload_len, char *sni,
                                       size_t sni_capacity);
 bool aura_should_block_tls_sni (const uint8_t *payload, uint32_t payload_len);
+bool aura_is_encrypted_dns_transport (uint8_t protocol, uint16_t port,
+                                      bool known_doh_resolver);
 int aura_add_dynamic_sni_rule (const char *domain);
 int aura_set_dynamic_sni_allowlist (const char *const *domains, size_t count);
 
