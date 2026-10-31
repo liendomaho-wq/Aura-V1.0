@@ -492,10 +492,18 @@ packet_is_encrypted_dns (const struct pbuf *packet, char *destination_address,
             (header[0] & 0x0F) < 5)
             return 0;
         ip_header_length = (size_t)(header[0] & 0x0F) * 4;
-        if (packet->tot_len < ip_header_length + sizeof (transport) ||
-            pbuf_copy_partial (packet, header, ip_header_length, 0) !=
-                ip_header_length)
-            return 0;
+        {
+            const size_t ipv4_total_length =
+                ((size_t)header[2] << 8) | header[3];
+
+            /* Never inspect bytes outside the IPv4 datagram declared by its
+             * header, even if the TUN buffer contains trailing data. */
+            if (ipv4_total_length < ip_header_length + sizeof (transport) ||
+                ipv4_total_length > packet->tot_len ||
+                pbuf_copy_partial (packet, header, ip_header_length, 0) !=
+                    ip_header_length)
+                return 0;
+        }
         protocol = header[9];
         destination = header + 16;
         address_family = AF_INET;
@@ -505,11 +513,22 @@ packet_is_encrypted_dns (const struct pbuf *packet, char *destination_address,
             return 0;
     } else if (version == 6) {
         size_t offset = 40;
+        size_t ipv6_packet_length;
         unsigned int extensions = 0;
 
         if (packet->tot_len < 40 ||
             pbuf_copy_partial (packet, header, 40, 0) != 40)
             return 0;
+        {
+            const size_t payload_length =
+                ((size_t)header[4] << 8) | header[5];
+
+            /* Payload length zero denotes an unsupported jumbogram here.
+             * Do not parse beyond the IPv6 packet's declared boundary. */
+            if (!payload_length || payload_length > packet->tot_len - 40)
+                return 0;
+            ipv6_packet_length = 40 + payload_length;
+        }
         destination = header + 24;
         address_family = AF_INET6;
         resolver_match = is_ipv6_doh_resolver (destination);
@@ -519,7 +538,7 @@ packet_is_encrypted_dns (const struct pbuf *packet, char *destination_address,
             uint8_t extension[8];
             size_t extension_length;
 
-            if (++extensions > 8 || offset + sizeof (extension) > packet->tot_len ||
+            if (++extensions > 8 || offset + sizeof (extension) > ipv6_packet_length ||
                 pbuf_copy_partial (packet, extension, sizeof (extension), offset) !=
                     sizeof (extension))
                 return 0;
@@ -536,11 +555,11 @@ packet_is_encrypted_dns (const struct pbuf *packet, char *destination_address,
             }
             protocol = extension[0];
             offset += extension_length;
-            if (offset > packet->tot_len || offset > 296)
+            if (offset > ipv6_packet_length || offset > 296)
                 return 0;
         }
         ip_header_length = offset;
-        if (packet->tot_len < ip_header_length + sizeof (transport))
+        if (ipv6_packet_length < ip_header_length + sizeof (transport))
             return 0;
     } else {
         return 0;
