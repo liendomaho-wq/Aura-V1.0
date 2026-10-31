@@ -187,7 +187,7 @@ for required_network_guard in (
         )
 
 network_selection = re.search(
-    r"private fun findUnderlyingNetwork\\(\\): Network\\? \\{(.*?)\\n    \\}",
+    r"private fun findUnderlyingNetwork\(\): Network\? \{(.*?)\n    \}",
     text,
     re.DOTALL,
 )
