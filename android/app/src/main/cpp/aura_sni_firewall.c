@@ -402,6 +402,20 @@ aura_should_block_tls_sni (const uint8_t *payload, uint32_t payload_len)
            result == AURA_TLS_SNI_MALFORMED;
 }
 
+bool
+aura_is_encrypted_dns_transport (uint8_t protocol, uint16_t port,
+                                  bool known_doh_resolver)
+{
+    /* IP protocol numbers: TCP=6, UDP=17. DoT uses TCP/853; DoQ uses UDP/853.
+     * Known DoH resolver IPs on UDP/443 are also filtered by the caller. */
+    if (protocol == 6 && port == 853)
+        return true;
+    if (protocol == 17 &&
+        (port == 853 || (port == 443 && known_doh_resolver)))
+        return true;
+    return false;
+}
+
 int
 aura_add_dynamic_sni_rule (const char *domain)
 {
