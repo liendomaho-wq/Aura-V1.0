@@ -175,6 +175,8 @@ for required_network_guard in (
     "unregisterNetworkCallback(underlyingNetworkCallback)",
     "override fun onAvailable(network: Network)",
     "override fun onLost(network: Network)",
+    "excludedNetwork = network",
+    "if (network == excludedNetwork) return@mapNotNull null",
     "override fun onCapabilitiesChanged(",
     "setUnderlyingNetworks(selected?.let { arrayOf(it) } ?: emptyArray())",
     "serviceShuttingDown = true",
