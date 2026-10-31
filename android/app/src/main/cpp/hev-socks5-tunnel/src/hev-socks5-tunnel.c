@@ -46,6 +46,9 @@
 #include "hev-socks5-session-tcp.h"
 #include "hev-socks5-session-udp.h"
 #include "hev-socks5-server.h"
+#ifdef __ANDROID__
+#include "aura_sni_firewall.h"
+#endif
 
 #include "hev-socks5-tunnel.h"
 
@@ -549,15 +552,14 @@ packet_is_encrypted_dns (const struct pbuf *packet, char *destination_address,
                            ip_header_length) != sizeof (transport))
         return 0;
     destination_port = ((uint16_t)transport[2] << 8) | transport[3];
-    if (protocol != 17 ||
-        (destination_port != 853 &&
-         !(destination_port == 443 && resolver_match)))
+    if (!aura_is_encrypted_dns_transport (protocol, destination_port,
+                                          resolver_match))
         return 0;
     if (!inet_ntop (address_family, destination, destination_address,
                     (socklen_t)address_capacity))
         return 0;
     *port = destination_port;
-    *transport_protocol = "UDP";
+    *transport_protocol = protocol == 6 ? "TCP" : "UDP";
     return 1;
 }
 
