@@ -355,6 +355,11 @@ abstract final class AuraCryptoLayer {
       if (secureKey.isEmpty) {
         throw const AuraCryptoException('La clave segura está vacía.');
       }
+      if (utf8.encode(plaintext).length > _maxModelPlaintextBytes) {
+        throw const AuraCryptoException(
+          'El modelo supera el límite máximo de 5 MiB.',
+        );
+      }
       if (jsonDecode(plaintext) is! Map) {
         throw const AuraCryptoException(
           'El plaintext no es un objeto JSON de modelo.',
@@ -420,9 +425,10 @@ abstract final class AuraCryptoLayer {
         final ciphertextLength =
             payload.length - _ivLength - tagLength;
         if (ciphertextLength < _aesBlockLength ||
-            ciphertextLength % _aesBlockLength != 0) {
+            ciphertextLength % _aesBlockLength != 0 ||
+            ciphertextLength > _maxModelCiphertextBytes) {
           throw const AuraCryptoException(
-            'La longitud del ciphertext AES no es válida.',
+            'La longitud del ciphertext AES no es válida o supera 5 MiB.',
           );
         }
         final ivBytes = Uint8List.sublistView(payload, 0, _ivLength);
