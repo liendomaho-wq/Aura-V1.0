@@ -197,11 +197,30 @@ class AgentController {
   }
 
   Future<Map<String, dynamic>> getLocalAuthStatus() async {
-    final status = await _biometricChannel.invokeMethod<Map<dynamic, dynamic>>(
-          'getLocalAuthStatus',
-        ) ??
-        const <dynamic, dynamic>{};
-    return status.map((key, value) => MapEntry(key.toString(), value));
+    try {
+      final status =
+          await _biometricChannel.invokeMethod<Map<dynamic, dynamic>>(
+                'getLocalAuthStatus',
+              ) ??
+              const <dynamic, dynamic>{};
+      return status.map((key, value) => MapEntry(key.toString(), value));
+    } on PlatformException catch (error) {
+      reportError(
+        'No se pudo consultar el bloqueo local: ${error.message ?? error.code}',
+      );
+    } on MissingPluginException {
+      reportError('El canal de autenticación local no está disponible.');
+    } on Object catch (error) {
+      reportError('Error al consultar el bloqueo local: $error');
+    }
+
+    // Fail closed: never interpret a missing native security channel as an
+    // unsecured device that can silently bypass authentication.
+    return const <String, dynamic>{
+      'hasStrongBiometric': false,
+      'deviceSecure': true,
+      'nativeAuthAvailable': false,
+    };
   }
 
   Future<bool> authenticateDeviceCredential() async {
@@ -217,6 +236,12 @@ class AgentController {
         'Fallo de credencial nativa: ${error.message ?? error.code}',
       );
       return false;
+    } on MissingPluginException {
+      reportError('El canal de credenciales nativas no está disponible.');
+      return false;
+    } on Object catch (error) {
+      reportError('No se pudo validar la credencial local: $error');
+      return false;
     }
   }
 
@@ -225,6 +250,10 @@ class AgentController {
       await _biometricChannel.invokeMethod<void>('openSecuritySettings');
     } on PlatformException catch (error) {
       reportError('No se pudo abrir ajustes: ${error.message ?? error.code}');
+    } on MissingPluginException {
+      reportError('El canal para abrir ajustes de seguridad no está disponible.');
+    } on Object catch (error) {
+      reportError('Error al abrir ajustes de seguridad: $error');
     }
   }
 
@@ -247,6 +276,9 @@ class AgentController {
       return false;
     } on MissingPluginException {
       reportError('El canal de notificaciones nativo no está disponible.');
+      return false;
+    } on Object catch (error) {
+      reportError('Error al enviar la notificación local: $error');
       return false;
     }
   }
