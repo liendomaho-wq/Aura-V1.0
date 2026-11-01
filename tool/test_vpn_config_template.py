@@ -265,3 +265,18 @@ if "servicePermissions[packageInfo.packageName]" in APP_SCANNER:
     sys.exit("FAIL: inactive service declarations must not be counted as active risk")
 
 print("PASS: app risk scoring requires confirmed permission grants or enabled privileged services.")
+
+# Android signing analysis must accept legitimate multiple current signers and
+# use SigningInfo on Android 9+, while retaining the API 24-27 compatibility path.
+if "PackageManager.GET_SIGNING_CERTIFICATES" not in APP_SCANNER:
+    sys.exit("FAIL: Android 9+ app signing must use GET_SIGNING_CERTIFICATES")
+if "packageInfo.signingInfo?.apkContentsSigners.orEmpty()" not in APP_SCANNER:
+    sys.exit("FAIL: app signing must hash current APK signers, not signing history")
+if "Build.VERSION.SDK_INT >= Build.VERSION_CODES.P" not in APP_SCANNER:
+    sys.exit("FAIL: app signing query must preserve the Android 9+ compatibility boundary")
+if '"MULTIPLE_SIGNERS"' in APP_SCANNER:
+    sys.exit("FAIL: multiple valid APK signers must not be reported as a signature issue")
+if '"SIGNATURE_METADATA_UNAVAILABLE"' not in APP_SCANNER:
+    sys.exit("FAIL: unavailable signing metadata must be reported without alleging malware")
+
+print("PASS: app signing checks support modern Android signer rotation and avoid multi-signer false positives.")
