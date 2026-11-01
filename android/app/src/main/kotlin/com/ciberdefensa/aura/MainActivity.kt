@@ -826,13 +826,15 @@ class MainActivity: FlutterFragmentActivity() {
                                 val flags = pkg.requestedPermissionsFlags
                                 val permisosRiesgoSolicitados = mutableListOf<String>()
                                 val permisosRiesgoConcedidos = mutableListOf<String>()
+                                val estadoConcesionDesconocido = mutableListOf<String>()
                                 for ((index, permiso) in permisosSolicitados.withIndex()) {
                                     if (!permisosCriticos.contains(permiso)) continue
 
                                     permisosRiesgoSolicitados.add(permiso)
                                     val permissionFlags = flags?.getOrNull(index)
-                                    if (
-                                        permissionFlags != null &&
+                                    if (permissionFlags == null) {
+                                        estadoConcesionDesconocido.add(permiso)
+                                    } else if (
                                         (permissionFlags and
                                             PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
                                     ) {
@@ -850,7 +852,9 @@ class MainActivity: FlutterFragmentActivity() {
                                         "requested_risk_permissions" to permisosRiesgoSolicitados,
                                         "risk_permissions" to permisosRiesgoConcedidos,
                                         "granted_risk_permissions" to permisosRiesgoConcedidos,
-                                        "permission_grant_state_known" to (flags != null),
+                                        "permission_grant_state_unknown" to estadoConcesionDesconocido,
+                                        "permission_grant_state_known" to
+                                            estadoConcesionDesconocido.isEmpty(),
                                     )
                                     appRiskList.add(datosApp)
                                 }
