@@ -295,7 +295,10 @@ class AgentController {
     );
   }
 
-  Future<void> run(String instruction) async {
+  Future<void> run(
+    String instruction, {
+    bool confirmedByUser = false,
+  }) async {
     final text = instruction.trim();
     if (text.isEmpty) return;
 
@@ -428,8 +431,12 @@ class AgentController {
       }
 
       _emit(intent.toEvent());
+      final toolArguments = <String, dynamic>{
+        ...intent.entities,
+        if (confirmedByUser) 'confirmed_by_user': true,
+      };
       final result = await AuraTools.execute(
-        ToolStep(name: intent.name, arguments: intent.entities),
+        ToolStep(name: intent.name, arguments: toolArguments),
         onProgress: intent.kind == AuraIntentKind.updateDefenses
             ? (message) => _emit(
                   AgentEvent(
