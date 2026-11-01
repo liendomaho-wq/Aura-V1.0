@@ -383,3 +383,18 @@ if '"isSecure" to (!isDebugActive && !isCloned)' in anti_tampering:
     sys.exit("FAIL: weak path indicators must not determine the device integrity verdict")
 
 print("PASS: virtual-device path heuristics are contextual and cannot create false integrity verdicts.")
+
+
+# VPN notification must display the current protection state, not a fixed success message.
+notification_match = re.search(
+    r"private fun createNotification\\(.*?\\n    \\}",
+    text,
+    re.DOTALL,
+)
+if not notification_match:
+    sys.exit("FAIL: could not locate VPN notification builder")
+notification_builder = notification_match.group(0)
+if ".setContentText(contentText)" not in notification_builder:
+    sys.exit("FAIL: VPN notification must render the live state summary")
+if ".setContentText(NOTIFICATION_TEXT)" in notification_builder:
+    sys.exit("FAIL: VPN notification must not claim a fixed active state")
