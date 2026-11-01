@@ -56,7 +56,7 @@ void main() {
     final result = await AuraTools.execute(
       const ToolStep(
         name: 'toggle_defenses',
-        arguments: <String, dynamic>{'activate': true},
+        arguments: <String, dynamic>{'activate': true, 'confirmed_by_user': true},
       ),
     );
 
@@ -79,7 +79,7 @@ void main() {
     final result = await AuraTools.execute(
       const ToolStep(
         name: 'toggle_defenses',
-        arguments: <String, dynamic>{'activate': false},
+        arguments: <String, dynamic>{'activate': false, 'confirmed_by_user': true},
       ),
     );
 
@@ -92,6 +92,45 @@ void main() {
     });
   });
 
+  test('toggle_defenses refuses to change VPN state without user confirmation',
+      () async {
+    var called = false;
+    messenger.setMockMethodCallHandler(shieldChannel, (_) async {
+      called = true;
+      return true;
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(
+        name: 'toggle_defenses',
+        arguments: <String, dynamic>{'activate': true},
+      ),
+    );
+
+    expect(called, isFalse);
+    expect(result.data['ok'], isFalse);
+    expect(result.data['error'], 'user_confirmation_required');
+  });
+
+  test('block_domain refuses to add a rule without user confirmation',
+      () async {
+    const engineChannel = MethodChannel('com.aura.cyberdefense/engine');
+    messenger.setMockMethodCallHandler(engineChannel, (_) async {
+      fail('Native block channel must not be called without consent.');
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(
+        name: 'block_domain',
+        arguments: <String, dynamic>{'domain': 'example.test'},
+      ),
+    );
+
+    expect(result.data['ok'], isFalse);
+    expect(result.data['error'], 'user_confirmation_required');
+    messenger.setMockMethodCallHandler(engineChannel, null);
+  });
+
   test('toggle_defenses informa si falta el plugin del motor VPN', () async {
     messenger.setMockMethodCallHandler(shieldChannel, (_) async {
       throw MissingPluginException();
@@ -100,7 +139,7 @@ void main() {
     final result = await AuraTools.execute(
       const ToolStep(
         name: 'toggle_defenses',
-        arguments: <String, dynamic>{'activate': false},
+        arguments: <String, dynamic>{'activate': false, 'confirmed_by_user': true},
       ),
     );
 
@@ -119,7 +158,7 @@ void main() {
     final result = await AuraTools.execute(
       const ToolStep(
         name: 'toggle_defenses',
-        arguments: <String, dynamic>{'activate': true},
+        arguments: <String, dynamic>{'activate': true, 'confirmed_by_user': true},
       ),
     );
 
@@ -160,7 +199,7 @@ void main() {
     final result = await AuraTools.execute(
       const ToolStep(
         name: 'toggle_defenses',
-        arguments: <String, dynamic>{'activate': true},
+        arguments: <String, dynamic>{'activate': true, 'confirmed_by_user': true},
       ),
     );
 
