@@ -219,7 +219,7 @@ if '"getLatestBlockedIps" -> {\n                    val blockedIps = listOf<Stri
     sys.exit("FAIL: getLatestBlockedIps must not return a hardcoded empty placeholder")
 if "AuraVpnService.activeBlockedIpRules()" not in MAIN_ACTIVITY:
     sys.exit("FAIL: shield IP-rule query is not connected to the active VPN threat feed")
-if "not a log of IPs actually blocked in traffic" not in text:
+if "not a history of packets blocked" not in text:
     sys.exit("FAIL: active feed rules must be distinguished from observed block events")
 
 print("PASS: shield diagnostics return bounded active IP threat-feed rules without fabricating traffic events.")
