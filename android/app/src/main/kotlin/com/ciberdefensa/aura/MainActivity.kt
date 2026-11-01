@@ -912,8 +912,9 @@ class MainActivity: FlutterFragmentActivity() {
                 }
 
                 "getLatestBlockedIps" -> {
-                    val blockedIps = listOf<String>()
-                    result.success(blockedIps)
+                    // Backward-compatible method name. This returns the active
+                    // threat-feed rules, not a log of IPs actually blocked in traffic.
+                    result.success(AuraVpnService.activeBlockedIpRules())
                 }
 
                 else -> result.notImplemented()
