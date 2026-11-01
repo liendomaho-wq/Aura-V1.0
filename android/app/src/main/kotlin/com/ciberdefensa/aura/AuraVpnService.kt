@@ -755,9 +755,10 @@ class AuraVpnService : VpnService() {
         contentText: String = NOTIFICATION_TEXT,
     ): Notification {
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL)
-            .setContentTitle("🛡️ Aura Centinela Activo")
-            .setContentText(NOTIFICATION_TEXT)
-            .setSubText(contentText.takeIf { it != NOTIFICATION_TEXT })
+            .setContentTitle("Aura Centinela")
+            // Show the actual service state and DNS summary instead of a fixed
+            // "active" claim while the tunnel may be degraded or isolated.
+            .setContentText(contentText)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
