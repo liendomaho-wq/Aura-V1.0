@@ -259,7 +259,7 @@ abstract class AuraTools {
       );
     } on PlatformException catch (error) {
       return ToolResult(
-        summary: 'No pude contactar el motor VPN. No se confirmó ningún cambio.',
+        summary: 'No pude contactar el motor VPN. Revisa que Aura esté activa.',
         data: <String, dynamic>{
           'ok': false,
           'error': 'operation_failed',
