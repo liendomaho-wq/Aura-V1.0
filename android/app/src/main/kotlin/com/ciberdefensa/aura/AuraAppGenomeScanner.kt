@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.content.pm.PackageInfo
 import android.content.pm.Signature
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
@@ -175,22 +176,54 @@ object AuraAppGenomeScanner {
     @Suppress("DEPRECATION")
     fun analyzeInstalledApps(context: Context): List<SuspiciousApp> {
         val packageManager = context.packageManager
-        val servicePermissions = mutableMapOf<String, MutableSet<String>>()
-        listOf(
-            AccessibilityService.SERVICE_INTERFACE,
-            NotificationListenerService.SERVICE_INTERFACE,
-        ).forEach { action ->
+        val enabledAccessibility = if (
+            Settings.Secure.getInt(
+                context.contentResolver,
+                Settings.Secure.ACCESSIBILITY_ENABLED,
+                0,
+            ) == 1
+        ) {
+            enabledComponents(
+                Settings.Secure.getString(
+                    context.contentResolver,
+                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                ),
+            )
+        } else {
+            emptySet()
+        }
+        val enabledNotificationListeners = enabledComponents(
+            Settings.Secure.getString(
+                context.contentResolver,
+                "enabled_notification_listeners",
+            ),
+        )
+        val activeServicePermissions = mutableMapOf<String, MutableSet<String>>()
+        val serviceTypes = listOf(
+            AccessibilityService.SERVICE_INTERFACE to enabledAccessibility,
+            NotificationListenerService.SERVICE_INTERFACE to enabledNotificationListeners,
+        )
+        for ((action, enabled) in serviceTypes) {
             val services = packageManager.queryIntentServices(
                 Intent(action),
                 PackageManager.MATCH_DISABLED_COMPONENTS,
             )
             for (resolveInfo in services) {
                 val serviceInfo = resolveInfo.serviceInfo ?: continue
-                val permission = serviceInfo.permission ?: continue
-                if (permission in highRiskPermissions) {
-                    servicePermissions
+                val appInfo = packageManager.getApplicationInfo(serviceInfo.packageName, 0)
+                val component = ComponentName(serviceInfo.packageName, serviceInfo.name)
+                val requiredPermission = if (
+                    action == AccessibilityService.SERVICE_INTERFACE
+                ) ACCESSIBILITY_PERMISSION else NOTIFICATION_PERMISSION
+                if (
+                    serviceInfo.permission == requiredPermission &&
+                    serviceInfo.enabled &&
+                    appInfo.enabled &&
+                    component in enabled
+                ) {
+                    activeServicePermissions
                         .getOrPut(serviceInfo.packageName) { mutableSetOf() }
-                        .add(permission)
+                        .add(requiredPermission)
                 }
             }
         }
@@ -204,12 +237,21 @@ object AuraAppGenomeScanner {
             }
             .mapNotNull { packageInfo ->
                 val appInfo = packageInfo.applicationInfo ?: return@mapNotNull null
-                val requestedPermissions = packageInfo.requestedPermissions
-                    .orEmpty()
-                    .toSet()
-                val dangerous = (requestedPermissions +
-                    servicePermissions[packageInfo.packageName].orEmpty())
+                val requestedPermissions = packageInfo.requestedPermissions.orEmpty()
+                val requestedHighRisk = requestedPermissions.toSet()
                     .intersect(highRiskPermissions)
+                val permissionFlags = packageInfo.requestedPermissionsFlags
+                val grantedHighRisk = requestedHighRisk.filter { permission ->
+                    val index = requestedPermissions.indexOf(permission)
+                    val flags = permissionFlags?.getOrNull(index)
+                    index >= 0 && flags != null &&
+                        (flags and PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
+                }.toSet()
+                val activeServices = activeServicePermissions[packageInfo.packageName]
+                    .orEmpty()
+                // A declaration is not proof of active access: only confirmed
+                // grants and enabled privileged services contribute to this signal.
+                val dangerous = grantedHighRisk + activeServices
                 if (dangerous.size < 3) return@mapNotNull null
 
                 SuspiciousApp(
