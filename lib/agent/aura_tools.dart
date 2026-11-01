@@ -196,11 +196,14 @@ abstract class AuraTools {
       }
     } on PlatformException catch (error) {
       return ToolResult(
-        summary: error.message ?? 'Android rechazó la operación solicitada.',
+        summary: 'No se pudo completar la operación nativa. No se confirmó ningún cambio.',
         data: <String, dynamic>{
           'ok': false,
+          'error': 'operation_failed',
+          'error_type': 'PlatformException',
           'code': error.code,
-          if (error.details != null) 'details': error.details,
+          'tool': step.name,
+          'security_level': 'warning',
         },
       );
     } on MissingPluginException catch (error) {
@@ -254,15 +257,40 @@ abstract class AuraTools {
           'security_level': confirmed && activate ? 'safe' : 'warning',
         },
       );
-    } on PlatformException {
-      return const ToolResult(
-        summary: 'No pude contactar el motor VPN. Revisa que Aura esté activa.',
-        data: <String, dynamic>{'ok': false, 'security_level': 'warning'},
+    } on PlatformException catch (error) {
+      return ToolResult(
+        summary: 'No pude contactar el motor VPN. No se confirmó ningún cambio.',
+        data: <String, dynamic>{
+          'ok': false,
+          'error': 'operation_failed',
+          'error_type': 'PlatformException',
+          'code': error.code,
+          'tool': 'toggle_defenses',
+          'security_level': 'warning',
+        },
       );
     } on MissingPluginException {
       return const ToolResult(
         summary: 'No pude contactar el motor VPN. Revisa que Aura esté activa.',
-        data: <String, dynamic>{'ok': false, 'security_level': 'warning'},
+        data: <String, dynamic>{
+          'ok': false,
+          'error': 'missing_plugin',
+          'tool': 'toggle_defenses',
+          'security_level': 'warning',
+        },
+      );
+    } on Object catch (error) {
+      // Keep unexpected native failures inside the tool boundary and avoid
+      // exposing exception messages or device-specific paths to the agent UI.
+      return ToolResult(
+        summary: 'No pude completar la operación VPN. No se confirmó ningún cambio.',
+        data: <String, dynamic>{
+          'ok': false,
+          'error': 'operation_failed',
+          'error_type': error.runtimeType.toString(),
+          'tool': 'toggle_defenses',
+          'security_level': 'warning',
+        },
       );
     }
   }
