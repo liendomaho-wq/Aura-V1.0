@@ -232,7 +232,11 @@ class AuraNetworkAuditor {
     if (!_disposed) _networkShieldController.add(active);
   }
 
-  Future<bool> verifyGatewaySafety() async {
+  /// Checks whether DNS resolution for a public hostname currently works.
+  ///
+  /// This is only a connectivity signal. It does not inspect the local gateway,
+  /// router configuration, ARP/NDP behavior, or whether the network is trusted.
+  Future<bool> verifyNetworkConnectivity() async {
     try {
       final addresses = await InternetAddress.lookup('cloudflare.com');
       return addresses.isNotEmpty &&
@@ -241,6 +245,12 @@ class AuraNetworkAuditor {
       return false;
     }
   }
+
+  /// Kept for source compatibility; this never proved gateway safety.
+  @Deprecated(
+    'This checks DNS connectivity only. Use verifyNetworkConnectivity().',
+  )
+  Future<bool> verifyGatewaySafety() => verifyNetworkConnectivity();
 
   String buildTelemetryPayload({int limit = 100}) {
     if (limit < 1 || limit > _maxRecentEvents) {
