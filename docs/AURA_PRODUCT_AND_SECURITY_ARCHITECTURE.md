@@ -215,7 +215,22 @@ Cada requisito tendrá:
 
 **Salida:** informe de cobertura, riesgos aceptados y limitaciones conocidas.
 
-## 11. Regla de publicación
+## 11. Estado de implementación de la revisión actual
+
+Este estado describe cambios de código guardados en `main`; no equivale a pruebas aprobadas ni a validación independiente.
+
+| Área | Trabajo incorporado | Estado verificable pendiente |
+|---|---|---|
+| 1. Inteligencia de aplicaciones | Permisos concedidos diferenciados de solicitados; servicios privilegiados realmente habilitados; accesos especiales consultados por AppOps; procedencia de instalación y límites de interpretación; inventario acotado a operaciones declaradas. | Ejecutar pruebas Kotlin/Flutter en CodeMagic y validar resultados en Android 7–16 con distintos fabricantes y políticas de visibilidad. |
+| 2. Detección de amenazas | Hallazgos heurísticos y de ML no se convierten automáticamente en bloqueo; las señales de modelo quedan como posibles amenazas y solicitan aprobación. Las listas de bloqueo verificadas siguen un flujo separado. | Validar corpus benigno/malicioso, falsos positivos, actualización/expiración de listas y comportamiento sin modelo. |
+| 3. Privacidad y almacenamiento | Telemetría remota requiere opt-in, transmite hash de dominio y permite cancelar/limpiar cola; el historial local usa SecureVault; errores de análisis/modelo no exponen excepciones al usuario. | Verificar migración/recuperación de SecureVault, retirada de consentimiento durante una carga y ausencia de datos sensibles en logs de release. |
+| 4. Contratos Flutter–Android–JNI | Se revisaron los contratos de escaneo, red y herramientas; los resultados de auditoría ahora conservan procedencia y accesos especiales; el alcance de bloqueo se describe como motor DNS local, no protección global. | Ejecutar tests de canales, revisar ABI JNI en cada ABI empaquetada y probar ciclo de vida con procesos Android recreados. |
+| 5. Agente y acciones | Las herramientas de bloqueo de dominio, activación/desactivación de defensa y aislamiento de emergencia requieren `confirmed_by_user: true`; el modelo no puede bloquear por sí solo. | Conectar la confirmación a una interacción visible y auditable del usuario; comprobar que ningún prompt del modelo puede fabricar esa confirmación. |
+| 6. Evidencia y documentación | Se ampliaron pruebas estáticas y unitarias para los nuevos contratos y se documentaron alcance, límites y estado. | Ejecutar el pipeline completo, registrar dispositivos reales, resultados y artefactos de release firmados. |
+
+**Regla de estado:** las modificaciones anteriores están implementadas en el repositorio. Hasta que CodeMagic ejecute los tests y se realicen las comprobaciones físicas, deben considerarse `implemented`, no `automated-tested` ni `device-tested`.
+
+## 12. Regla de publicación
 
 Una función solo puede etiquetarse como **operativa** si:
 1. está implementada en el código final;
