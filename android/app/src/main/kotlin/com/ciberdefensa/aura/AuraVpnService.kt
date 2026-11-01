@@ -461,11 +461,59 @@ class AuraVpnService : VpnService() {
         if (selected == null) {
             Log.w("AuraVPN", "Se perdió la red física; el túnel local permanece sin salida.")
             reportState(false, "Sin red física disponible; el tráfico no puede salir del túnel.")
-        } else if (tunnelStarted && TProxyService.TProxyIsRunning()) {
-            Log.i("AuraVPN", "Red física del túnel actualizada.")
+        } else if (tunnelStarted) {
+            recoverTunnelAfterNetworkChange()
+        }
+    }
+
+    /**
+     * A running tun2socks instance may retain upstream sockets created on the
+     * previous physical network. Updating Android's underlying-network metadata
+     * alone does not migrate those sockets. Restart the native worker against the
+     * same TUN descriptor so new protected sockets use the selected underlay.
+     */
+    private fun recoverTunnelAfterNetworkChange() {
+        val tun = vpnInterface
+        if (tun == null || !tun.fileDescriptor.valid()) {
+            tunnelStarted = false
+            reportState(false, "La red cambió, pero la interfaz VPN ya no está disponible.")
+            return
+        }
+
+        try {
+            if (TProxyService.TProxyIsRunning() && !TProxyService.TProxyStopService()) {
+                throw IOException("El motor VPN no confirmó el cierre para cambiar de red.")
+            }
+            tunnelStarted = false
+            TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
+            if (!TProxyService.TProxyStartService(
+                    File(filesDir, "aura-hev-socks5.yml").absolutePath,
+                    tun.fd,
+                )
+            ) {
+                throw IOException("El motor VPN no pudo reiniciarse en la nueva red.")
+            }
+            verifyLocalSocks5Ready()
+            for (endpoint in AuraBlocklistService.knownEncryptedDnsEndpoints()) {
+                if (!TProxyService.TProxyAddDynamicSniRule(endpoint)) {
+                    throw IOException("No se pudo restaurar una regla SNI tras cambiar de red.")
+                }
+            }
+            tunnelStarted = true
             reportState(
                 true,
-                "Túnel local activo; red física actualizada. Las conexiones existentes pueden reconectarse.",
+                "Red física cambiada; motor VPN reiniciado y proxy SOCKS5 verificado.",
+            )
+            Log.i("AuraVPN", "Motor tun2socks recuperado tras cambiar la red física.")
+        } catch (exception: Exception) {
+            if (TProxyService.TProxyIsRunning()) {
+                TProxyService.TProxyStopService()
+            }
+            tunnelStarted = false
+            Log.e("AuraVPN", "No se pudo recuperar el túnel tras cambiar de red.", exception)
+            reportState(
+                false,
+                "La red cambió y el túnel no pudo recuperarse. Reactiva la protección.",
             )
         }
     }
