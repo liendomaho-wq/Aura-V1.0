@@ -251,7 +251,7 @@ abstract class AuraTools {
           'tool': step.name,
         },
       );
-    } on Object {
+    } on Object catch (error) {
       // Native, storage, filesystem and network failures must become an
       // explicit unsuccessful result; never let a tool failure look successful
       // or crash the agent command loop. Avoid returning exception text because
@@ -435,7 +435,7 @@ abstract class AuraTools {
           'security_level': 'safe',
         },
       );
-    } on Object catch (error) {
+    } on Object {
       await AuraAIBrain.useSafeRuleFallback(
         'No se pudo verificar o instalar el modelo remoto; se activaron las reglas locales.',
         notifyHud: false,
