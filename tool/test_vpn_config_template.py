@@ -330,6 +330,48 @@ if 'MODE_DEFAULT' in APP_SCANNER and 'MODE_DEFAULT -> "ACTIVE"' in APP_SCANNER:
 
 print("PASS: special Android access is reported per package with conservative AppOps state handling.")
 
+# Agent actions that change networking or isolate traffic require explicit consent.
+AGENT_TOOLS = Path("lib/agent/aura_tools.dart").read_text(encoding="utf-8")
+for consent_guard in (
+    "step.arguments['confirmed_by_user'] != true",
+    "'user_confirmation_required'",
+    "case 'block_domain':",
+    "case 'panic_isolation':",
+    "arguments['confirmed_by_user'] != true",
+):
+    if consent_guard not in AGENT_TOOLS:
+        sys.exit("FAIL: agent security action lacks explicit confirmation guard: " + consent_guard)
+if "special_access_count" not in AGENT_TOOLS or "app_provenance_count" not in AGENT_TOOLS:
+    sys.exit("FAIL: app scan tool must preserve special access and install provenance evidence")
+if "MODE_ALLOWED" not in APP_SCANNER or "MODE_FOREGROUND" not in APP_SCANNER:
+    sys.exit("FAIL: AppOps audit must distinguish active from conditional access")
+if "mapNotNull { (name, operation, permission)" not in APP_SCANNER:
+    sys.exit("FAIL: special access inventory must omit undeclared AppOps rows to bound output")
+
+print("PASS: app scan preserves evidence and agent network/isolation actions require user confirmation.")
+
+# Model heuristics must never mutate device network policy without user approval.
+AI_BRAIN = Path("lib/ai_brain.dart").read_text(encoding="utf-8")
+ml_branch = re.search(
+    r"if \(isThreat\) \{(.*?)\n        \} else \{",
+    AI_BRAIN,
+    re.DOTALL,
+)
+if not ml_branch:
+    sys.exit("FAIL: could not locate model threat decision branch")
+if "addDnsBlockRule(" in ml_branch.group(1):
+    sys.exit("FAIL: ML threat classification must not automatically install a DNS block")
+for required_ml_guard in (
+    "requires_user_confirmation",
+    "user_confirmation_required",
+    "local_dns_engine_only",
+    "No se bloqueó automáticamente",
+):
+    if required_ml_guard not in ml_branch.group(1):
+        sys.exit("FAIL: ML finding must disclose consent-gated mitigation: " + required_ml_guard)
+
+print("PASS: ML findings remain recommendations until the user confirms a local DNS block.")
+
 # File-path fragments are not reliable proof of a virtualized device.
 if '"isVirtualEnvironment" to isCloned' in anti_tampering:
     sys.exit("FAIL: app path heuristics must not produce a confirmed virtual-device verdict")
