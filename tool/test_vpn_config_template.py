@@ -223,3 +223,30 @@ if "not a history of packets blocked" not in text:
     sys.exit("FAIL: active feed rules must be distinguished from observed block events")
 
 print("PASS: shield diagnostics return bounded active IP threat-feed rules without fabricating traffic events.")
+
+# A physical-network handover must restart the native worker: merely updating
+# Android's underlay metadata does not migrate sockets opened on the old network.
+recovery = re.search(
+    r"private fun recoverTunnelAfterNetworkChange\(\) \{(.*?)\n    \}",
+    text,
+    re.DOTALL,
+)
+if not recovery:
+    sys.exit("FAIL: VPN network handover recovery routine is missing")
+recovery_body = recovery.group(1)
+for required_recovery_step in (
+    "TProxyService.TProxyStopService()",
+    "TProxyService.TProxyStartService(",
+    "verifyLocalSocks5Ready()",
+    "TProxyService.TProxySetBlockedIps(blockedIpSnapshot())",
+    "AuraBlocklistService.knownEncryptedDnsEndpoints()",
+    "tunnelStarted = true",
+):
+    if required_recovery_step not in recovery_body:
+        sys.exit("FAIL: VPN handover recovery is missing " + required_recovery_step)
+if "recoverTunnelAfterNetworkChange()" not in text:
+    sys.exit("FAIL: selected physical-network changes do not invoke tunnel recovery")
+if "tunnelStarted = false" not in recovery_body or "no pudo recuperarse" not in recovery_body:
+    sys.exit("FAIL: failed network recovery must report the tunnel as inactive")
+
+print("PASS: physical-network handover restarts and verifies tun2socks before reporting protection active.")
