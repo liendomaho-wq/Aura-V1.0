@@ -250,3 +250,18 @@ if "tunnelStarted = false" not in recovery_body or "no pudo recuperarse" not in 
     sys.exit("FAIL: failed network recovery must report the tunnel as inactive")
 
 print("PASS: physical-network handover restarts and verifies tun2socks before reporting protection active.")
+
+# App-risk findings must be based on confirmed access, not permission declarations.
+APP_SCANNER = Path(
+    "android/app/src/main/kotlin/com/ciberdefensa/aura/AuraAppGenomeScanner.kt"
+).read_text(encoding="utf-8")
+if "PackageInfo.REQUESTED_PERMISSION_GRANTED" not in APP_SCANNER:
+    sys.exit("FAIL: app scanner must check Android permission grant flags")
+if "val dangerous = grantedHighRisk + activeServices" not in APP_SCANNER:
+    sys.exit("FAIL: requested-but-ungranted permissions must not count as active risk")
+if "component in enabled" not in APP_SCANNER:
+    sys.exit("FAIL: privileged services must be enabled by the user to count as active")
+if "servicePermissions[packageInfo.packageName]" in APP_SCANNER:
+    sys.exit("FAIL: inactive service declarations must not be counted as active risk")
+
+print("PASS: app risk scoring requires confirmed permission grants or enabled privileged services.")
