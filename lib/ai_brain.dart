@@ -795,8 +795,8 @@ class AuraAIBrain {
       final toolResult = <String, Object?>{
         'ok': blocked,
         'domain': domain,
-        'enforcement_scope': 'device-wide',
-        if (failure != null) 'error': failure.toString(),
+        'enforcement_scope': 'local_dns_engine_only',
+        if (failure != null) 'error': 'operation_failed',
         if (!blocked && failure == null)
           'error': 'El motor no confirmó la regla DNS.',
       };
