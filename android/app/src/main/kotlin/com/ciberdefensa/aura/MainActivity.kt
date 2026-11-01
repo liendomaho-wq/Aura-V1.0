@@ -869,14 +869,23 @@ class MainActivity: FlutterFragmentActivity() {
                     val isDebugActive =
                         Debug.isDebuggerConnected() || Debug.waitingForDebugger()
                     val dataPath = applicationContext.filesDir.absolutePath.lowercase()
-                    val isCloned = dataPath.contains("virtual") ||
+                    // Path fragments are weak indicators and can occur in legitimate
+                    // environments. They must never be promoted to a virtual-device verdict.
+                    val possibleVirtualPathIndicator = dataPath.contains("virtual") ||
                         dataPath.contains("parallel") ||
                         dataPath.contains("dual") ||
                         dataPath.contains("multiple")
                     val integrityReport = mapOf(
                         "isDebuggerConnected" to isDebugActive,
-                        "isVirtualEnvironment" to isCloned,
-                        "isSecure" to (!isDebugActive && !isCloned),
+                        // Retained for older Flutter consumers; false means "not confirmed",
+                        // not proof that the device is physical.
+                        "isVirtualEnvironment" to false,
+                        "possibleVirtualPathIndicator" to possibleVirtualPathIndicator,
+                        "integrityAssessment" to if (isDebugActive) "DEBUGGER_ATTACHED"
+                            else "NO_DEBUGGER_DETECTED",
+                        "assessmentNote" to "La ruta de archivos no confirma virtualización; " +
+                            "esta comprobación tampoco certifica la integridad total del dispositivo.",
+                        "isSecure" to !isDebugActive,
                     )
                     result.success(integrityReport)
                 }
