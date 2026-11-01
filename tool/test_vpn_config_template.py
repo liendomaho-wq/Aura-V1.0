@@ -205,3 +205,21 @@ if "network == excludedNetwork" not in network_selection.group(1):
     sys.exit("FAIL: a lost physical network must not be selected again during callback races")
 
 print("PASS: VPN tracks physical network availability and unregisters callbacks safely.")
+
+# The legacy shield query must expose real active feed rules, not a permanent
+# empty placeholder or a claim that these rules are observed traffic events.
+MAIN_ACTIVITY = Path(
+    "android/app/src/main/kotlin/com/ciberdefensa/aura/MainActivity.kt"
+).read_text(encoding="utf-8")
+if 'fun activeBlockedIpRules(): List<String>' not in text:
+    sys.exit("FAIL: VPN must expose its currently loaded IP threat-feed rules")
+if "activeService?.blockedIpSnapshot()?.sorted()?.take(512)" not in text:
+    sys.exit("FAIL: active IP rule diagnostics must be bounded and sourced from the running service")
+if '"getLatestBlockedIps" -> {\n                    val blockedIps = listOf<String>()' in MAIN_ACTIVITY:
+    sys.exit("FAIL: getLatestBlockedIps must not return a hardcoded empty placeholder")
+if "AuraVpnService.activeBlockedIpRules()" not in MAIN_ACTIVITY:
+    sys.exit("FAIL: shield IP-rule query is not connected to the active VPN threat feed")
+if "not a log of IPs actually blocked in traffic" not in text:
+    sys.exit("FAIL: active feed rules must be distinguished from observed block events")
+
+print("PASS: shield diagnostics return bounded active IP threat-feed rules without fabricating traffic events.")
