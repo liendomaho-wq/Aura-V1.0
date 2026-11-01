@@ -329,3 +329,13 @@ if 'MODE_DEFAULT' in APP_SCANNER and 'MODE_DEFAULT -> "ACTIVE"' in APP_SCANNER:
     sys.exit("FAIL: AppOps DEFAULT mode must never be treated as active access")
 
 print("PASS: special Android access is reported per package with conservative AppOps state handling.")
+
+# File-path fragments are not reliable proof of a virtualized device.
+if '"isVirtualEnvironment" to isCloned' in anti_tampering:
+    sys.exit("FAIL: app path heuristics must not produce a confirmed virtual-device verdict")
+if '"possibleVirtualPathIndicator" to possibleVirtualPathIndicator' not in anti_tampering:
+    sys.exit("FAIL: weak virtual-path indicators must remain explicitly contextual")
+if '"isSecure" to (!isDebugActive && !isCloned)' in anti_tampering:
+    sys.exit("FAIL: weak path indicators must not determine the device integrity verdict")
+
+print("PASS: virtual-device path heuristics are contextual and cannot create false integrity verdicts.")
