@@ -291,7 +291,7 @@ class AuraAIBrain {
         sha256: actualAssetDigest,
         message: 'Digest local y firma RSA verificados.',
       );
-    } on Object catch (error) {
+    } on Object {
       return AuraModelIntegrityReport(
         verified: false,
         signatureVerified: false,
@@ -962,7 +962,7 @@ class AuraAIBrain {
         _loadedModelSignatureVerified = true;
       }
       return decoded;
-    } on Object catch (error) {
+    } on Object {
       if (decoded != null) _clearModelValue(decoded);
       _loadedModelSha256 = null;
       _loadedModelSignatureVerified = false;
