@@ -305,3 +305,27 @@ if "no demuestra que la aplicación sea maliciosa" not in APP_SCANNER:
     sys.exit("FAIL: installer identity must not be presented as proof of malware")
 
 print("PASS: app inventory reports installation provenance with explicit confidence limits.")
+
+# Special Android access must be checked per package through AppOps. Unknown,
+# conditional, or undeclared states must not be presented as active grants.
+for special_access_check in (
+    "AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW",
+    "AppOpsManager.OPSTR_GET_USAGE_STATS",
+    "AppOpsManager.OPSTR_WRITE_SETTINGS",
+    "AppOpsManager.OPSTR_REQUEST_INSTALL_PACKAGES",
+    "AppOpsManager.OPSTR_MANAGE_EXTERNAL_STORAGE",
+    "appOps.checkOpNoThrow(operation, appInfo.uid, appInfo.packageName)",
+    'AppOpsManager.MODE_ALLOWED -> "ACTIVE"',
+    'AppOpsManager.MODE_FOREGROUND -> "CONDITIONAL"',
+    'else -> "UNKNOWN"',
+    '"special_access_count" to specialAccess.size',
+    '"active_special_access_count" to activeSpecialAccessCount',
+):
+    if special_access_check not in APP_SCANNER:
+        sys.exit("FAIL: special-access audit is missing " + special_access_check)
+if 'permission !in requested' not in APP_SCANNER:
+    sys.exit("FAIL: special-access audit must distinguish undeclared permissions")
+if 'MODE_DEFAULT' in APP_SCANNER and 'MODE_DEFAULT -> "ACTIVE"' in APP_SCANNER:
+    sys.exit("FAIL: AppOps DEFAULT mode must never be treated as active access")
+
+print("PASS: special Android access is reported per package with conservative AppOps state handling.")
