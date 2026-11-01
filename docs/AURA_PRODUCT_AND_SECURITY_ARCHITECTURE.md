@@ -133,6 +133,16 @@ Si un caso no está probado, Aura debe mostrar cobertura reducida o función no 
 - inventario de aplicaciones sujeto a visibilidad y políticas de Android/Google Play;
 - no inspeccionar datos privados de otras aplicaciones ni interceptar HTTPS mediante MITM.
 
+### Interpretación conservadora de permisos y señales de integridad
+
+- Los permisos peligrosos solicitados se separan de los permisos cuya concesión Android confirma.
+- Los servicios de accesibilidad y listeners de notificaciones solo cuentan como activos cuando el componente está habilitado por el usuario y declara el permiso de vinculación esperado.
+- Los accesos especiales (superposición, estadísticas de uso, modificación de ajustes, instalación de paquetes y acceso a todos los archivos) se consultan por paquete mediante AppOps cuando la versión Android lo permite.
+- AppOps `MODE_ALLOWED` se informa como activo; `MODE_FOREGROUND` como condicional; `DEFAULT`, denegaciones y errores no se convierten en acceso activo.
+- La ausencia de visibilidad de un paquete o un error de consulta se informa como cobertura incompleta/desconocida.
+- La identidad del instalador es contexto, no prueba de legitimidad o malware.
+- Una ruta de archivos que contenga términos como `virtual`, `parallel` o `dual` es una señal débil; no confirma un emulador ni determina por sí sola el estado seguro del dispositivo.
+
 ## 9. Estándar de verificación
 
 Usar OWASP MASVS y MASTG como marco de evaluación de la propia aplicación, cubriendo almacenamiento, criptografía, autenticación, red, plataforma, calidad de código, resiliencia y privacidad. No afirmar certificación OWASP: el estándar es una guía de requisitos y pruebas, no una certificación automática.
