@@ -128,6 +128,9 @@ void main() {
       'No pude contactar el motor VPN. Revisa que Aura esté activa.',
     );
     expect(result.data['ok'], isFalse);
+    expect(result.data['error'], 'operation_failed');
+    expect(result.data['tool'], 'toggle_defenses');
+    expect(result.data['code'], 'vpn_unavailable');
   });
 
   test('unexpected native scan errors return a failed result without leaking details', () async {
