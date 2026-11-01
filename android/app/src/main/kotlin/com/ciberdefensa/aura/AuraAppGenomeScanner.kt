@@ -160,11 +160,30 @@ object AuraAppGenomeScanner {
         val suspiciousApps = analyzeInstalledApps(context)
         val signatureIssues = verifyAppSignatures(context)
         val obfuscatedApps = detectSuspiciousObfuscation(context)
+        val appProvenance = installedApps.values
+            .asSequence()
+            .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
+            .sortedBy { it.packageName }
+            .map { appInfo ->
+                val installSource = readInstallSource(packageManager, appInfo.packageName)
+                mapOf(
+                    "package_name" to appInfo.packageName,
+                    "app_name" to packageManager.getApplicationLabel(appInfo).toString(),
+                    "installer_package" to (installSource["installer_package"] ?: ""),
+                    "initiating_package" to (installSource["initiating_package"] ?: ""),
+                    "originating_package" to (installSource["originating_package"] ?: ""),
+                    "install_source_status" to (installSource["status"] ?: "UNKNOWN"),
+                    "assessment_note" to "La procedencia es una señal contextual; no demuestra que la aplicación sea maliciosa.",
+                )
+            }
+            .toList()
 
         return mapOf(
             "timestamp" to System.currentTimeMillis(),
             "count" to applications.size,
             "applications" to applications,
+            "app_provenance_count" to appProvenance.size,
+            "app_provenance" to appProvenance,
             "suspicious_app_count" to suspiciousApps.size,
             "suspicious_apps" to suspiciousApps.map { it.toMap() },
             "signature_issue_count" to signatureIssues.size,
@@ -172,6 +191,53 @@ object AuraAppGenomeScanner {
             "obfuscated_app_count" to obfuscatedApps.size,
             "obfuscated_apps" to obfuscatedApps.map { it.toMap() },
         )
+    }
+
+    @Suppress("DEPRECATION")
+    private fun readInstallSource(
+        packageManager: PackageManager,
+        packageName: String,
+    ): Map<String, String> {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val source = packageManager.getInstallSourceInfo(packageName)
+                mapOf(
+                    "installer_package" to (source.installingPackageName ?: ""),
+                    "initiating_package" to (source.initiatingPackageName ?: ""),
+                    "originating_package" to (source.originatingPackageName ?: ""),
+                    "status" to "AVAILABLE",
+                )
+            } else {
+                mapOf(
+                    "installer_package" to
+                        (packageManager.getInstallerPackageName(packageName) ?: ""),
+                    "initiating_package" to "",
+                    "originating_package" to "",
+                    "status" to "LEGACY_INSTALLER_ONLY",
+                )
+            }
+        } catch (_: PackageManager.NameNotFoundException) {
+            mapOf(
+                "installer_package" to "",
+                "initiating_package" to "",
+                "originating_package" to "",
+                "status" to "PACKAGE_NO_LONGER_AVAILABLE",
+            )
+        } catch (_: SecurityException) {
+            mapOf(
+                "installer_package" to "",
+                "initiating_package" to "",
+                "originating_package" to "",
+                "status" to "ACCESS_DENIED",
+            )
+        } catch (_: UnsupportedOperationException) {
+            mapOf(
+                "installer_package" to "",
+                "initiating_package" to "",
+                "originating_package" to "",
+                "status" to "UNSUPPORTED",
+            )
+        }
     }
 
     @Suppress("DEPRECATION")
