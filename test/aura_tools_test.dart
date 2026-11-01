@@ -24,6 +24,27 @@ void main() {
         'applications': <dynamic>[
           <String, dynamic>{'package_name': 'com.example.app'},
         ],
+        'special_access_count': 2,
+        'active_special_access_count': 1,
+        'special_access': <dynamic>[
+          <String, dynamic>{
+            'package_name': 'com.example.app',
+            'access': 'OVERLAY',
+            'state': 'ACTIVE',
+          },
+          <String, dynamic>{
+            'package_name': 'com.example.app',
+            'access': 'USAGE_STATS',
+            'state': 'UNKNOWN',
+          },
+        ],
+        'app_provenance_count': 1,
+        'app_provenance': <dynamic>[
+          <String, dynamic>{
+            'package_name': 'com.example.app',
+            'install_source_status': 'AVAILABLE',
+          },
+        ],
         'suspicious_app_count': 1,
         'suspicious_apps': <dynamic>[],
         'signature_issue_count': 0,
@@ -41,6 +62,9 @@ void main() {
     expect(result.data['scan_type'], 'installed_app_static_review');
     expect(result.data['active_service_app_count'], 1);
     expect(result.data['suspicious_app_count'], 1);
+    expect(result.data['active_special_access_count'], 1);
+    expect(result.data['special_access'], hasLength(2));
+    expect(result.data['app_provenance'], hasLength(1));
     expect(result.data['limitations'], isA<List<String>>());
     expect(result.summary, contains('no prueba de malware'));
   });
