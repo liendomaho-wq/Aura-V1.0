@@ -140,7 +140,7 @@ abstract class AuraTools {
                 : 'El motor DNS no confirmó el bloqueo del dominio.',
             data: <String, dynamic>{
               'ok': confirmed,
-              if (domain != null) 'domain': domain,
+              'domain': domain,
             },
           );
         case 'isolate_app':
@@ -242,7 +242,7 @@ abstract class AuraTools {
           'security_level': 'warning',
         },
       );
-    } on MissingPluginException catch (error) {
+    } on MissingPluginException {
       return ToolResult(
         summary: 'El canal nativo de Aura no está disponible.',
         data: <String, dynamic>{
@@ -251,7 +251,7 @@ abstract class AuraTools {
           'tool': step.name,
         },
       );
-    } on Object catch (error) {
+    } on Object {
       // Native, storage, filesystem and network failures must become an
       // explicit unsuccessful result; never let a tool failure look successful
       // or crash the agent command loop. Avoid returning exception text because
