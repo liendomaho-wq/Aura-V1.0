@@ -314,8 +314,8 @@ for special_access_check in (
     "AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW",
     "AppOpsManager.OPSTR_GET_USAGE_STATS",
     "AppOpsManager.OPSTR_WRITE_SETTINGS",
-    "AppOpsManager.OPSTR_REQUEST_INSTALL_PACKAGES",
-    "AppOpsManager.OPSTR_MANAGE_EXTERNAL_STORAGE",
+    '"android:request_install_packages",'
+    '"android:manage_external_storage",'
     "appOps.checkOpNoThrow(operation, appInfo.uid, appInfo.packageName)",
     'AppOpsManager.MODE_ALLOWED -> "ACTIVE"',
     'AppOpsManager.MODE_FOREGROUND -> "CONDITIONAL"',
