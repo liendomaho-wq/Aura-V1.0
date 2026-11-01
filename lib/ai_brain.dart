@@ -297,7 +297,7 @@ class AuraAIBrain {
         signatureVerified: false,
         modelVersion: modelVersion,
         sha256: expectedLoadedDigest,
-        message: 'No se pudo verificar la integridad del modelo: $error',
+        message: 'No se pudo verificar la integridad del modelo. Se requiere revisión.',
       );
     } finally {
       artifactBytes?.fillRange(0, artifactBytes.length, 0);
@@ -710,14 +710,18 @@ class AuraAIBrain {
           );
           continue;
         }
-        await _recordDomainOutcome(
-          domain,
-          isThreat ? 'blocked' : 'allowed',
-          source: 'ml',
-          modelVersion: model['model_version'] is String
-              ? model['model_version'] as String
-              : null,
-        );
+        // A model score is a finding, not authorization to change device
+        // networking. Threat candidates remain unresolved until user approval.
+        if (!isThreat) {
+          await _recordDomainOutcome(
+            domain,
+            'allowed',
+            source: 'ml',
+            modelVersion: model['model_version'] is String
+                ? model['model_version'] as String
+                : null,
+          );
+        }
         _stateProvider?.recordLocalForestEvaluation();
 
         final modelDigest = _loadedModelSha256;
@@ -740,33 +744,26 @@ class AuraAIBrain {
         }
 
         if (isThreat) {
-          _stateProvider?.setSecurityLevel(AuraSecurityLevel.critical);
+          _stateProvider?.setSecurityLevel(AuraSecurityLevel.warning);
           final arguments = <String, Object?>{'domain': domain};
           _onToolStarted?.call('mitigate_network_threat', arguments);
-          Map<String, Object?> result;
-          try {
-            final blocked = await addDnsBlockRule(domain);
-            result = {
-              'ok': blocked,
-              'domain': domain,
-              'enforcement_scope': 'device-wide',
-              if (!blocked) 'error': 'El motor no confirmó la regla DNS.',
-            };
-          } on Object catch (error) {
-            result = {
-              'ok': false,
-              'domain': domain,
-              'error': error.toString(),
-            };
-          }
+          final result = <String, Object?>{
+            'ok': false,
+            'domain': domain,
+            'requires_user_confirmation': true,
+            'action_available': 'block_domain',
+            'error': 'user_confirmation_required',
+            'enforcement_scope': 'local_dns_engine_only',
+          };
           _onToolCompleted?.call(
             'mitigate_network_threat',
             arguments,
             result,
           );
           results.add(
-            'AMENAZA: $domain (${(threatScore * 100).toStringAsFixed(0)}% '
-            'de votos); ${result['ok'] == true ? 'bloqueo confirmado' : 'bloqueo no confirmado'}.',
+            'POSIBLE AMENAZA: $domain (${(threatScore * 100).toStringAsFixed(0)}% '
+            'de votos del modelo). No se bloqueó automáticamente; requiere revisión '
+            'y confirmación explícita para aplicar una regla DNS local.',
           );
         } else {
           results.add(
@@ -776,8 +773,9 @@ class AuraAIBrain {
         }
       }
       return results.join('\n');
-    } on Object catch (error) {
-      return 'ERROR DE ANÁLISIS LOCAL: ${error.toString()}';
+    } on Object {
+      return 'No se pudo completar el análisis local. El resultado es incompleto; '
+          'revisa la conectividad y vuelve a intentarlo.';
     }
   }
 
@@ -969,7 +967,7 @@ class AuraAIBrain {
       _loadedModelSha256 = null;
       _loadedModelSignatureVerified = false;
       await useSafeRuleFallback(
-        'Integridad del modelo no verificada; se activaron las reglas locales: $error',
+        'Integridad del modelo no verificada; se activaron las reglas locales.',
       );
       return <String, dynamic>{};
     } finally {
