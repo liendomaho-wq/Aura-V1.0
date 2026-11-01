@@ -245,10 +245,10 @@ object AuraAppGenomeScanner {
                     "android.permission.MANAGE_EXTERNAL_STORAGE"))
             }
         }
-        return operations.map { (name, operation, permission) ->
-            if (permission !in requested) {
-                return@map Triple(name, "NOT_DECLARED", "NOT_APPLICABLE")
-            }
+        return operations.mapNotNull { (name, operation, permission) ->
+            // Omit irrelevant non-declarations instead of multiplying every app
+            // into five "not declared" rows in the scan report.
+            if (permission !in requested) return@mapNotNull null
             try {
                 val mode = appOps.checkOpNoThrow(operation, appInfo.uid, appInfo.packageName)
                 val state = when (mode) {
