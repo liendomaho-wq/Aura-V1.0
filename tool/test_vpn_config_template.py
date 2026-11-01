@@ -280,3 +280,14 @@ if '"SIGNATURE_METADATA_UNAVAILABLE"' not in APP_SCANNER:
     sys.exit("FAIL: unavailable signing metadata must be reported without alleging malware")
 
 print("PASS: app signing checks support modern Android signer rotation and avoid multi-signer false positives.")
+
+# DNS resolution is not evidence that the local gateway or Wi-Fi is safe.
+NETWORK_AUDITOR = Path("lib/network_auditor.dart").read_text(encoding="utf-8")
+if "Future<bool> verifyNetworkConnectivity()" not in NETWORK_AUDITOR:
+    sys.exit("FAIL: network auditor must expose a connectivity-only check")
+if "does not inspect the local gateway" not in NETWORK_AUDITOR:
+    sys.exit("FAIL: connectivity checks must disclose that gateway safety is not verified")
+if "@Deprecated(" not in NETWORK_AUDITOR or "verifyNetworkConnectivity()" not in NETWORK_AUDITOR:
+    sys.exit("FAIL: legacy gateway-safety API must warn callers and redirect to connectivity semantics")
+
+print("PASS: DNS reachability is not mislabeled as gateway or Wi-Fi security.")
