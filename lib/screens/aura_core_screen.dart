@@ -425,6 +425,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
     try {
       await AgentController.instance.run(
         wasActive ? 'desactivar defensas' : 'activar defensas',
+        // This callback is reached only after the user taps the visible toggle.
+        confirmedByUser: true,
       );
     } finally {
       if (mounted) setState(() => _isShieldBusy = false);
