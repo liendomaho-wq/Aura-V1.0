@@ -1,5 +1,7 @@
 package com.ciberdefensa.aura
 
+import android.app.AppOpsManager
+
 import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
 import android.content.Context
@@ -160,23 +162,35 @@ object AuraAppGenomeScanner {
         val suspiciousApps = analyzeInstalledApps(context)
         val signatureIssues = verifyAppSignatures(context)
         val obfuscatedApps = detectSuspiciousObfuscation(context)
-        val appProvenance = installedApps.values
-            .asSequence()
+        val thirdPartyApps = installedApps.values
             .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
             .sortedBy { it.packageName }
-            .map { appInfo ->
-                val installSource = readInstallSource(packageManager, appInfo.packageName)
+        val appProvenance = thirdPartyApps.map { appInfo ->
+            val installSource = readInstallSource(packageManager, appInfo.packageName)
+            mapOf(
+                "package_name" to appInfo.packageName,
+                "app_name" to packageManager.getApplicationLabel(appInfo).toString(),
+                "installer_package" to (installSource["installer_package"] ?: ""),
+                "initiating_package" to (installSource["initiating_package"] ?: ""),
+                "originating_package" to (installSource["originating_package"] ?: ""),
+                "install_source_status" to (installSource["status"] ?: "UNKNOWN"),
+                "assessment_note" to "La procedencia es una señal contextual; no demuestra que la aplicación sea maliciosa.",
+            )
+        }
+        // AppOps is queried per installed package. DEFAULT and FOREGROUND are
+        // deliberately not treated as confirmed active access.
+        val specialAccess = thirdPartyApps.flatMap { appInfo ->
+            readSpecialAccess(context, appInfo).map { access ->
                 mapOf(
                     "package_name" to appInfo.packageName,
                     "app_name" to packageManager.getApplicationLabel(appInfo).toString(),
-                    "installer_package" to (installSource["installer_package"] ?: ""),
-                    "initiating_package" to (installSource["initiating_package"] ?: ""),
-                    "originating_package" to (installSource["originating_package"] ?: ""),
-                    "install_source_status" to (installSource["status"] ?: "UNKNOWN"),
-                    "assessment_note" to "La procedencia es una señal contextual; no demuestra que la aplicación sea maliciosa.",
+                    "access" to access.first,
+                    "state" to access.second,
+                    "mode" to access.third,
                 )
             }
-            .toList()
+        }
+        val activeSpecialAccessCount = specialAccess.count { it["state"] == "ACTIVE" }
 
         return mapOf(
             "timestamp" to System.currentTimeMillis(),
@@ -184,6 +198,9 @@ object AuraAppGenomeScanner {
             "applications" to applications,
             "app_provenance_count" to appProvenance.size,
             "app_provenance" to appProvenance,
+            "special_access_count" to specialAccess.size,
+            "active_special_access_count" to activeSpecialAccessCount,
+            "special_access" to specialAccess,
             "suspicious_app_count" to suspiciousApps.size,
             "suspicious_apps" to suspiciousApps.map { it.toMap() },
             "signature_issue_count" to signatureIssues.size,
@@ -191,6 +208,64 @@ object AuraAppGenomeScanner {
             "obfuscated_app_count" to obfuscatedApps.size,
             "obfuscated_apps" to obfuscatedApps.map { it.toMap() },
         )
+    }
+
+    /**
+     * Reports per-package special AppOps access. A DEFAULT mode is UNKNOWN,
+     * not a grant; FOREGROUND is CONDITIONAL and is never counted as ACTIVE.
+     */
+    @Suppress("DEPRECATION")
+    private fun readSpecialAccess(
+        context: Context,
+        appInfo: ApplicationInfo,
+    ): List<Triple<String, String, String>> {
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
+            ?: return emptyList()
+        val requested = try {
+            context.packageManager.getPackageInfo(
+                appInfo.packageName,
+                PackageManager.GET_PERMISSIONS,
+            ).requestedPermissions.orEmpty().toSet()
+        } catch (_: Exception) {
+            emptySet()
+        }
+        val operations = buildList {
+            add(Triple("OVERLAY", AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW,
+                "android.permission.SYSTEM_ALERT_WINDOW"))
+            add(Triple("USAGE_STATS", AppOpsManager.OPSTR_GET_USAGE_STATS,
+                "android.permission.PACKAGE_USAGE_STATS"))
+            add(Triple("MODIFY_SETTINGS", AppOpsManager.OPSTR_WRITE_SETTINGS,
+                "android.permission.WRITE_SETTINGS"))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                add(Triple("INSTALL_UNKNOWN_APPS", AppOpsManager.OPSTR_REQUEST_INSTALL_PACKAGES,
+                    "android.permission.REQUEST_INSTALL_PACKAGES"))
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                add(Triple("ALL_FILES_ACCESS", AppOpsManager.OPSTR_MANAGE_EXTERNAL_STORAGE,
+                    "android.permission.MANAGE_EXTERNAL_STORAGE"))
+            }
+        }
+        return operations.map { (name, operation, permission) ->
+            if (permission !in requested) {
+                return@map Triple(name, "NOT_DECLARED", "NOT_APPLICABLE")
+            }
+            try {
+                val mode = appOps.checkOpNoThrow(operation, appInfo.uid, appInfo.packageName)
+                val state = when (mode) {
+                    AppOpsManager.MODE_ALLOWED -> "ACTIVE"
+                    AppOpsManager.MODE_FOREGROUND -> "CONDITIONAL"
+                    AppOpsManager.MODE_IGNORED, AppOpsManager.MODE_ERRORED -> "INACTIVE"
+                    else -> "UNKNOWN"
+                }
+                Triple(name, state, mode.toString())
+            } catch (_: SecurityException) {
+                Triple(name, "UNKNOWN", "ACCESS_DENIED")
+            } catch (_: IllegalArgumentException) {
+                Triple(name, "UNSUPPORTED", "OP_NOT_AVAILABLE")
+            } catch (_: RuntimeException) {
+                Triple(name, "UNKNOWN", "CHECK_FAILED")
+            }
+        }
     }
 
     @Suppress("DEPRECATION")
