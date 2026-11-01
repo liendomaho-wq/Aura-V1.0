@@ -15,6 +15,7 @@ import android.view.accessibility.AccessibilityManager
 import android.speech.RecognizerIntent
 import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
+import android.content.pm.PackageInfo
 import android.content.pm.ApplicationInfo
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
