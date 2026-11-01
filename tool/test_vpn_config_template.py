@@ -291,3 +291,17 @@ if "@Deprecated(" not in NETWORK_AUDITOR or "verifyNetworkConnectivity()" not in
     sys.exit("FAIL: legacy gateway-safety API must warn callers and redirect to connectivity semantics")
 
 print("PASS: DNS reachability is not mislabeled as gateway or Wi-Fi security.")
+
+# Installation provenance is contextual evidence, never a malware verdict.
+if '"app_provenance"' not in APP_SCANNER or '"app_provenance_count"' not in APP_SCANNER:
+    sys.exit("FAIL: app inventory must expose installation provenance")
+if "packageManager.getInstallSourceInfo(packageName)" not in APP_SCANNER:
+    sys.exit("FAIL: Android 11+ provenance must use InstallSourceInfo")
+if "packageManager.getInstallerPackageName(packageName)" not in APP_SCANNER:
+    sys.exit("FAIL: pre-Android 11 devices must retain the legacy installer source")
+if "LEGACY_INSTALLER_ONLY" not in APP_SCANNER or "ACCESS_DENIED" not in APP_SCANNER:
+    sys.exit("FAIL: provenance must distinguish legacy and inaccessible metadata")
+if "no demuestra que la aplicación sea maliciosa" not in APP_SCANNER:
+    sys.exit("FAIL: installer identity must not be presented as proof of malware")
+
+print("PASS: app inventory reports installation provenance with explicit confidence limits.")
