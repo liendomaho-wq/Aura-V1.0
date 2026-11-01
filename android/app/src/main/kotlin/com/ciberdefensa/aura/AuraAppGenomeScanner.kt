@@ -237,11 +237,11 @@ object AuraAppGenomeScanner {
             add(Triple("MODIFY_SETTINGS", AppOpsManager.OPSTR_WRITE_SETTINGS,
                 "android.permission.WRITE_SETTINGS"))
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                add(Triple("INSTALL_UNKNOWN_APPS", AppOpsManager.OPSTR_REQUEST_INSTALL_PACKAGES,
+                add(Triple("INSTALL_UNKNOWN_APPS", "android:request_install_packages",
                     "android.permission.REQUEST_INSTALL_PACKAGES"))
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                add(Triple("ALL_FILES_ACCESS", AppOpsManager.OPSTR_MANAGE_EXTERNAL_STORAGE,
+                add(Triple("ALL_FILES_ACCESS", "android:manage_external_storage",
                     "android.permission.MANAGE_EXTERNAL_STORAGE"))
             }
         }
@@ -423,12 +423,12 @@ object AuraAppGenomeScanner {
                 // Multiple current signers are valid Android signing configurations.
                 // On Android 9+, use apkContentsSigners (current signers), not the
                 // historical certificate rotation list, for the installed APK.
-                val signatures: Array<Signature> = if (
+                val signatures: List<Signature> = if (
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
                 ) {
-                    packageInfo.signingInfo?.apkContentsSigners.orEmpty()
+                    packageInfo.signingInfo?.apkContentsSigners?.toList().orEmpty()
                 } else {
-                    packageInfo.signatures.orEmpty()
+                    packageInfo.signatures?.toList().orEmpty()
                 }
                 val problems = mutableListOf<String>()
                 if (signatures.isEmpty()) {
