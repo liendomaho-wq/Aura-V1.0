@@ -8,6 +8,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.content.pm.PackageInfo
 import android.content.pm.Signature
+import android.os.Build
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import java.io.ByteArrayOutputStream
@@ -271,14 +272,26 @@ object AuraAppGenomeScanner {
     @Suppress("DEPRECATION")
     fun verifyAppSignatures(context: Context): List<AppSignatureIssue> {
         val packageManager = context.packageManager
-        return packageManager.getInstalledPackages(PackageManager.GET_SIGNATURES)
+        val queryFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            PackageManager.GET_SIGNING_CERTIFICATES
+        } else {
+            PackageManager.GET_SIGNATURES
+        }
+        return packageManager.getInstalledPackages(queryFlags)
             .mapNotNull { packageInfo ->
-                val signatures = packageInfo.signatures.orEmpty()
+                // Multiple current signers are valid Android signing configurations.
+                // On Android 9+, use apkContentsSigners (current signers), not the
+                // historical certificate rotation list, for the installed APK.
+                val signatures: Array<Signature> = if (
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                ) {
+                    packageInfo.signingInfo?.apkContentsSigners.orEmpty()
+                } else {
+                    packageInfo.signatures.orEmpty()
+                }
                 val problems = mutableListOf<String>()
                 if (signatures.isEmpty()) {
-                    problems.add("MISSING_SIGNATURES")
-                } else if (signatures.size > 1) {
-                    problems.add("MULTIPLE_SIGNERS")
+                    problems.add("SIGNATURE_METADATA_UNAVAILABLE")
                 }
 
                 val signatureHashes = mutableListOf<String>()
