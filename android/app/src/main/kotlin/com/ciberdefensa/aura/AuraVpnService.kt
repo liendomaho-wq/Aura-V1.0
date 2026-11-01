@@ -54,6 +54,14 @@ class AuraVpnService : VpnService() {
         private var blockedDnsRequests = 0L
         private var lastDnsDomain = ""
         private var lastDnsAction = ""
+        /**
+         * Returns the currently loaded IP block rules, not a history of packets blocked.
+         * An empty result means no active VPN service currently exposes its rule set.
+         */
+        @JvmStatic
+        fun activeBlockedIpRules(): List<String> =
+            activeService?.blockedIpSnapshot()?.sorted()?.take(512) ?: emptyList()
+
         @JvmStatic
         fun protectSocket(socketFd: Int): Boolean =
             activeService?.protect(socketFd) ?: false
