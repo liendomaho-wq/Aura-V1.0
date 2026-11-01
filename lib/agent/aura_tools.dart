@@ -71,6 +71,9 @@ abstract class AuraTools {
           final suspicious = report['suspicious_app_count'] is int
               ? report['suspicious_app_count'] as int
               : 0;
+          final activeSpecialAccess = report['active_special_access_count'] is int
+              ? report['active_special_access_count'] as int
+              : 0;
           final signatureIssues = report['signature_issue_count'] is int
               ? report['signature_issue_count'] as int
               : 0;
@@ -78,12 +81,17 @@ abstract class AuraTools {
               ? report['obfuscated_app_count'] as int
               : 0;
           return ToolResult(
-            summary: 'Escaneo local completado: $activeServices apps con servicios sensibles activos, $suspicious con combinación de permisos de alto riesgo, $signatureIssues incidencias de firma y $obfuscated con indicadores de ofuscación. Son señales para revisar, no prueba de malware.',
+            summary: 'Escaneo local completado: $activeServices apps con servicios sensibles activos, $activeSpecialAccess accesos especiales confirmados, $suspicious con combinación de permisos de alto riesgo, $signatureIssues incidencias de firma y $obfuscated con indicadores de ofuscación. Son señales para revisar, no prueba de malware.',
             data: <String, dynamic>{
               'ok': true,
               'scan_type': 'installed_app_static_review',
               'timestamp': report['timestamp'],
               'active_service_app_count': activeServices,
+              'special_access_count': report['special_access_count'] ?? 0,
+              'active_special_access_count': activeSpecialAccess,
+              'special_access': report['special_access'] ?? const <dynamic>[],
+              'app_provenance_count': report['app_provenance_count'] ?? 0,
+              'app_provenance': report['app_provenance'] ?? const <dynamic>[],
               'suspicious_app_count': suspicious,
               'signature_issue_count': signatureIssues,
               'obfuscated_app_count': obfuscated,
@@ -93,6 +101,8 @@ abstract class AuraTools {
               'obfuscated_apps': report['obfuscated_apps'] ?? const <dynamic>[],
               'limitations': <String>[
                 'Los permisos solicitados no demuestran que estén concedidos o abusados.',
+                'Los accesos especiales solo se cuentan como activos cuando Android confirma AppOps MODE_ALLOWED; los estados condicionales o desconocidos no se suman.',
+                'La procedencia de instalación es contexto y no demuestra legitimidad ni malware.',
                 'Una firma distinta o múltiples firmantes no prueban por sí solos una aplicación maliciosa.',
                 'La entropía y los identificadores ofuscados son heurísticas y pueden producir falsos positivos.',
                 'El análisis no ejecuta ni descompila código y no sustituye Play Protect.',
@@ -102,7 +112,23 @@ abstract class AuraTools {
         case 'toggle_defenses':
           return await _toggleDefenses(step.arguments);
         case 'block_domain':
+          if (step.arguments['confirmed_by_user'] != true) {
+            return const ToolResult(
+              summary: 'Bloqueo no ejecutado: requiere confirmación explícita del usuario.',
+              data: <String, dynamic>{
+                'ok': false,
+                'error': 'user_confirmation_required',
+                'action': 'block_domain',
+              },
+            );
+          }
           final domain = step.arguments['domain'];
+          if (domain is! String || domain.trim().isEmpty || domain.length > 253) {
+            return const ToolResult(
+              summary: 'No se ejecutó el bloqueo: el dominio no es válido.',
+              data: <String, dynamic>{'ok': false, 'error': 'invalid_domain'},
+            );
+          }
           final blocked = await _engineChannel.invokeMethod<bool>(
             'addDnsBlockRule',
             {'domain': domain},
@@ -140,6 +166,16 @@ abstract class AuraTools {
             data: Map<String, dynamic>.from(nativeResult),
           );
         case 'panic_isolation':
+          if (step.arguments['confirmed_by_user'] != true) {
+            return const ToolResult(
+              summary: 'Aislamiento no ejecutado: requiere confirmación explícita del usuario.',
+              data: <String, dynamic>{
+                'ok': false,
+                'error': 'user_confirmation_required',
+                'action': 'panic_isolation',
+              },
+            );
+          }
           final isolated = await _panicChannel.invokeMethod<bool>(
                 'panicIsolation',
               ) ??
@@ -208,7 +244,7 @@ abstract class AuraTools {
       );
     } on MissingPluginException catch (error) {
       return ToolResult(
-        summary: error.message ?? 'El canal nativo de Aura no está disponible.',
+        summary: 'El canal nativo de Aura no está disponible.',
         data: <String, dynamic>{
           'ok': false,
           'error': 'missing_plugin',
@@ -238,6 +274,16 @@ abstract class AuraTools {
   ) async {
     const shieldChannel = MethodChannel('com.ciberdefensa.aura/shield');
     final activate = arguments['activate'] == true;
+    if (arguments['confirmed_by_user'] != true) {
+      return const ToolResult(
+        summary: 'Cambio de defensa no ejecutado: requiere confirmación explícita del usuario.',
+        data: <String, dynamic>{
+          'ok': false,
+          'error': 'user_confirmation_required',
+          'action': 'toggle_defenses',
+        },
+      );
+    }
     try {
       final confirmed = await shieldChannel.invokeMethod<bool>(
             activate ? 'startShield' : 'stopShield',
@@ -391,12 +437,12 @@ abstract class AuraTools {
       );
     } on Object catch (error) {
       await AuraAIBrain.useSafeRuleFallback(
-        'No se pudo verificar o instalar el modelo remoto; se activaron las reglas locales: $error',
+        'No se pudo verificar o instalar el modelo remoto; se activaron las reglas locales.',
         notifyHud: false,
       );
       return ToolResult(
         summary:
-            'ERROR CRÍTICO: no se verificó el modelo remoto; se descartó el búfer y se usarán las reglas locales. $error',
+            'ERROR CRÍTICO: no se verificó el modelo remoto; se descartó el búfer y se usarán las reglas locales.',
         data: const <String, dynamic>{
           'ok': false,
           'critical_integrity_failure': true,
