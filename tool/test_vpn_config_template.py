@@ -270,8 +270,10 @@ print("PASS: app risk scoring requires confirmed permission grants or enabled pr
 # use SigningInfo on Android 9+, while retaining the API 24-27 compatibility path.
 if "PackageManager.GET_SIGNING_CERTIFICATES" not in APP_SCANNER:
     sys.exit("FAIL: Android 9+ app signing must use GET_SIGNING_CERTIFICATES")
-if "packageInfo.signingInfo?.apkContentsSigners.orEmpty()" not in APP_SCANNER:
+if "packageInfo.signingInfo?.apkContentsSigners?.toList().orEmpty()" not in APP_SCANNER:
     sys.exit("FAIL: app signing must hash current APK signers, not signing history")
+if "signingCertificateHistory" in APP_SCANNER:
+    sys.exit("FAIL: app signing must not hash historical certificates as current APK signers")
 if "Build.VERSION.SDK_INT >= Build.VERSION_CODES.P" not in APP_SCANNER:
     sys.exit("FAIL: app signing query must preserve the Android 9+ compatibility boundary")
 if '"MULTIPLE_SIGNERS"' in APP_SCANNER:
