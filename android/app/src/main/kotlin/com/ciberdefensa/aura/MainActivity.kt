@@ -32,9 +32,6 @@ import com.aura.cyberdefense.AuraNotificationService
 import java.util.concurrent.Executors
 import java.util.Locale
 
-internal fun isPackageVisibilityLimited(apiLevel: Int, visibleAppCount: Int): Boolean =
-    apiLevel >= Build.VERSION_CODES.R && visibleAppCount < 5
-
 object AuraAntiTampering {
     fun inspect(context: Context): Map<String, Any> {
         val allowedCertificates = BuildConfig.AURA_ALLOWED_CERT_SHA256
@@ -809,16 +806,9 @@ class MainActivity: FlutterFragmentActivity() {
                     val appRiskList = mutableListOf<Map<String, Any>>()
                     val pm = packageManager
                     val installedPackages = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
-                    if (isPackageVisibilityLimited(Build.VERSION.SDK_INT, installedPackages.size)) {
-                        appRiskList.add(
-                            mapOf(
-                                "inventory_warning" to
-                                    "VISIBILIDAD DE PAQUETES LIMITADA POR ANDROID; " +
-                                    "el inventario de apps puede estar incompleto. " +
-                                    "Remedio: revise la declaración QUERY_ALL_PACKAGES.",
-                            ),
-                        )
-                    }
+                    // Do not infer package-visibility restrictions from an arbitrary
+                    // installed-app count. Android visibility depends on manifest policy
+                    // and distribution rules; a small inventory is not proof of filtering.
                     val permisosCriticos = listOf(
                         "android.permission.READ_SMS",
                         "android.permission.RECEIVE_SMS",
@@ -832,19 +822,34 @@ class MainActivity: FlutterFragmentActivity() {
                         if ((applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0) {
                             val permisosSolicitados = pkg.requestedPermissions
                             if (permisosSolicitados != null) {
-                                val coincidenciasRiesgo = mutableListOf<String>()
-                                for (permiso in permisosSolicitados) {
-                                    if (permisosCriticos.contains(permiso)) {
-                                        coincidenciasRiesgo.add(permiso)
+                                val flags = pkg.requestedPermissionsFlags
+                                val permisosRiesgoSolicitados = mutableListOf<String>()
+                                val permisosRiesgoConcedidos = mutableListOf<String>()
+                                for ((index, permiso) in permisosSolicitados.withIndex()) {
+                                    if (!permisosCriticos.contains(permiso)) continue
+
+                                    permisosRiesgoSolicitados.add(permiso)
+                                    val permissionFlags = flags?.getOrNull(index)
+                                    if (
+                                        permissionFlags != null &&
+                                        (permissionFlags and
+                                            PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
+                                    ) {
+                                        permisosRiesgoConcedidos.add(permiso)
                                     }
                                 }
 
-                                if (coincidenciasRiesgo.isNotEmpty()) {
+                                if (permisosRiesgoSolicitados.isNotEmpty()) {
                                     val datosApp = mapOf(
                                         "name" to applicationInfo.loadLabel(pm).toString(),
                                         "package" to pkg.packageName,
                                         "target_sdk" to applicationInfo.targetSdkVersion,
-                                        "risk_permissions" to coincidenciasRiesgo,
+                                        // Preserve the requested list as context, but only
+                                        // granted permissions count as active permission risk.
+                                        "requested_risk_permissions" to permisosRiesgoSolicitados,
+                                        "risk_permissions" to permisosRiesgoConcedidos,
+                                        "granted_risk_permissions" to permisosRiesgoConcedidos,
+                                        "permission_grant_state_known" to (flags != null),
                                     )
                                     appRiskList.add(datosApp)
                                 }
