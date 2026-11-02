@@ -272,6 +272,16 @@ abstract class AuraTools {
             },
           );
         case 'cryptographic_purge':
+          if (step.arguments['confirmed_by_user'] != true) {
+            return const ToolResult(
+              summary: 'Purga no ejecutada: requiere una segunda orden de confirmación explícita.',
+              data: <String, dynamic>{
+                'ok': false,
+                'error': 'user_confirmation_required',
+                'action': 'cryptographic_purge',
+              },
+            );
+          }
           await AuraAIBrain.purgeAllInMemoryModels();
           final nativeAuditMemoryPurged = await _engineChannel.invokeMethod<bool>(
                 'purgeAuditMemory',
