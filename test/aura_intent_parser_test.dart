@@ -66,6 +66,11 @@ void main() {
     final request = await AuraIntentParser.parse('bloquea evil.example.com');
     expect(request.entities['confirmed_by_user'], isNull);
 
+    final declined = await AuraIntentParser.parse(
+      'no confirmo el bloqueo de evil.example.com',
+    );
+    expect(declined.entities['confirmed_by_user'], isNull);
+
     final confirmation = await AuraIntentParser.parse(
       'confirmo el bloqueo de evil.example.com',
     );
