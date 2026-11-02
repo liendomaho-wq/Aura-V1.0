@@ -38,6 +38,7 @@ void main() {
 
     expect(result.data['ok'], isTrue);
     expect(result.data['audit_status'], 'incomplete');
+    expect(result.data['user_action_required'], isTrue);
     expect(result.data['security_level'], 'warning');
     expect(result.data['is_rooted'], isFalse);
     expect(result.data['check_errors'], <String>['overlay_app_ops_unavailable']);
