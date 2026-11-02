@@ -62,6 +62,40 @@ void main() {
     expect(intent.toEvent().kind, AgentEventKind.action);
   });
 
+  test('un bloqueo requiere confirmación explícita en una segunda orden', () async {
+    final request = await AuraIntentParser.parse('bloquea evil.example.com');
+    expect(request.entities['confirmed_by_user'], isNull);
+
+    final confirmation = await AuraIntentParser.parse(
+      'confirmo el bloqueo de evil.example.com',
+    );
+    expect(confirmation.name, 'block_domain');
+    expect(confirmation.entities['domain'], 'evil.example.com');
+    expect(confirmation.entities['confirmed_by_user'], isTrue);
+  });
+
+  test('aislamiento de emergencia distingue la confirmación explícita', () async {
+    final request = await AuraIntentParser.parse('aislamiento de emergencia');
+    expect(request.entities['confirmed_by_user'], isNull);
+
+    final confirmation = await AuraIntentParser.parse(
+      'confirmo el aislamiento de emergencia',
+    );
+    expect(confirmation.name, 'panic_isolation');
+    expect(confirmation.entities['confirmed_by_user'], isTrue);
+  });
+
+  test('purga criptográfica requiere confirmación explícita', () async {
+    final request = await AuraIntentParser.parse('purga criptográfica');
+    expect(request.entities['confirmed_by_user'], isNull);
+
+    final confirmation = await AuraIntentParser.parse(
+      'confirmo la purga criptográfica',
+    );
+    expect(confirmation.name, 'cryptographic_purge');
+    expect(confirmation.entities['confirmed_by_user'], isTrue);
+  });
+
   test('bloquear un dominio sigue usando block_domain', () async {
     final intent =
         await AuraIntentParser.parse('bloquea evil.example.com');
