@@ -41,7 +41,7 @@ void main() {
         'DESACTIVAR DEFENSAS · BLOQUEAR <dominio> · AISLAR <paquete> · '
         'AISLAMIENTO DE EMERGENCIA · REANUDAR LA RED · ACTUALIZAR DEFENSAS · '
         'AUDITAR DISPOSITIVO · ESCANEAR APLICACIONES · ANALIZAR DOMINIO <host> · ESTADO · PURGA CRIPTOGRÁFICA. '
-        'Para confirmar bloqueos, aislamiento o purga, inicia una segunda orden con CONFIRMO.';
+        'Para confirmar cambios de VPN, bloqueos, aislamiento o purga, inicia una segunda orden con CONFIRMO.';
     final controller = AgentController.instance;
     final previousLength = controller.history.length;
 
