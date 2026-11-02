@@ -110,6 +110,7 @@ abstract class AuraTools {
             summary: summary,
             data: <String, dynamic>{
               'ok': true,
+              'user_action_required': errors.isNotEmpty || hostile,
               'tool': 'audit_device',
               'audit_status': auditStatus,
               'security_level': errors.isNotEmpty || hostile ? 'warning' : 'safe',
