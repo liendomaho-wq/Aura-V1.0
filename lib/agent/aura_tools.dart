@@ -239,10 +239,14 @@ abstract class AuraTools {
           final completed = analysis.isNotEmpty &&
               !analysis.startsWith('No se pudo completar') &&
               !analysis.contains('no se encontró un dominio válido');
+          final threatRequiresReview = analysis.contains('POSIBLE AMENAZA') ||
+              analysis.contains('AMENAZA:');
           return ToolResult(
             summary: analysis,
             data: <String, dynamic>{
               'ok': completed,
+              'user_action_required': threatRequiresReview,
+              'security_level': threatRequiresReview ? 'warning' : 'safe',
               'tool': 'analyze_domain',
               'domain': normalizedDomain,
               'analysis_scope': 'local_domain_heuristics',
