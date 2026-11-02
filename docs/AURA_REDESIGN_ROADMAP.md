@@ -47,6 +47,7 @@
 - [x] Exponer el escáner nativo de aplicaciones como herramienta `scan_apps` del agente, con informe estructurado y límites explícitos de interpretación.
 - [x] Reconocer en lenguaje natural órdenes para analizar/escanea/revisar aplicaciones y reflejar la acción en el historial.
 - [x] Añadir la orden "analizar dominio <host>" conectada al bosque local de 500 árboles; exige modelo y firma verificados, no bloquea automáticamente y expone límites del análisis.
+- [x] Exigir una segunda orden afirmativa que comience por "CONFIRMO" para bloqueo de dominios, aislamiento de emergencia y purga criptográfica; una frase negada no concede autorización.
 - [x] Acotar el análisis DEX a 16 MiB por archivo y un máximo de ocho entradas DEX por aplicación para reducir riesgo de consumo excesivo ante APK anómalos.
 - [ ] Añadir cancelación, progreso granular y límites temporales al escaneo nativo de APK/Dex.
 - Política central de permisos y confirmaciones.
