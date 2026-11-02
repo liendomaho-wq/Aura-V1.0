@@ -80,14 +80,12 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
       return;
     }
 
-    controller.reportWarning(
-      'Consola iniciada sin verificación local confirmada; el modo degradado registra este evento.',
+    controller.reportError(
+      'Acceso a la consola denegado: Android no confirmó la autenticación local. ' 
+      'Las acciones defensivas permanecen bloqueadas; vuelva a la pantalla inicial e inténtelo de nuevo.',
     );
-    controller.allowUnsecuredLocalSession();
-    // El cierre automático está prohibido desde la versión 3.8.
-    controller.initGreeting();
-    _startNetworkAuditor();
-    setState(() => _isAuthenticated = true);
+    if (!mounted) return;
+    setState(() => _isAuthenticated = false);
   }
 
   Future<void> _refreshAccessibilityServices() async {
