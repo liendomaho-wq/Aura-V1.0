@@ -283,7 +283,10 @@ class AuraIntentParser {
       intent = AuraIntent(
         name: 'resume_network',
         kind: AuraIntentKind.resumeNetwork,
-        entities: <String, dynamic>{},
+        entities: <String, dynamic>{
+          if (_explicitConfirmationCommand.hasMatch(text))
+            'confirmed_by_user': true,
+        },
         confidence: 0.96,
       );
     } else if (_cryptographicPurgeCommand.hasMatch(text)) {
