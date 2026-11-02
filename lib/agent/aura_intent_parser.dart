@@ -81,7 +81,7 @@ class AuraIntentParser {
   static int _historySize = 0;
 
   static final RegExp _explicitConfirmationCommand = RegExp(
-    r'\\b(?:confirmo|confirmar|autorizo|autoriza|apruebo|aprobar)\\b',
+    r'\b(?:confirmo|confirmar|autorizo|autoriza|apruebo|aprobar)\b',
     caseSensitive: false,
   );
   static final RegExp _blockCommand = RegExp(
