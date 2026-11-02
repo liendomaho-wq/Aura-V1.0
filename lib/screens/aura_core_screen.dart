@@ -1525,22 +1525,25 @@ class _TerminalInput extends StatelessWidget {
               ),
             ),
           ),
-          IconButton(
-            key: const ValueKey<String>('send-instruction-button'),
-            tooltip: 'Enviar instrucción a Aura',
-            onPressed: isRunning || controller.text.trim().isEmpty
-                ? null
-                : () => onSubmitted(controller.text),
-            constraints: const BoxConstraints.tightFor(width: 42, height: 42),
-            padding: EdgeInsets.zero,
-            icon: const Icon(
-              Icons.arrow_upward_rounded,
-              color: AuraTokens.bg,
-              size: 21,
-            ),
-            style: IconButton.styleFrom(
-              backgroundColor: AuraTokens.accent,
-              disabledBackgroundColor: AuraTokens.surfaceAlt,
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, child) => IconButton(
+              key: const ValueKey<String>('send-instruction-button'),
+              tooltip: 'Enviar instrucción a Aura',
+              onPressed: isRunning || value.text.trim().isEmpty
+                  ? null
+                  : () => onSubmitted(value.text),
+              constraints: const BoxConstraints.tightFor(width: 42, height: 42),
+              padding: EdgeInsets.zero,
+              icon: const Icon(
+                Icons.arrow_upward_rounded,
+                color: AuraTokens.bg,
+                size: 21,
+              ),
+              style: IconButton.styleFrom(
+                backgroundColor: AuraTokens.accent,
+                disabledBackgroundColor: AuraTokens.surfaceAlt,
+              ),
             ),
           ),
           IconButton(
