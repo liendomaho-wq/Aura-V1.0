@@ -186,6 +186,75 @@ void main() {
     messenger.setMockMethodCallHandler(engineChannel, null);
   });
 
+  test('isolate_app refuses to open settings without confirmation', () async {
+    const engineChannel = MethodChannel('com.aura.cyberdefense/engine');
+    messenger.setMockMethodCallHandler(engineChannel, (_) async {
+      fail('App settings must not open without explicit confirmation.');
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(
+        name: 'isolate_app',
+        arguments: <String, dynamic>{'package_name': 'com.example.test'},
+      ),
+    );
+
+    expect(result.data['ok'], isFalse);
+    expect(result.data['error'], 'user_confirmation_required');
+    messenger.setMockMethodCallHandler(engineChannel, null);
+  });
+
+  test('isolate_app validates package and reports Android limitation', () async {
+    const engineChannel = MethodChannel('com.aura.cyberdefense/engine');
+    var called = false;
+    messenger.setMockMethodCallHandler(engineChannel, (call) async {
+      expect(call.method, 'openAppDetails');
+      called = true;
+      return <String, dynamic>{
+        'ok': true,
+        'message': 'Se abrió la configuración de la aplicación.',
+      };
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(
+        name: 'isolate_app',
+        arguments: <String, dynamic>{
+          'package_name': 'com.example.test',
+          'confirmed_by_user': true,
+        },
+      ),
+    );
+
+    expect(called, isTrue);
+    expect(result.data['isolation_performed'], isFalse);
+    expect(result.data['user_action_required'], isTrue);
+    expect(result.data['action'], 'open_app_settings');
+    expect(result.data['limitations'], isA<List<String>>());
+    messenger.setMockMethodCallHandler(engineChannel, null);
+  });
+
+  test('isolate_app rejects invalid package identifiers', () async {
+    const engineChannel = MethodChannel('com.aura.cyberdefense/engine');
+    messenger.setMockMethodCallHandler(engineChannel, (_) async {
+      fail('Invalid package identifiers must not reach Android.');
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(
+        name: 'isolate_app',
+        arguments: <String, dynamic>{
+          'package_name': '../../not.a.package',
+          'confirmed_by_user': true,
+        },
+      ),
+    );
+
+    expect(result.data['ok'], isFalse);
+    expect(result.data['error'], 'invalid_package_name');
+    messenger.setMockMethodCallHandler(engineChannel, null);
+  });
+
   test('panic isolation refuses to run without explicit confirmation', () async {
     const panicChannel = MethodChannel('com.aura.cyberdefense/panic');
     messenger.setMockMethodCallHandler(panicChannel, (_) async {
