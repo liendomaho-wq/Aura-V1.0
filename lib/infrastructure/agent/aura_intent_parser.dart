@@ -4,6 +4,7 @@ import '../../agent/agent_event.dart';
 enum AuraIntent {
   blockDomain,
   analyzeDomain,
+  auditDevice,
   isolateApp,
   panicIsolation,
   resumeNetwork,
@@ -94,6 +95,7 @@ class AuraIntentParser {
   static AuraIntent _intentFromName(String name) => switch (name) {
         'block_domain' => AuraIntent.blockDomain,
         'analyze_domain' => AuraIntent.analyzeDomain,
+        'audit_device' => AuraIntent.auditDevice,
         'isolate_app' => AuraIntent.isolateApp,
         'panic_isolation' => AuraIntent.panicIsolation,
         'resume_network' => AuraIntent.resumeNetwork,
