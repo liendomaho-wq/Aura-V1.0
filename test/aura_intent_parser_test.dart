@@ -111,6 +111,22 @@ void main() {
     expect(confirmation.entities['confirmed_by_user'], isTrue);
   });
 
+  test('aislar una aplicación distingue solicitud y confirmación', () async {
+    final request = await AuraIntentParser.parse(
+      'aislar la aplicación com.example.test',
+    );
+    expect(request.name, 'isolate_app');
+    expect(request.entities['package_name'], 'com.example.test');
+    expect(request.entities['confirmed_by_user'], isNull);
+
+    final confirmation = await AuraIntentParser.parse(
+      'confirmo aislar la aplicación com.example.test',
+    );
+    expect(confirmation.name, 'isolate_app');
+    expect(confirmation.entities['package_name'], 'com.example.test');
+    expect(confirmation.entities['confirmed_by_user'], isTrue);
+  });
+
   test('reanudar la red requiere confirmación explícita', () async {
     final request = await AuraIntentParser.parse('reanudar la red');
     expect(request.name, 'resume_network');
