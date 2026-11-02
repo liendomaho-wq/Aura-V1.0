@@ -112,6 +112,7 @@ abstract class AuraTools {
               'ok': true,
               'tool': 'audit_device',
               'audit_status': auditStatus,
+              'security_level': errors.isNotEmpty || hostile ? 'warning' : 'safe',
               'is_emulator': report['isEmulator'],
               'is_rooted': report['isRooted'],
               'root_confidence': report['rootConfidence'],
