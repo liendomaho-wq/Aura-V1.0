@@ -32,8 +32,11 @@
 - [x] Identidad visual midnight/cyan/violet.
 - [x] Avatar animado local, sin dependencia de red ni SDK adicional.
 - [x] Conversación principal y composición de mensajes.
+- [x] Botón de envío conectado al controlador real de instrucciones.
+- [x] Eliminar esperas artificiales y eventos de "pensamiento" fabricados; el progreso debe proceder de herramientas reales.
 - [x] Mantener historial, telemetría, auditoría y controles de privacidad existentes.
-- [x] Etiquetas semánticas accesibles para estados disponible/analizando del avatar.
+- [x] Avatar con estados disponible/escuchando/analizando/protegiendo/alerta conectados al estado real de la aplicación.
+- [x] Etiquetas semánticas accesibles para los estados del avatar.
 - [x] Respetar la preferencia Android de reducir animaciones.
 - [x] Pruebas widget de estados accesibles y movimiento reducido añadidas a CI.
 - [x] Confirmar ejecución verde de las pruebas de estabilidad y accesibilidad en Codemagic (confirmación del usuario, 2026-10-30).
@@ -52,7 +55,8 @@
 
 ### Etapa 3 — módulos Android y protección de red
 - [x] VPN local opcional con rutas IPv4/IPv6 y túnel SOCKS5 local.
-- [x] Inspección SNI y reglas dinámicas de dominio en el firewall nativo.
+- [x] Parser TLS ClientHello/SNI y reglas dinámicas de dominio en el módulo C, probados de forma aislada.
+- [ ] Integrar el parser SNI en una ruta TUN consciente del reensamblado TCP; el túnel actual incluye el encabezado, pero no invoca el parser en el flujo de paquetes.
 - [x] Descarga del feed IP HTTPS con límites de tamaño y actualización asíncrona.
 - [x] Pruebas nativas para reglas de dominio, allowlist, entradas inválidas y ClientHello malformado/incompleto.
 - [x] Confirmar ejecución verde de la suite nativa ampliada en Codemagic (confirmación del usuario, 2026-10-30).
@@ -75,14 +79,16 @@
 
 ### Etapa 4 — inteligencia avanzada
 - [x] Integrar en el flujo del agente el informe existente de apps con servicios sensibles activos, permisos solicitados de alto riesgo, incidencias de firma y heurísticas de ofuscación.
+- [x] Clasificador local de dominios basado en un bosque de decisión de 500 árboles, sujeto a la integridad y validez del modelo.
 - [ ] Correlación de eventos, reputación y detección de anomalías.
-- IA local para clasificación privada y funcionamiento degradado.
-- Modelo remoto opcional para razonamiento complejo, con minimización de datos y consentimiento.
-- Evaluación de precisión, falsos positivos, latencia y consumo energético.
+- [ ] Mejorar el agente de intención: actualmente usa reglas/expresiones y respuestas conversacionales predefinidas; no es un modelo generativo ni un LLM.
+- [ ] Integrar un modelo generativo local real, con pesos, runtime Android, límites de memoria/batería y pruebas de seguridad; no sustituirlo por respuestas simuladas.
+- [ ] Modelo remoto opcional para razonamiento complejo, con proveedor, credenciales, minimización de datos y consentimiento explícito definidos.
+- [ ] Evaluación de precisión, falsos positivos, latencia y consumo energético.
 
 ### Etapa 5 — validación y publicación
 - CI de Flutter y Android.
-- [ ] Ejecutar CodeMagic tras la integración de `scan_apps` y confirmar el nuevo commit verde.
+- [ ] Ejecutar CodeMagic tras los cambios de interfaz del 2026-11-02 y confirmar el commit actual verde.
 - Matriz de dispositivos/versiones Android sin root.
 - Pruebas de red, DNS, IPv4/IPv6, reconexión, batería y privacidad.
 - Verificación de APK firmado y reproducible en Codemagic.
@@ -91,8 +97,9 @@
 
 - Se añadió un avatar animado generado localmente con Flutter CustomPainter.
 - La pantalla principal muestra la identidad de Aura y el estado de trabajo del asistente.
-- El flujo de eventos se presenta como conversación en lugar de líneas de terminal.
-- El compositor usa lenguaje natural y mantiene entrada de voz.
+- El flujo de eventos se presenta como conversación y el compositor permite enviar instrucciones por texto o voz.
+- El avatar ya comunica estados operativos reales; el diseño completo de pantallas secundarias y la validación visual física siguen pendientes.
+- El agente actual es un orquestador determinista de herramientas con un clasificador local de dominios; no debe describirse como LLM.
 - Los módulos existentes no se han eliminado.
 - CodeMagic completó correctamente la compilación y las pruebas tras la corrección de SemanticsHandle, según confirmación del usuario el 2026-10-30.
 - La validación física de avatar, accesibilidad, batería, túnel, fugas DNS y cambios de red continúa pendiente.
