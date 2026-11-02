@@ -9,6 +9,7 @@ enum AuraIntentKind {
   updateDefenses,
   scanApps,
   analyzeDomain,
+  auditDevice,
   greet,
   identity,
   capabilities,
@@ -48,6 +49,7 @@ class AuraIntent {
           AuraIntentKind.updateDefenses ||
           AuraIntentKind.scanApps ||
           AuraIntentKind.analyzeDomain ||
+          AuraIntentKind.auditDevice ||
           AuraIntentKind.toggleDefenses => AgentEventKind.action,
           AuraIntentKind.greet ||
           AuraIntentKind.identity ||
@@ -122,6 +124,10 @@ class AuraIntentParser {
   );
   static final RegExp _analyzeDomainCommand = RegExp(
     r'\b(?:analiza|analizar|revisa|revisar|eval[uú]a|evaluar|comprueba|comprobar)\s+(?:el\s+)?(?:dominio|host|sitio|website)\b',
+    caseSensitive: false,
+  );
+  static final RegExp _auditDeviceCommand = RegExp(
+    r'\b(?:audita|auditar|revisa|revisar|comprueba|comprobar)\s+(?:el\s+)?(?:dispositivo|entorno|seguridad del dispositivo|integridad del dispositivo)\b|\b(?:auditor[ií]a)\s+(?:de\s+)?(?:seguridad|dispositivo|entorno)\b',
     caseSensitive: false,
   );
   static final RegExp _scanAppsCommand = RegExp(
@@ -317,6 +323,13 @@ class AuraIntentParser {
         kind: AuraIntentKind.analyzeDomain,
         entities: <String, dynamic>{'domain': host},
         confidence: 0.96,
+      );
+    } else if (_auditDeviceCommand.hasMatch(text)) {
+      intent = AuraIntent(
+        name: 'audit_device',
+        kind: AuraIntentKind.auditDevice,
+        entities: <String, dynamic>{},
+        confidence: 0.95,
       );
     } else if (_scanAppsCommand.hasMatch(text)) {
       intent = AuraIntent(
