@@ -204,6 +204,26 @@ void main() {
     messenger.setMockMethodCallHandler(panicChannel, null);
   });
 
+  test('resume_network refuses to restore forwarding without confirmation',
+      () async {
+    const panicChannel = MethodChannel('com.aura.cyberdefense/panic');
+    messenger.setMockMethodCallHandler(panicChannel, (_) async {
+      fail('VPN forwarding must not resume without explicit confirmation.');
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(
+        name: 'resume_network',
+        arguments: <String, dynamic>{},
+      ),
+    );
+
+    expect(result.data['ok'], isFalse);
+    expect(result.data['error'], 'user_confirmation_required');
+    expect(result.data['action'], 'resume_network');
+    messenger.setMockMethodCallHandler(panicChannel, null);
+  });
+
   test('cryptographic purge refuses to run without explicit confirmation', () async {
     final result = await AuraTools.execute(
       const ToolStep(
