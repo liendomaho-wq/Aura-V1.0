@@ -111,9 +111,72 @@ abstract class AuraTools {
           );
         case 'analyze_domain':
           final domain = step.arguments['domain'];
-          if (domain is! String ||
-              !RegExp(
-                r'^(?=.{1,253}$)(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,63}
+          final validDomain = domain is String &&
+              RegExp(
+                r'^(?=.{1,253}$)(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$',
+              ).hasMatch(domain) &&
+              InternetAddress.tryParse(domain) == null;
+          if (!validDomain) {
+            return const ToolResult(
+              summary: 'No se analizó el dominio: el nombre no tiene un formato DNS válido.',
+              data: <String, dynamic>{
+                'ok': false,
+                'error': 'invalid_domain',
+                'tool': 'analyze_domain',
+              },
+            );
+          }
+          final normalizedDomain = (domain as String).toLowerCase();
+          final brain = AuraAIBrain();
+          final modelAvailable = await brain.preloadModel();
+          if (!modelAvailable) {
+            return const ToolResult(
+              summary: 'Análisis no disponible: no se pudo cargar el modelo local validado. No se emitió un veredicto.',
+              data: <String, dynamic>{
+                'ok': false,
+                'error': 'verified_model_unavailable',
+                'tool': 'analyze_domain',
+              },
+            );
+          }
+          final integrity = await brain.verifyModelIntegrity();
+          if (!integrity.verified || !integrity.signatureVerified) {
+            return ToolResult(
+              summary: 'Análisis detenido: la integridad o firma del modelo no pudo verificarse. No se emitió un veredicto.',
+              data: <String, dynamic>{
+                'ok': false,
+                'error': 'model_integrity_unverified',
+                'domain': normalizedDomain,
+                'model_version': integrity.modelVersion,
+                'sha256': integrity.sha256,
+                'tool': 'analyze_domain',
+              },
+            );
+          }
+          final analysis = await brain.analyzeCyberThreat(
+            jsonEncode(<String, String>{'host': normalizedDomain}),
+          );
+          final completed = analysis.isNotEmpty &&
+              !analysis.startsWith('No se pudo completar') &&
+              !analysis.contains('no se encontró un dominio válido');
+          return ToolResult(
+            summary: analysis,
+            data: <String, dynamic>{
+              'ok': completed,
+              'tool': 'analyze_domain',
+              'domain': normalizedDomain,
+              'analysis_scope': 'local_domain_heuristics',
+              'model_version': integrity.modelVersion,
+              'model_sha256': integrity.sha256,
+              'model_signature_verified': integrity.signatureVerified,
+              'automatic_blocking': false,
+              'limitations': <String>[
+                'El modelo clasifica características del nombre de dominio; no inspecciona contenido web ni certifica la seguridad de un sitio.',
+                'Un resultado benigno no garantiza que el sitio sea seguro.',
+                'Los hallazgos no modifican el firewall; el bloqueo requiere una orden y confirmación separadas.',
+              ],
+            },
+          );
         case 'block_domain':
           if (step.arguments['confirmed_by_user'] != true) {
             return const ToolResult(
