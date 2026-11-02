@@ -448,21 +448,50 @@ class AuraVpnService : VpnService() {
         if (selected == previous) return
 
         underlyingNetwork = selected
-        try {
+        val underlayUpdated = try {
             // Keep Android's VPN routing metadata aligned with the physical network.
             // An empty array explicitly means there is currently no usable underlay.
             setUnderlyingNetworks(selected?.let { arrayOf(it) } ?: emptyArray())
         } catch (exception: Exception) {
             Log.e("AuraVPN", "No se pudo actualizar la red subyacente de la VPN.", exception)
-            reportState(false, "No se pudo actualizar la red física; compruebe la conexión.")
+            false
+        }
+
+        if (!underlayUpdated) {
+            // Keep the full-route TUN installed and stop native forwarding. Traffic
+            // must not silently bypass Aura when underlay synchronization fails.
+            stopTunnelForwardingForNetworkFailure(
+                "No se pudo sincronizar la red física; forwarding detenido por seguridad.",
+            )
             return
         }
 
         if (selected == null) {
-            Log.w("AuraVPN", "Se perdió la red física; el túnel local permanece sin salida.")
-            reportState(false, "Sin red física disponible; el tráfico no puede salir del túnel.")
-        } else if (tunnelStarted) {
+            Log.w("AuraVPN", "Se perdió la red física; forwarding detenido hasta recuperar salida.")
+            stopTunnelForwardingForNetworkFailure(
+                "Sin red física disponible; tráfico retenido en la interfaz VPN.",
+            )
+        } else if (vpnInterface != null && !panicIsolationActive) {
+            // Restart even when the previous underlay loss already stopped the worker.
             recoverTunnelAfterNetworkChange()
+        }
+    }
+
+    /**
+     * Stop native forwarding but retain the Android TUN interface. Its full IPv4
+     * and IPv6 routes remain installed, preventing silent physical-network bypass.
+     */
+    private fun stopTunnelForwardingForNetworkFailure(message: String) {
+        try {
+            if (TProxyService.TProxyIsRunning()) {
+                TProxyService.TProxyStopService()
+            }
+        } catch (exception: Exception) {
+            Log.e("AuraVPN", "No se pudo detener el forwarding tras perder la red.", exception)
+        } finally {
+            tunnelStarted = false
+            reportState(false, message)
+            updateForegroundNotification()
         }
     }
 
