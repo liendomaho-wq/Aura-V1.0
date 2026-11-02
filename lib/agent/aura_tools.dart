@@ -155,6 +155,7 @@ abstract class AuraTools {
           }
           final analysis = await brain.analyzeCyberThreat(
             jsonEncode(<String, String>{'host': normalizedDomain}),
+            enforceBlocklistHits: false,
           );
           final completed = analysis.isNotEmpty &&
               !analysis.startsWith('No se pudo completar') &&
