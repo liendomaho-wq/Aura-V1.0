@@ -743,7 +743,18 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
               child: Row(
                 children: [
-                  AuraAvatar(size: 100, isThinking: _isRunning || _isListening),
+                  AuraAvatar(
+                    size: 100,
+                    mode: _isListening
+                        ? AuraAvatarMode.listening
+                        : _isRunning
+                            ? AuraAvatarMode.analyzing
+                            : state.securityLevel == AuraSecurityLevel.critical
+                                ? AuraAvatarMode.alert
+                                : state.isVpnActive
+                                    ? AuraAvatarMode.protecting
+                                    : AuraAvatarMode.available,
+                  ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
