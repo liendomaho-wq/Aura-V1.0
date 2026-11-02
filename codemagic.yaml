@@ -3,6 +3,10 @@ workflows:
     name: Aura Android Release Pipeline
     max_build_duration: 60
     instance_type: mac_mini_m1
+    cache:
+      cache_paths:
+        - ~/.pub-cache
+        - ~/.gradle/caches
     environment:
       groups:
         - production_keys # Puedes dejarlo o quitarlo, ya no fallará si está vacío
