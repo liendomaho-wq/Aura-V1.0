@@ -127,6 +127,15 @@ void main() {
     expect(confirmation.entities['confirmed_by_user'], isTrue);
   });
 
+  test('revisar app abre el flujo de revisión de Android', () async {
+    final intent = await AuraIntentParser.parse(
+      'REVISAR APP com.example.test',
+    );
+    expect(intent.name, 'isolate_app');
+    expect(intent.entities['package_name'], 'com.example.test');
+    expect(intent.entities['confirmed_by_user'], isNull);
+  });
+
   test('reanudar la red requiere confirmación explícita', () async {
     final request = await AuraIntentParser.parse('reanudar la red');
     expect(request.name, 'resume_network');
