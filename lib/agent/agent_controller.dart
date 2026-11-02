@@ -449,6 +449,32 @@ class AgentController {
                   ),
                 )
             : null,
+        stateProvider: _securityState,
+        onToolStarted: (toolName, arguments) => _emit(
+          AgentEvent(
+            kind: AgentEventKind.thought,
+            message: 'El motor local inició $toolName.',
+            data: <String, dynamic>{
+              'tool': toolName,
+              'arguments': arguments,
+            },
+          ),
+        ),
+        onToolCompleted: (toolName, arguments, toolResult) => _emit(
+          AgentEvent(
+            kind: toolResult['ok'] == true
+                ? AgentEventKind.success
+                : AgentEventKind.warning,
+            message: toolResult['ok'] == true
+                ? 'El motor local completó $toolName.'
+                : 'El motor local no confirmó $toolName; revisa el resultado.',
+            data: <String, dynamic>{
+              'tool': toolName,
+              'arguments': arguments,
+              ...toolResult,
+            },
+          ),
+        ),
       );
       final vpnActive = result.data['vpn_active'];
       if (vpnActive is bool) _securityState?.setVpnActive(vpnActive);
