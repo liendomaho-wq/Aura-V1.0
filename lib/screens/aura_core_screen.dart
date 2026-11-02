@@ -351,13 +351,9 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
       controller.reportTerminalInput(instruction);
       _scrollToLatest(controller.history.length, force: true);
 
-      for (var second = 0; second < 3; second++) {
-        await Future<void>.delayed(const Duration(seconds: 1));
-        if (!mounted) return;
-        controller.reportTerminalThinking();
-        _scrollToLatest(controller.history.length, force: true);
-      }
-
+      // Execute immediately. Progress must come from the real agent/tool
+      // callbacks; artificial delays and fabricated "thinking" events make
+      // the interface imply work that has not happened.
       final result = await AuraIntentParser.executeCommand(instruction);
       if (!_telemetryEndpointConfigured) {
         await _refreshLocalTelemetryEvents();
@@ -645,14 +641,16 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
         OutlinedButton(
           onPressed: quickActionsEnabled ? onPressed : null,
           style: OutlinedButton.styleFrom(
-            foregroundColor: _terminalGreen,
-            side: const BorderSide(color: Color(0xFF1B3A2A)),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            foregroundColor: AuraTokens.accent,
+            side: BorderSide(color: AuraTokens.accent.withValues(alpha: 0.30)),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             textStyle: const TextStyle(
-              color: _terminalGreen,
-              fontFamily: 'monospace',
-              fontSize: 10,
+              color: AuraTokens.accent,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.2,
             ),
+            shape: const StadiumBorder(),
           ),
           child: Text(label),
         );
@@ -673,7 +671,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                       const BoxConstraints.tightFor(width: 48, height: 48),
                   icon: const Icon(
                     Icons.tune,
-                    color: _terminalYellow,
+                    color: AuraTokens.accent,
                   ),
                 ),
                 IconButton(
@@ -689,7 +687,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                   icon: Icon(
                     Icons.fact_check_outlined,
                     color:
-                        _showCoverageAudit ? _terminalGreen : _terminalYellow,
+                        _showCoverageAudit ? AuraTokens.accent : AuraTokens.textMuted,
                   ),
                 ),
                 const Expanded(
@@ -697,10 +695,10 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                     'Aura Mobile Defens',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Color(0xFF00FFFF),
-                      fontFamily: 'monospace',
+                      color: AuraTokens.textPrimary,
                       fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.2,
                     ),
                   ),
                 ),
@@ -713,12 +711,12 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                       color: _isShieldBusy
                           ? Colors.grey
                           : vpnActive
-                              ? _terminalGreen
-                              : _terminalYellow,
+                              ? AuraTokens.success
+                              : AuraTokens.textMuted,
                     ),
                     backgroundColor: vpnActive
-                        ? const Color(0xFF001A00)
-                        : const Color(0xFF1A1A00),
+                        ? AuraTokens.success.withValues(alpha: 0.10)
+                        : AuraTokens.surfaceAlt,
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     shape: const StadiumBorder(),
@@ -732,11 +730,10 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                           vpnActive ? 'DEFENSA: ON' : 'DEFENSA: OFF',
                           style: TextStyle(
                             color:
-                                vpnActive ? _terminalGreen : _terminalYellow,
-                            fontFamily: 'monospace',
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1,
+                                vpnActive ? AuraTokens.success : AuraTokens.textMuted,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.4,
                           ),
                         ),
                 ),
@@ -746,7 +743,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
               child: Row(
                 children: [
-                  AuraAvatar(size: 88, isThinking: _isRunning || _isListening),
+                  AuraAvatar(size: 100, isThinking: _isRunning || _isListening),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
@@ -759,7 +756,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                         Text(_isRunning ? 'Estoy trabajando en tu solicitud…'
                           : _isListening ? 'Te estoy escuchando…'
                           : 'Tu inteligencia de ciberdefensa está en línea.',
-                          style: const TextStyle(color: AuraTokens.accent, fontSize: 12)),
+                          style: const TextStyle(color: AuraTokens.accent, fontSize: 13, fontWeight: FontWeight.w500)),
                         const SizedBox(height: 8),
                         Text('${state.blockedEvents} amenazas bloqueadas · '
                           '${state.sniObservedEvents} eventos de red observados',
@@ -1478,7 +1475,17 @@ class _TerminalInput extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 9, 10, 8),
       decoration: BoxDecoration(
         color: AuraTokens.surface,
-        border: Border(top: BorderSide(color: AuraTokens.accent)),
+        border: Border(
+          top: BorderSide(color: AuraTokens.accent.withValues(alpha: 0.22)),
+        ),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 18,
+            offset: const Offset(0, -5),
+          ),
+        ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1498,13 +1505,31 @@ class _TerminalInput extends StatelessWidget {
               decoration: const InputDecoration(
                 hintText: 'Dile a Aura qué necesitas proteger…',
                 hintStyle: TextStyle(
-                  color: _terminalGreen,
-                  fontFamily: 'monospace',
+                  color: AuraTokens.textMuted,
+                  fontSize: 13,
                 ),
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: EdgeInsets.symmetric(vertical: 9),
               ),
+            ),
+          ),
+          IconButton(
+            key: const ValueKey<String>('send-instruction-button'),
+            tooltip: 'Enviar instrucción a Aura',
+            onPressed: isRunning || controller.text.trim().isEmpty
+                ? null
+                : () => onSubmitted(controller.text),
+            constraints: const BoxConstraints.tightFor(width: 42, height: 42),
+            padding: EdgeInsets.zero,
+            icon: const Icon(
+              Icons.arrow_upward_rounded,
+              color: AuraTokens.bg,
+              size: 21,
+            ),
+            style: IconButton.styleFrom(
+              backgroundColor: AuraTokens.accent,
+              disabledBackgroundColor: AuraTokens.surfaceAlt,
             ),
           ),
           IconButton(
