@@ -346,6 +346,16 @@ abstract class AuraTools {
             },
           );
         case 'resume_network':
+          if (step.arguments['confirmed_by_user'] != true) {
+            return const ToolResult(
+              summary: 'Reanudación no ejecutada: requiere confirmación explícita del usuario.',
+              data: <String, dynamic>{
+                'ok': false,
+                'error': 'user_confirmation_required',
+                'action': 'resume_network',
+              },
+            );
+          }
           final resumed = await _panicChannel.invokeMethod<bool>(
                 'resumeTunnel',
               ) ??
