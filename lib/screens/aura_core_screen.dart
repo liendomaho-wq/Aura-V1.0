@@ -81,7 +81,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
     }
 
     controller.reportError(
-      'Acceso a la consola denegado: Android no confirmó la autenticación local. ' 
+      'Acceso a la consola denegado: Android no confirmó la autenticación local. '
       'Las acciones defensivas permanecen bloqueadas; vuelva a la pantalla inicial e inténtelo de nuevo.',
     );
     if (!mounted) return;
