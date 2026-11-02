@@ -118,7 +118,7 @@ Limitaciones confirmadas en el código/documentación revisados:
 
 ### PR de reconstrucción VPN
 
-Existe una PR abierta de reconstrucción: [PR #4](https://github.com/liendomaho-wq/Aura-V1.0/pull/4), rama `rebuild/local-vpn-engine`. **No está aprobada para merge.** En revisión se encontró que `AuraLocalSocks5Proxy.stop()` llama a `workers.shutdownNow()` mientras el executor es un campo de instancia no recreado; un reinicio de la misma instancia puede aceptar conexiones y luego rechazar las tareas enviadas al executor cerrado. Este hallazgo fue comentado en la PR el 2026-11-02. Revalidar el diff completo y CI antes de considerar cualquier merge.
+Existe una PR abierta de reconstrucción: [PR #4](https://github.com/liendomaho-wq/Aura-V1.0/pull/4), cuya rama de trabajo es `rebuild/vpn-from-zero`. **No está aprobada para merge.** En revisión se encontró que `AuraLocalSocks5Proxy.stop()` apagaba el executor sin recrearlo, lo que rompía un ciclo stop/start sobre la misma instancia. Se corrigió en la rama de la PR mediante recreación del pool al reiniciar y manejo de `RejectedExecutionException` al competir el cierre con una aceptación de socket (commit [a0a6e26](https://github.com/liendomaho-wq/Aura-V1.0/commit/a0a6e265a63fc7defb136b8dfbd96237243930e0)). **La corrección aún no está integrada en `main` ni tiene CI verde verificado.** La rama de la PR está divergida respecto de `main` (22 commits por delante y 237 por detrás en la última comparación); no fusionarla directamente. Reconciliar los cambios sobre el `main` actual y ejecutar pruebas antes de cualquier merge.
 
 ## 6. Seguridad Android, permisos y privacidad
 
