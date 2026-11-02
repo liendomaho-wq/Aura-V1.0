@@ -158,6 +158,39 @@ void main() {
     }
   });
 
+  testWidgets('Aura avatar exposes live protection and alert modes', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: AuraAvatar(size: 96, mode: AuraAvatarMode.protecting),
+          ),
+        ),
+      );
+      expect(
+        find.bySemanticsLabel('Aura está protegiendo el dispositivo'),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: AuraAvatar(size: 96, mode: AuraAvatarMode.alert),
+          ),
+        ),
+      );
+      expect(
+        find.bySemanticsLabel('Aura detectó una alerta de seguridad'),
+        findsOneWidget,
+      );
+    } finally {
+      semantics.dispose();
+    }
+  });
+
   testWidgets('Aura avatar respects reduced-motion accessibility settings', (
     tester,
   ) async {
