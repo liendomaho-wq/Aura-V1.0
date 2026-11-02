@@ -19,6 +19,7 @@ import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -38,7 +39,9 @@ internal class AuraLocalSocks5Proxy(
     private val port: Int = 18763,
 ) {
     private val running = AtomicBoolean(false)
-    private val workers: ExecutorService = Executors.newCachedThreadPool { task ->
+    @Volatile private var workers: ExecutorService = newWorkerPool()
+
+    private fun newWorkerPool(): ExecutorService = Executors.newCachedThreadPool { task ->
         Thread(task, "AuraLocalProxyWorker").apply { isDaemon = true }
     }
     private val clients = ConcurrentHashMap.newKeySet<Socket>()
@@ -48,6 +51,11 @@ internal class AuraLocalSocks5Proxy(
     @Synchronized
     fun start() {
         if (running.get()) return
+        // stop() shuts down the previous pool. Recreate it before accepting
+        // connections so a stop/start cycle on the same service instance works.
+        if (workers.isShutdown || workers.isTerminated) {
+            workers = newWorkerPool()
+        }
         val server = ServerSocket()
         server.reuseAddress = false
         server.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 64)
@@ -76,13 +84,21 @@ internal class AuraLocalSocks5Proxy(
                 val client = server.accept()
                 client.tcpNoDelay = true
                 clients.add(client)
-                workers.execute {
-                    try { handleClient(client) }
-                    catch (_: Exception) { }
-                    finally {
-                        clients.remove(client)
-                        try { client.close() } catch (_: Exception) { }
+                try {
+                    workers.execute {
+                        try { handleClient(client) }
+                        catch (_: Exception) { }
+                        finally {
+                            clients.remove(client)
+                            try { client.close() } catch (_: Exception) { }
+                        }
                     }
+                } catch (_: RejectedExecutionException) {
+                    // stop() may shut down the pool after accept() returns but
+                    // before this task is submitted. Do not leak the client fd.
+                    clients.remove(client)
+                    try { client.close() } catch (_: Exception) { }
+                    if (!running.get()) break
                 }
             } catch (error: IOException) {
                 if (running.get()) android.util.Log.e("AuraLocalProxy", "Accept failed", error)
