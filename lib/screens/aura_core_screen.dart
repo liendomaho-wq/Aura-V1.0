@@ -766,11 +766,10 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                         const SizedBox(height: 4),
                         Text(_isRunning ? 'Estoy trabajando en tu solicitud…'
                           : _isListening ? 'Te estoy escuchando…'
-                          : 'Tu inteligencia de ciberdefensa está en línea.',
+                          : 'Lista para recibir instrucciones y ejecutar comprobaciones locales.',
                           style: const TextStyle(color: AuraTokens.accent, fontSize: 13, fontWeight: FontWeight.w500)),
                         const SizedBox(height: 8),
-                        Text('${state.blockedEvents} amenazas bloqueadas · '
-                          '${state.sniObservedEvents} eventos de red observados',
+                        Text('${state.blockedEvents} bloqueos confirmados en esta sesión',
                           style: const TextStyle(color: AuraTokens.textMuted, fontSize: 10)),
                         const SizedBox(height: 3),
                         Text(
