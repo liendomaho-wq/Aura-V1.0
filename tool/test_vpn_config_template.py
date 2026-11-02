@@ -428,3 +428,43 @@ if "updateForegroundNotification()" not in fail_closed.group(1):
     sys.exit("FAIL: degraded network state must be reflected in the VPN notification")
 
 print("PASS: VPN underlay loss stops native forwarding and recovery can restart from a stopped state.")
+
+# Verify that the native TUN packet path invokes encrypted-DNS classification
+# and discards matched packets, rather than testing only the standalone port helper.
+NATIVE_TUNNEL_SOURCE = Path(
+    "android/app/src/main/cpp/hev-socks5-tunnel/src/hev-socks5-tunnel.c"
+).read_text(encoding="utf-8")
+packet_filter = re.search(
+    r"static int\\npacket_is_encrypted_dns\\s*\\(.*?\\n}\\n",
+    NATIVE_TUNNEL_SOURCE,
+    re.DOTALL,
+)
+if not packet_filter:
+    sys.exit("FAIL: native tunnel packet-level encrypted-DNS classifier is missing")
+for packet_guard in (
+    "aura_is_encrypted_dns_transport (protocol, destination_port,",
+    "is_ipv4_doh_resolver (destination)",
+    "is_ipv6_doh_resolver (destination)",
+    "protocol != 6 && protocol != 17",
+    "pbuf_copy_partial (packet, transport",
+):
+    if packet_guard not in packet_filter.group(0):
+        sys.exit("FAIL: encrypted-DNS packet parser is missing " + packet_guard)
+ingress = re.search(
+    r"static void\\nlwip_io_task_entry\\s*\\(.*?\\n}\\n",
+    NATIVE_TUNNEL_SOURCE,
+    re.DOTALL,
+)
+if not ingress:
+    sys.exit("FAIL: could not locate native TUN ingress loop")
+ingress_body = ingress.group(0)
+if "packet_is_encrypted_dns (buf" not in ingress_body:
+    sys.exit("FAIL: encrypted-DNS classifier is not called from TUN ingress")
+if not re.search(
+    r"if \\(packet_is_encrypted_dns \\(buf,.*?\\)\\) \\{.*?pbuf_free \\(buf\\);\\s*continue;",
+    ingress_body,
+    re.DOTALL,
+):
+    sys.exit("FAIL: encrypted-DNS packets are not discarded in the TUN ingress path")
+
+print("PASS: TUN ingress drops recognized DoT, DoQ and known-resolver UDP/443 traffic.")
