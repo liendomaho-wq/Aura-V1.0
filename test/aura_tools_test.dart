@@ -15,6 +15,35 @@ void main() {
     messenger.setMockMethodCallHandler(securityChannel, null);
   });
 
+  test('audit_device consumes the real Android posture report', () async {
+    messenger.setMockMethodCallHandler(securityChannel, (call) async {
+      expect(call.method, 'checkHostileEnvironment');
+      return <String, dynamic>{
+        'isEmulator': false,
+        'isRooted': false,
+        'rootConfidence': 0,
+        'isInstrumented': false,
+        'isScreenOverlayDetected': false,
+        'isHostile': false,
+        'indicators': <String>[],
+        'environmentCheckErrors': <String>['overlay_app_ops_unavailable'],
+        'untrustedAccessibilityServicePackages': <String>[],
+        'timestamp': 123,
+      };
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(name: 'audit_device', arguments: <String, dynamic>{}),
+    );
+
+    expect(result.data['ok'], isTrue);
+    expect(result.data['audit_status'], 'incomplete');
+    expect(result.data['is_rooted'], isFalse);
+    expect(result.data['check_errors'], <String>['overlay_app_ops_unavailable']);
+    expect(result.summary, contains('incompleta'));
+    expect(result.summary, isNot(contains('dispositivo seguro')));
+  });
+
   test('scan_apps devuelve informe nativo y advierte sobre límites heurísticos', () async {
     messenger.setMockMethodCallHandler(securityChannel, (call) async {
       expect(call.method, 'scanActiveSensitiveServices');
