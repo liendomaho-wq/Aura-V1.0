@@ -80,6 +80,10 @@ class AuraIntentParser {
   static int _nextHistoryIndex = 0;
   static int _historySize = 0;
 
+  static final RegExp _explicitConfirmationCommand = RegExp(
+    r'\\b(?:confirmo|confirmar|autorizo|autoriza|apruebo|aprobar)\\b',
+    caseSensitive: false,
+  );
   static final RegExp _blockCommand = RegExp(
     r'\b(?:bloquea|bloquear|bloquee|bloqueo|block|blockear|deniega|denegar)\b',
     caseSensitive: false,
@@ -263,7 +267,10 @@ class AuraIntentParser {
       intent = AuraIntent(
         name: 'panic_isolation',
         kind: AuraIntentKind.panicIsolation,
-        entities: <String, dynamic>{},
+        entities: <String, dynamic>{
+          if (_explicitConfirmationCommand.hasMatch(text))
+            'confirmed_by_user': true,
+        },
         confidence: 0.96,
       );
     } else if (_resumeNetworkCommand.hasMatch(text)) {
@@ -277,7 +284,10 @@ class AuraIntentParser {
       intent = AuraIntent(
         name: 'cryptographic_purge',
         kind: AuraIntentKind.cryptographicPurge,
-        entities: <String, dynamic>{},
+        entities: <String, dynamic>{
+          if (_explicitConfirmationCommand.hasMatch(text))
+            'confirmed_by_user': true,
+        },
         confidence: 0.96,
       );
     } else if (_activateDefensesCommand.hasMatch(text)) {
@@ -326,7 +336,11 @@ class AuraIntentParser {
       intent = AuraIntent(
         name: 'block_domain',
         kind: AuraIntentKind.block,
-        entities: <String, dynamic>{'domain': host},
+        entities: <String, dynamic>{
+          'domain': host,
+          if (_explicitConfirmationCommand.hasMatch(text))
+            'confirmed_by_user': true,
+        },
         confidence: 0.96,
       );
     } else if (isIsolateCommand) {
