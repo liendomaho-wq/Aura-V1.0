@@ -43,7 +43,7 @@ class AuraVpnService : VpnService() {
         private const val NOTIFICATION_CHANNEL_NAME = "Aura Centinela"
         private const val NOTIFICATION_ID = 8816
         private const val NOTIFICATION_TEXT =
-            "Protección agéntica local en tiempo real operando sin interrupciones."
+            "Iniciando motor de red local; verificando interfaz y forwarding."
         private const val VPN_STATE_PREFERENCES = "aura_vpn_state"
         private const val PANIC_ISOLATION_KEY = "panic_isolation_active"
         private const val MAX_BLOCKED_IPS = 8192
@@ -290,6 +290,7 @@ class AuraVpnService : VpnService() {
                 true,
                 "Túnel VPN iniciado; las fuentes de reputación IP se están actualizando.",
             )
+            updateForegroundNotification()
             Log.i("AuraVPN", "Hev tun2socks conectado al proxy SOCKS5.")
         } catch (e: Exception) {
             Log.e("AuraVPN", "No se pudo iniciar el escudo VPN.", e)
@@ -300,6 +301,7 @@ class AuraVpnService : VpnService() {
             underlyingNetwork = null
             startRequested.set(false)
             reportState(false, e.message ?: "No se pudo iniciar el túnel.")
+            updateForegroundNotification()
             stopSelf()
         }
     }
