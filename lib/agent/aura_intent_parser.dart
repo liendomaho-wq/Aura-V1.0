@@ -300,14 +300,22 @@ class AuraIntentParser {
       intent = AuraIntent(
         name: 'toggle_defenses',
         kind: AuraIntentKind.toggleDefenses,
-        entities: <String, dynamic>{'activate': true},
+        entities: <String, dynamic>{
+          'activate': true,
+          if (_explicitConfirmationCommand.hasMatch(text))
+            'confirmed_by_user': true,
+        },
         confidence: 0.96,
       );
     } else if (_deactivateDefensesCommand.hasMatch(text)) {
       intent = AuraIntent(
         name: 'toggle_defenses',
         kind: AuraIntentKind.toggleDefenses,
-        entities: <String, dynamic>{'activate': false},
+        entities: <String, dynamic>{
+          'activate': false,
+          if (_explicitConfirmationCommand.hasMatch(text))
+            'confirmed_by_user': true,
+        },
         confidence: 0.96,
       );
     } else if (_helpCommand.hasMatch(text)) {
