@@ -155,6 +155,36 @@ void main() {
     messenger.setMockMethodCallHandler(engineChannel, null);
   });
 
+  test('panic isolation refuses to run without explicit confirmation', () async {
+    const panicChannel = MethodChannel('com.aura.cyberdefense/panic');
+    messenger.setMockMethodCallHandler(panicChannel, (_) async {
+      fail('Panic isolation must not run without user confirmation.');
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(
+        name: 'panic_isolation',
+        arguments: <String, dynamic>{},
+      ),
+    );
+
+    expect(result.data['ok'], isFalse);
+    expect(result.data['error'], 'user_confirmation_required');
+    messenger.setMockMethodCallHandler(panicChannel, null);
+  });
+
+  test('cryptographic purge refuses to run without explicit confirmation', () async {
+    final result = await AuraTools.execute(
+      const ToolStep(
+        name: 'cryptographic_purge',
+        arguments: <String, dynamic>{},
+      ),
+    );
+
+    expect(result.data['ok'], isFalse);
+    expect(result.data['error'], 'user_confirmation_required');
+  });
+
   test('toggle_defenses informa si falta el plugin del motor VPN', () async {
     messenger.setMockMethodCallHandler(shieldChannel, (_) async {
       throw MissingPluginException();
