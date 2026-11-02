@@ -240,3 +240,41 @@ Una función solo puede etiquetarse como **operativa** si:
 5. su alcance y limitaciones están documentados.
 
 Compilar no demuestra protección. Una prueba unitaria no demuestra compatibilidad universal. Una detección heurística no demuestra malware. Aura debe ganarse la confianza con evidencia repetible.
+
+## 13. Auditoría de red — hallazgos y correcciones de noviembre de 2026
+
+### Corrección aplicada en el ciclo de red física
+
+El servicio ahora:
+- comprueba el resultado booleano de `setUnderlyingNetworks`, además de manejar excepciones;
+- detiene el worker nativo de forwarding cuando no hay una red física seleccionable o no se pudo sincronizar el underlay;
+- conserva la interfaz TUN y sus rutas completas IPv4/IPv6 durante esa condición, evitando declarar el túnel activo y evitando un bypass silencioso;
+- vuelve a ejecutar la recuperación cuando aparece una red física, incluso si el worker nativo ya había sido detenido durante la pérdida de conectividad;
+- actualiza el estado y la notificación al entrar en cobertura degradada.
+
+La recuperación sigue necesitando validación en dispositivos reales: cambio Wi-Fi/móvil, pérdida total de red, callbacks repetidos, retorno de conectividad, suspensión/reanudación y revocación del permiso VPN.
+
+### Cobertura real de DNS cifrado
+
+El camino nativo de entrada TUN sí llama a `packet_is_encrypted_dns` y descarta los paquetes clasificados:
+- TCP/853 (DoT);
+- UDP/853 (DoQ);
+- UDP/443 dirigido a un conjunto limitado de IP conocidas de resolutores DoH.
+
+Esto no constituye bloqueo universal de DNS cifrado. DoH sobre TCP/443, resolutores no incluidos, DoH por dominios CDN, QUIC no clasificado como resolutor conocido y otros transportes pueden quedar fuera. Los fragmentos no iniciales y jumbogramas IPv6 tampoco se inspeccionan como una conexión DNS cifrada completa. La interfaz y el informe deben describir esta cobertura como selectiva.
+
+### Inspección SNI: limitación detectada
+
+El parser `aura_sni_firewall.c` y el almacenamiento de reglas SNI dinámicas existen y tienen pruebas unitarias del parser. Sin embargo, en la auditoría del código nativo no se encontró una llamada a `aura_inspect_tls_sni` ni a `aura_should_block_tls_sni` dentro del camino de paquetes del túnel. Por tanto, no se debe afirmar que las reglas SNI estén aplicándose al tráfico real. El parser tampoco mantiene estado TCP entre segmentos, por lo que no basta con invocarlo sobre un paquete arbitrario para garantizar inspección completa de ClientHello fragmentados.
+
+La integración segura requiere un flujo TCP-aware acotado, límites de memoria/tiempo por conexión, manejo de retransmisiones y fragmentación, y una política explícita para ECH y ClientHello incompletos. Hasta entonces, SNI es capacidad de parser probada aisladamente, no filtrado de red operativo.
+
+### Pruebas de regresión añadidas
+
+Se añadieron verificaciones estáticas para:
+- el cierre fail-closed del forwarding al perder el underlay;
+- la recuperación aun después de que el worker haya sido detenido;
+- la invocación del clasificador de DNS cifrado desde el ingreso TUN;
+- el descarte del paquete clasificado en ese mismo camino.
+
+Estas verificaciones de fuente no sustituyen pruebas de paquetes en ejecución, pruebas instrumentadas de Android ni validación física. Estado de la corrección del ciclo de red: **implemented**; estado de pruebas automatizadas y de dispositivo: pendiente de ejecutar en CI y en teléfonos.
