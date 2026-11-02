@@ -224,6 +224,28 @@ void main() {
     messenger.setMockMethodCallHandler(panicChannel, null);
   });
 
+  test('resume_network restores forwarding only after confirmation', () async {
+    const panicChannel = MethodChannel('com.aura.cyberdefense/panic');
+    var called = false;
+    messenger.setMockMethodCallHandler(panicChannel, (call) async {
+      expect(call.method, 'resumeTunnel');
+      called = true;
+      return true;
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(
+        name: 'resume_network',
+        arguments: <String, dynamic>{'confirmed_by_user': true},
+      ),
+    );
+
+    expect(called, isTrue);
+    expect(result.data['ok'], isTrue);
+    expect(result.data['security_level'], 'safe');
+    messenger.setMockMethodCallHandler(panicChannel, null);
+  });
+
   test('cryptographic purge refuses to run without explicit confirmation', () async {
     final result = await AuraTools.execute(
       const ToolStep(
