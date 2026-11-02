@@ -17,6 +17,7 @@ if [[ -z "${AURA_KEYSTORE_PATH:-}" && -z "${AURA_KEYSTORE_BASE64:-}" ]]; then
     log "WARNING: Production signing variables missing. Falling back to DEBUG signing configuration."
     log "WARNING: The resulting artifact is for TESTING ONLY. Configure AURA_KEYSTORE_* for release distribution."
     USE_DEBUG_SIGNING=true
+    export AURA_ALLOW_DEBUG_SIGNING=true
 
     if [[ "${AURA_REQUIRE_RELEASE_SIGNING:-false}" == "true" ]]; then
         fail "CRITICAL: AURA_REQUIRE_RELEASE_SIGNING=true is set but production signing variables are missing. Debug fallback is not allowed."
