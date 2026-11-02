@@ -289,15 +289,16 @@ abstract class AuraTools {
               false;
           await _secureVault.purgeSensitiveData();
           final Map<String, dynamic> auditData = {
-            'ok': true,
+            'ok': nativeAuditMemoryPurged,
             'model_cache_purged': true,
             'secure_storage_purged': true,
             'native_audit_memory_purged': nativeAuditMemoryPurged,
-            'api_key_present': false,
+            'completion': nativeAuditMemoryPurged ? 'complete' : 'partial',
           };
           return ToolResult(
-            summary:
-                'Cachés de modelos y datos de SecureVault eliminados. No hay una API key registrada en este almacenamiento.',
+            summary: nativeAuditMemoryPurged
+                ? 'Cachés de modelos, datos de SecureVault y memoria de auditoría nativa purgados.'
+                : 'Cachés de modelos y datos de SecureVault purgados, pero Android no confirmó la limpieza de la memoria de auditoría nativa. La operación queda marcada como parcial.',
             data: auditData,
           );
         default:
