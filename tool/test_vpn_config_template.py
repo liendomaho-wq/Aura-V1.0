@@ -468,3 +468,19 @@ if not re.search(
     sys.exit("FAIL: encrypted-DNS packets are not discarded in the TUN ingress path")
 
 print("PASS: TUN ingress drops recognized DoT, DoQ and known-resolver UDP/443 traffic.")
+
+if "Iniciando motor de red local; verificando interfaz y forwarding." not in text:
+    sys.exit("FAIL: foreground notification must not claim protection before the tunnel is verified")
+start_tunnel = re.search(
+    r"private fun startTunnel\\(\\) \\{(.*?)\\n    @Synchronized",
+    text,
+    re.DOTALL,
+)
+if not start_tunnel:
+    sys.exit("FAIL: could not locate VPN startup lifecycle")
+if "verifyLocalSocks5Ready()" not in start_tunnel.group(1):
+    sys.exit("FAIL: VPN cannot report active before SOCKS5 readiness is verified")
+if "updateForegroundNotification()" not in start_tunnel.group(1):
+    sys.exit("FAIL: foreground notification must refresh after startup verification and failure")
+
+print("PASS: VPN notification distinguishes startup from verified forwarding.")
