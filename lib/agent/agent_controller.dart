@@ -417,10 +417,10 @@ class AgentController {
 
       if (intent.kind == AuraIntentKind.help) {
         const helpMessage = 'ÓRDENES DISPONIBLES — ACTIVAR DEFENSAS · '
-            'DESACTIVAR DEFENSAS · BLOQUEAR <dominio> · AISLAR <paquete> · '
+            'DESACTIVAR DEFENSAS · BLOQUEAR <dominio> · REVISAR APP <paquete> · '
             'AISLAMIENTO DE EMERGENCIA · REANUDAR LA RED · ACTUALIZAR '
             'DEFENSAS · AUDITAR DISPOSITIVO · ESCANEAR APLICACIONES · ANALIZAR DOMINIO <host> · ESTADO · PURGA CRIPTOGRÁFICA. '
-            'Para confirmar cambios de VPN, bloqueos, aislamiento o purga, inicia una segunda orden con CONFIRMO.';
+            'REVISAR APP solo abre Ajustes de Android; no aísla automáticamente otras apps. Para confirmar cambios de VPN, bloqueos, revisión de apps o purga, inicia una segunda orden con CONFIRMO.';
         _emit(intent.toEvent());
         _emit(
           AgentEvent(
