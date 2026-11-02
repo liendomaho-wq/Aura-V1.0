@@ -29,7 +29,7 @@ Reporta vulnerabilidades en [SECURITY.md](SECURITY.md).
 
 **Versión de la aplicación:** `1.0.0+1` · **Versión del modelo:** `3.0.0` · **Estado:** En desarrollo
 
-Aura Mobile Defens es una aplicación Android de ciberdefensa local construida con Flutter/Dart y componentes nativos Kotlin, JNI y C. Su núcleo combina un `VpnService` autorizado por la persona usuaria, un túnel TUN basado en `hev-socks5-tunnel`, inspección DNS/SNI, una allowlist y un clasificador local de dominios. No requiere root. No es una solución certificada ni garantiza cobertura integral: el alcance depende del dispositivo, permisos, conectividad y protocolos observables.
+Aura Mobile Defens es una aplicación Android de ciberdefensa local construida con Flutter/Dart y componentes nativos Kotlin, JNI y C. Su núcleo combina un `VpnService` autorizado por la persona usuaria, un túnel TUN basado en `hev-socks5-tunnel`, filtrado selectivo de DNS cifrado, una allowlist y un clasificador local de dominios. El parser SNI existe como componente nativo probado de forma aislada, pero aún no está conectado al flujo de paquetes y no se anuncia como bloqueo operativo. No requiere root. No es una solución certificada ni garantiza cobertura integral: el alcance depende del dispositivo, permisos, conectividad y protocolos observables.
 
 ![Build de release signing](https://img.shields.io/github/actions/workflow/status/yojamm16-boop/Aura-V1.0/release-signing-integrity.yml?branch=main&label=release%20signing)
 ![Cobertura](https://img.shields.io/badge/cobertura-no%20medida-lightgrey)
@@ -48,7 +48,7 @@ El estado se marca **En desarrollo**: el repositorio tiene workflows de validaci
 │                                           ▼                                       │
 │                              motor hev-socks5-tunnel (C)                          │
 │                         ┌─────────────┴──────────────┐                            │
-│                         │ DNS / SNI / firewall C     │                            │
+│                         │ DNS / filtro de transporte │                            │
 │                         └─────────────┬──────────────┘                            │
 │                                       │ JNI / MethodChannel / EventChannel         │
 └───────────────────────────────────────┼──────────────────────────────────────────┘
@@ -61,14 +61,14 @@ El estado se marca **En desarrollo**: el repositorio tiene workflows de validaci
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Flujo de análisis: tras autenticar la consola, `AuraNetworkAuditor` escucha el EventChannel nativo. Los eventos `BLOCKED`, `DGA_ALERT` y `SNI_OBSERVED` pueden iniciar `DNS/SNI → motor C → JNI/EventChannel → Dart → AuraAIBrain → AuraAIInference en isolate → bosque serializado`; si el modelo confirma una amenaza, Aura solicita una regla DNS y registra si el motor la confirmó. La allowlist se consulta antes del bosque. El clasificador da votos binarios por mayoría; esos votos no son probabilidades calibradas.
+Flujo de análisis: tras autenticar la consola, `AuraNetworkAuditor` escucha el EventChannel nativo para eventos DNS y de red que el túnel realmente emite. Los eventos `BLOCKED` y `DGA_ALERT` pueden iniciar `DNS → Dart → AuraAIBrain → AuraAIInference en isolate → bosque serializado`; si el modelo confirma una amenaza, Aura solicita una regla DNS y registra si el motor la confirmó. El parser SNI no genera actualmente eventos desde el camino TUN. La allowlist se consulta antes del bosque. El clasificador da votos binarios por mayoría; esos votos no son probabilidades calibradas.
 
 | Componente | Responsabilidad observada |
 |---|---|
 | `MainActivity` | Expone el control de defensa VPN, solicita el consentimiento del sistema y comunica el resultado del servicio a Flutter. |
 | `AuraVpnService` | Mantiene la interfaz VPN foreground y coordina el túnel mientras está activo. |
 | `hev-socks5-tunnel` | Procesa tráfico encaminado por TUN; incluye la ruta DNS mapeada y código C/JNI. |
-| Firewall C / SNI | Reglas nativas de red y reporte de hosts/eventos al lado Flutter. |
+| Firewall C / parser SNI | El camino TUN aplica el clasificador de transporte DNS cifrado; el parser TLS SNI y sus reglas existen, pero no están integrados al camino de paquetes. |
 | `AuraNetworkAuditor` | Escucha eventos DNS tras autenticar la consola, mantiene una bitácora acotada y solicita inferencia para eventos bloqueados o DGA. |
 | `AuraAIInference` | Extrae hosts, calcula las 18 características y evalúa el bosque en `Isolate.run`. |
 | `AuraAIBrain` | Carga/valida el modelo local y coordina inferencia, cachés y reglas seguras. |
@@ -82,7 +82,7 @@ Flujo de análisis: tras autenticar la consola, `AuraNetworkAuditor` escucha el 
 | 1. Entorno hostil | Detecciones nativas de root, gestores como Magisk/KernelSU, instrumentación, emuladores y señales de integridad. | Son heurísticas de defensa en dispositivo; no constituyen garantía contra evasión o manipulación del sistema. |
 | 2. Inventario de apps | `AuraAppGenomeScanner` evalúa aplicaciones instaladas, permisos sensibles, firmas y señales de ofuscación. | La visibilidad de paquetes depende de las políticas de visibilidad de Android y permisos disponibles. |
 | 3. Clasificación ML | Vector sincronizado Python/Dart de 18 características: seis valores históricos sin reescalar y doce características nuevas normalizadas, incluyendo typosquatting, n-gramas, estructura e indicadores IDN. | El modelo publicado (`3.0.0`) conserva el esquema entrenado de seis características. El reentrenamiento `3.1.0` con threshold calibrado y evaluación adversarial está pendiente; no se atribuyen cifras nuevas. |
-| 4. Red | Rutas TUN IPv4/IPv6; inspección TCP SNI; descarte en el camino TUN de TCP/853 (DoT), UDP/853 (DoQ) y UDP/443 hacia una lista fija de resolutores DoH conocidos; eventos de auditoría antes del descarte. | DoH sobre TCP/443 no se identifica de forma general; UDP/443 solo cubre direcciones incluidas en la lista. No se inspecciona el contenido TLS, no se descifra ECH y las conexiones directas por IP no quedan resueltas por SNI. Fragmentación, extensiones IPv6, cambios de red y fugas requieren pruebas adicionales en dispositivos físicos. |
+| 4. Red | Rutas TUN IPv4/IPv6; descarte en el ingreso TUN de TCP/853 (DoT), UDP/853 (DoQ) y UDP/443 hacia una lista fija de resolutores DoH conocidos. | La cobertura DNS es selectiva: DoH sobre TCP/443 y resolutores no incluidos pueden evadirla. El parser SNI no está integrado al flujo TUN, no se inspecciona el contenido TLS y no se descifra ECH. La VPN y sus rutas requieren pruebas de fugas, fragmentación, cambios de red y compatibilidad en dispositivos físicos. |
 | 5. Cadena de suministro | Workflow de SBOM CycloneDX y generación de provenance SLSA firmada mediante OIDC para artefactos Android. | El generador genérico de provenance no demuestra por sí solo todos los requisitos de construcción y fuente necesarios para afirmar conformidad SLSA Level 3 integral. |
 
 ### Contrato de características
@@ -131,12 +131,12 @@ La visibilidad de paquetes está sujeta a Android y puede ser limitada incluso c
 | 3 | Estado operativo | **Cerrado en iteración anterior:** barra de estado y chips rápidos. |
 | 4 | Privacidad de sesión e interfaz | **Cerrado en iteración anterior:** telemetría LOCAL, sin radar, sin cierre automático de consola y `feature_order`. |
 | 5 | QUIC/HTTP3 y UDP | **Pendiente:** el transporte actual no ofrece un filtro aplicado por puerto antes del reenvío; el contador no equivale a un descarte confirmado. |
-| 6 | DoH por SNI | **Parcial:** endpoints conocidos añadidos al bloqueo SNI; DoT/TCP 853 y el conteo integral aún requieren una regla de transporte verificable. |
+| 6 | DNS cifrado | **Parcial:** DoT/TCP 853, DoQ/UDP 853 y UDP/443 hacia resolutores DoH conocidos se descartan en el ingreso TUN. DoH/TCP 443 y resolutores no incluidos quedan fuera de esta cobertura. SNI no está conectado al enforcement. |
 | 7 | Umbral ML y rollback | El runtime lee y aplica el umbral del JSON (fallback `0.50`); el rollback semver inferior a `3.0.0` se rechaza. La calibración 3.1.0 está pendiente de evaluación y firma. |
 | 8 | Visibilidad de paquetes | Aviso ante inventarios con menos de cinco apps en Android 11/API 30+. |
 | 9 | Revocación VPN | Broadcast crítico, evento en consola y notificación persistente al revocarse. |
 | 10 | Órdenes/historial no acotados | Historial limitado a 400; la consola recorta órdenes a 240 caracteres y avisa. |
-| 11 | ECH | El parser devuelve `AURA_TLS_SNI_ECH` y escribe una marca que llega por el callback SNI existente; Kotlin la convierte en señal visible. La política configurable de bloqueo sigue pendiente. |
+| 11 | ECH | El parser aislado reconoce la extensión ECH en las pruebas nativas, pero no recibe tráfico desde el camino TUN; no se descifra ni se aplica una política de bloqueo. |
 | 12 | IP directa y accesibilidad | El adaptador Kotlin puede mapear una llamada con SNI vacío y destino IP a una señal, pero esa ruta no está demostrada en el callback protegido; aviso de accesibilidad implementado. Política IP y prueba nativa pendientes. |
 
 El entrenamiento v3.1.0 usa un set adversarial determinista con semilla 42, pero no se publican métricas ni se sustituye el modelo 3.0.0 hasta completar y verificar el run real, la firma y `verifyModelIntegrity()`.
@@ -196,9 +196,9 @@ No se incluye una URL de producción en el código. Si el endpoint falta o no es
 
 ### Inspección de DoH/DoQ e IPv6
 
-`AuraVpnService` instala rutas predeterminadas para IPv4 (`0.0.0.0/0`) e IPv6 (`::/0`), así que TCP y UDP atraviesan la interfaz TUN; `VpnService.Builder` no ofrece `addAllowedProtocol()`. Se instalan reglas SNI para los nombres conocidos de resolutores cifrados y la lista nativa los clasifica como bloqueables. La implementación actual no demuestra un filtro por puerto UDP, ni una regla completa de denegación para TCP/853: no se afirma que QUIC/HTTP3 o DoT queden bloqueados. El contador QUIC solo refleja eventos de descarte recibidos; no hay hoy una ruta que genere ese evento al reenviar UDP sin filtrar.
+`AuraVpnService` instala rutas predeterminadas para IPv4 (`0.0.0.0/0`) e IPv6 (`::/0`), por lo que TCP y UDP atraviesan la interfaz TUN. El ingreso TUN descarta TCP/853, UDP/853 y UDP/443 únicamente cuando el destino coincide con una IP de resolutor DoH conocida. No se bloquea DoH genérico sobre TCP/443 ni todo QUIC/HTTP3. El parser SNI y sus reglas no están llamados desde el camino TUN; por tanto no existe inspección ni bloqueo SNI operativo. El filtrado DNS no equivale a un filtro general de contenido TLS.
 
-El parser C detecta la extensión TLS `encrypted_client_hello`, devuelve `AURA_TLS_SNI_ECH` y escribe una marca que el camino observado del callback SNI propaga; Kotlin la convierte en `SNI_ENCRYPTED`. No descifra ECH y no hay una política configurable de bloqueo. La señal de conexión IP directa está preparada en el adaptador de eventos cuando recibe un SNI vacío con destino literal, pero el callback nativo descarta nombres vacíos; esa ruta no genera hoy la señal. No se afirma que la señal IP directa ni una política configurable sean efectivas en el túnel. Las direcciones IP se normalizan en Dart para el registro, pero no se puntúan como nombres de dominio en el modelo ML.
+El parser C aislado reconoce ECH y devuelve `AURA_TLS_SNI_ECH` en sus pruebas, pero no se invoca desde el ingreso TUN ni desde un callback nativo de inspección TLS. Por tanto Kotlin no recibe actualmente una señal ECH originada por ese parser y no existe una política de bloqueo ECH. La detección de conexiones IP directas tampoco está conectada al camino de paquetes. Las direcciones IP se normalizan en Dart para el registro, pero no se puntúan como nombres de dominio en el modelo ML.
 
 El transporte HEV procesa ambos tipos de paquete IP, prefiere resolver destinos mediante `AF_INET6` y recurre a `AF_INET` si no hay resultado IPv6. El feed de bloqueo y el filtro nativo admiten direcciones IPv4 e IPv6. El firewall es userspace sobre paquetes TUN; no invoca `iptables`/`ip6tables`, que requieren privilegios de sistema y no forman parte de un `VpnService` ordinario. SNI observado desde destinos IPv6 conserva la dirección IPv6 numérica en el evento. Las direcciones IP se normalizan en Dart para el registro, pero no se puntúan como nombres de dominio en el modelo ML.
 
@@ -490,7 +490,7 @@ AAB: `AURA_BUILD_FORMAT=aab bash tool/compile_aura.sh`. Comprueba `CERT_SHA256`,
 Estado de seguimiento (2026-10-30):
 
 - Fase 1: experiencia conversacional y avatar local implementados; se añadieron etiquetas semánticas para estados disponible/analizando y respeto de la preferencia Android de reducir animaciones. Las nuevas pruebas widget deben confirmarse en Codemagic y el comportamiento debe validarse en dispositivos físicos.
-- Fase 2: VPN local opcional, captura IPv4/IPv6, inspección SNI, reglas dinámicas y feed IP HTTPS acotado presentes en el código. La suite nativa de SNI amplía cobertura de allowlist, límites de dominio, ClientHello incompleto y extensiones malformadas; su ejecución CI debe confirmarse.
+- Fase 2: VPN local opcional, rutas IPv4/IPv6, filtrado selectivo de DNS cifrado y feed IP HTTPS acotado presentes en el código. El parser SNI y sus reglas están implementados y tienen pruebas nativas aisladas, pero no están integrados en el camino TUN; no se consideran una defensa activa. La suite CI debe confirmarse en el commit de entrega.
 - Pendiente de red: filtrado real y validado de DoT/TCP 853; estrategia para DoH/DoQ; tratamiento explícito de QUIC/HTTP3; política ECH; señalización de conexiones IP directas; pruebas de fugas, reconexión y estabilidad en dispositivos.
 - Incisión #6: Aura Agéntica (registro de herramientas, política central de permisos, planificación y verificación de acciones).
 - Incisión #7: evolución visual del avatar; cualquier efecto 3D debe priorizar rendimiento, accesibilidad y consumo.
