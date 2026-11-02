@@ -176,8 +176,14 @@ class AuraAIBrain {
     return result ?? false;
   }
 
-  Future<String> analyzeCyberThreat(String userInput) =>
-      analyzeThreatPayload(userInput);
+  Future<String> analyzeCyberThreat(
+    String userInput, {
+    bool enforceBlocklistHits = true,
+  }) =>
+      analyzeThreatPayload(
+        userInput,
+        enforceBlocklistHits: enforceBlocklistHits,
+      );
 
   Future<bool> preloadModel() async {
     final model = await _getModel();
@@ -608,7 +614,10 @@ class AuraAIBrain {
     }
   }
 
-  Future<String> analyzeThreatPayload(String payload) async {
+  Future<String> analyzeThreatPayload(
+    String payload, {
+    bool enforceBlocklistHits = true,
+  }) async {
     try {
       final extractedDomains = _extractDomains(payload);
       final blocklistedDomains =
@@ -617,11 +626,19 @@ class AuraAIBrain {
       for (final domain in blocklistedDomains) {
         await _recordDomainOutcome(
           domain,
-          'blocked',
+          enforceBlocklistHits ? 'blocked' : 'detected',
           source: 'blocklist',
         );
       }
-      final blocklistResults = await _enforceBlocklistHits(blocklistedDomains);
+      final blocklistResults = enforceBlocklistHits
+          ? await _enforceBlocklistHits(blocklistedDomains)
+          : blocklistedDomains
+              .map(
+                (domain) =>
+                    'AMENAZA: $domain coincide con la blocklist verificada. '
+                    'No se modificó el firewall; requiere confirmación explícita.',
+              )
+              .toList(growable: false);
       final protectedDomains = <String>[];
       final analyzableDomains = <String>[];
       for (final domain in extractedDomains) {
