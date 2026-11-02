@@ -749,7 +749,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                         ? AuraAvatarMode.listening
                         : _isRunning
                             ? AuraAvatarMode.analyzing
-                            : state.securityLevel == AuraSecurityLevel.critical
+                            : state.securityLevel != AuraSecurityLevel.safe
                                 ? AuraAvatarMode.alert
                                 : state.isVpnActive
                                     ? AuraAvatarMode.protecting
@@ -764,9 +764,16 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                           style: TextStyle(color: AuraTokens.textPrimary,
                             fontSize: 22, fontWeight: FontWeight.w600)),
                         const SizedBox(height: 4),
-                        Text(_isRunning ? 'Estoy trabajando en tu solicitud…'
-                          : _isListening ? 'Te estoy escuchando…'
-                          : 'Lista para recibir instrucciones y ejecutar comprobaciones locales.',
+                        Text(
+                          _isRunning
+                              ? 'Estoy ejecutando tu solicitud…'
+                              : _isListening
+                                  ? 'Te estoy escuchando…'
+                                  : state.securityLevel == AuraSecurityLevel.critical
+                                      ? 'Alerta crítica: revisa los hallazgos de seguridad.'
+                                      : state.securityLevel == AuraSecurityLevel.warning
+                                          ? 'Hay señales que requieren tu atención.'
+                                          : 'Lista para recibir instrucciones y ejecutar comprobaciones locales.',
                           style: const TextStyle(color: AuraTokens.accent, fontSize: 13, fontWeight: FontWeight.w500)),
                         const SizedBox(height: 8),
                         Text('${state.blockedEvents} bloqueos confirmados en esta sesión',
