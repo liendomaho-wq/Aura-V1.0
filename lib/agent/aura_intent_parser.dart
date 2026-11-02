@@ -374,6 +374,8 @@ class AuraIntentParser {
         kind: AuraIntentKind.isolate,
         entities: <String, dynamic>{
           if (packageName != null) 'package_name': packageName,
+          if (_explicitConfirmationCommand.hasMatch(text))
+            'confirmed_by_user': true,
         },
         confidence: packageName == null ? 0.62 : 0.96,
       );
