@@ -195,6 +195,7 @@ abstract class AuraTools {
                 r'^(?=.{1,253}$)(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$',
               ).hasMatch(domain) ||
               InternetAddress.tryParse(domain) != null) {
+            return const ToolResult(
               summary: 'No se analizó el dominio: el nombre no tiene un formato DNS válido.',
               data: <String, dynamic>{
                 'ok': false,
@@ -263,8 +264,6 @@ abstract class AuraTools {
               ],
             },
           );
-        case 'toggle_defenses':
-          return await _toggleDefenses(step.arguments);
         case 'toggle_defenses':
           return await _toggleDefenses(step.arguments);
         case 'block_domain':
