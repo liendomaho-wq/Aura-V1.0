@@ -73,7 +73,7 @@ Flujo de análisis: tras autenticar la consola, `AuraNetworkAuditor` escucha el 
 | `AuraAIInference` | Extrae hosts, calcula las 18 características y evalúa el bosque en `Isolate.run`. |
 | `AuraAIBrain` | Carga/valida el modelo local y coordina inferencia, cachés y reglas seguras. |
 | `AgentController` | Coordina órdenes, eventos y herramientas disponibles para la consola. |
-| `AuraTools` | Acciones como actualizar defensas, bloquear un dominio o solicitar aislamiento nativo. |
+| `AuraTools` | Acciones como actualizar defensas, bloquear un dominio o abrir Ajustes de Android para revisión manual de una app. No puede aislar arbitrariamente otras apps sin privilegios especiales. |
 
 ### Estado de los cinco pilares de defensa
 
@@ -250,6 +250,7 @@ El agente puede invocar estas operaciones locales desde la conversación:
 - `AUDITAR DISPOSITIVO`: consulta el informe nativo de postura Android (root, emulador, instrumentación, overlays y servicios de accesibilidad). Los errores de comprobación se reportan como auditoría incompleta.
 - `ANALIZAR DOMINIO <host>`: usa el bosque local de 500 árboles solo después de validar la integridad y la firma del modelo. Es una clasificación heurística del nombre de dominio; no inspecciona el contenido web ni garantiza seguridad.
 - `ESCANEAR APLICACIONES`: consulta el escáner nativo de aplicaciones, permisos, servicios sensibles, firmas y señales heurísticas.
+- `REVISAR APP <paquete>`: tras confirmación explícita, abre la ficha de Ajustes de Android para que la persona usuaria revise permisos y accesos. No detiene, deshabilita ni aísla automáticamente la aplicación.
 - `BLOQUEAR <dominio>`: solicita una regla DNS local. Para ejecutarla se requiere una segunda orden afirmativa que comience con `CONFIRMO`.
 - `CONFIRMO AISLAMIENTO DE EMERGENCIA`, `CONFIRMO PURGA CRIPTOGRÁFICA` y `CONFIRMO ACTIVAR/DESACTIVAR DEFENSAS`: requieren confirmación explícita en un segundo mensaje.
 
