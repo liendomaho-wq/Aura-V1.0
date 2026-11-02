@@ -57,6 +57,78 @@ abstract class AuraTools {
       switch (step.name) {
         case 'update_defenses':
           return await _updateDefenses(onProgress);
+        case 'audit_device':
+          final report = await _securityChannel.invokeMapMethod<String, dynamic>(
+            'checkHostileEnvironment',
+          );
+          if (report == null ||
+              report['isEmulator'] is! bool ||
+              report['isRooted'] is! bool ||
+              report['isInstrumented'] is! bool ||
+              report['isScreenOverlayDetected'] is! bool ||
+              report['isHostile'] is! bool ||
+              report['indicators'] is! List ||
+              report['environmentCheckErrors'] is! List ||
+              report['untrustedAccessibilityServicePackages'] is! List) {
+            return const ToolResult(
+              summary: 'Android no devolvió un informe válido de postura del dispositivo.',
+              data: <String, dynamic>{
+                'ok': false,
+                'error': 'invalid_device_audit_report',
+                'tool': 'audit_device',
+              },
+            );
+          }
+          final indicators = (report['indicators'] as List)
+              .whereType<String>()
+              .toList(growable: false);
+          final errors = (report['environmentCheckErrors'] as List)
+              .whereType<String>()
+              .toList(growable: false);
+          final untrustedAccessibility =
+              (report['untrustedAccessibilityServicePackages'] as List)
+                  .whereType<String>()
+                  .toList(growable: false);
+          final hostile = report['isHostile'] as bool;
+          final auditStatus = errors.isNotEmpty
+              ? 'incomplete'
+              : hostile
+                  ? 'review_required'
+                  : 'no_indicators_observed';
+          final summary = errors.isNotEmpty
+              ? 'Auditoría de postura incompleta: ' +
+                  indicators.length.toString() +
+                  ' indicadores observados y ' +
+                  errors.length.toString() +
+                  ' comprobaciones no disponibles. Revisa el detalle antes de sacar conclusiones.'
+              : hostile
+                  ? 'Android reportó ' +
+                      indicators.length.toString() +
+                      ' indicadores del entorno que requieren revisión. Esto no demuestra por sí solo que exista malware.'
+                  : 'La auditoría terminó sin indicadores hostiles observados en las comprobaciones disponibles. Esto no certifica que el dispositivo esté libre de amenazas.';
+          return ToolResult(
+            summary: summary,
+            data: <String, dynamic>{
+              'ok': true,
+              'tool': 'audit_device',
+              'audit_status': auditStatus,
+              'is_emulator': report['isEmulator'],
+              'is_rooted': report['isRooted'],
+              'root_confidence': report['rootConfidence'],
+              'is_instrumented': report['isInstrumented'],
+              'screen_overlay_detected': report['isScreenOverlayDetected'],
+              'is_hostile': hostile,
+              'indicators': indicators,
+              'check_errors': errors,
+              'untrusted_accessibility_packages': untrustedAccessibility,
+              'timestamp': report['timestamp'],
+              'limitations': <String>[
+                'Las señales de root, emulador, instrumentación y overlays son heurísticas; pueden existir falsos positivos y falsos negativos.',
+                'Android limita la visibilidad de procesos, paquetes y estados de otras aplicaciones.',
+                'Un resultado sin indicadores no garantiza que el dispositivo esté libre de malware.',
+              ],
+            },
+          );
         case 'scan_apps':
           final report = await _securityChannel.invokeMapMethod<String, dynamic>(
             'scanActiveSensitiveServices',
