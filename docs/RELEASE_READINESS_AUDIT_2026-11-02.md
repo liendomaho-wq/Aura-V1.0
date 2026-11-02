@@ -61,3 +61,24 @@ No se marca ninguna de estas validaciones como aprobada en este documento: deben
 **Estado: candidato para validación automatizada y pruebas de dispositivo; no certificado como 100% funcional.**
 
 No se debe distribuir como protección de producción hasta que CI esté verde, el artefacto esté firmado con el certificado de producción esperado y la matriz física de red/seguridad haya sido completada. El operador conserva la decisión de activar VPN, aislamiento y bloqueos; el agente no debe ejecutar acciones de alto impacto sin confirmación explícita.
+
+## Incremento posterior — 2026-11-02
+
+### Cambios incorporados en `main`
+
+- La pantalla conversacional ya no introduce una espera fija de tres segundos ni genera eventos artificiales de pensamiento. El avance visible debe proceder de las herramientas reales.
+- El compositor incorpora un botón de envío reactivo al contenido del campo.
+- El avatar comunica los estados disponible, escuchando, analizando, protegiendo y alerta; el estado se deriva de la actividad y postura comunicadas por la aplicación.
+- El agente incorpora `analyze_domain`: requiere que el bosque local esté cargado y que digest/firma se verifiquen. El análisis conversacional se ejecuta en modo de solo lectura; no aplica reglas DNS automáticamente.
+- El agente incorpora `audit_device`, conectado al método nativo `checkHostileEnvironment`. Los errores de inspección se muestran como cobertura incompleta y los indicadores requieren revisión.
+- Bloqueo DNS, aislamiento de emergencia, purga criptográfica y cambios de VPN desde el chat exigen una segunda orden afirmativa que comience por `CONFIRMO`.
+- La purga criptográfica distingue éxito completo de resultado parcial cuando Android no confirma la limpieza de memoria de auditoría nativa.
+- README y roadmap aclaran que el parser SNI aún no se ejecuta en el flujo TUN y que el agente actual usa reglas más un clasificador de dominios; todavía no es un LLM generativo.
+
+### Validación pendiente de este incremento
+
+- El usuario confirmó una compilación correcta antes de estos cambios; esa confirmación no valida automáticamente el nuevo HEAD.
+- HEAD de `main` al registrar este incremento: `8a54bcfc3ccdeba5f243f980979a73632fe996b5`.
+- No hay una ejecución de GitHub Actions asociada a ese HEAD en la consulta de verificación; tampoco dispongo de acceso a la consola de Codemagic para confirmar una compilación nueva.
+- Ejecutar en Codemagic `flutter analyze`, todas las pruebas Dart/Flutter, las pruebas Python/C y la compilación Android. Después, validar en un dispositivo físico el consentimiento VPN, el escaneo nativo, las órdenes de confirmación, la auditoría de postura y el consumo de recursos.
+- No aprobar release hasta confirmar firma de producción y completar las pruebas físicas de red, IPv4/IPv6, DNS cifrado, reconexión y batería.
