@@ -1,6 +1,10 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+/// Visual states are driven by real application state, never by a decorative
+/// timer pretending that a security operation is running.
+enum AuraAvatarMode { available, listening, analyzing, protecting, alert }
+
 /// A lightweight animated identity for Aura. It is intentionally local:
 /// no remote image, network request, or additional package is required.
 class AuraAvatar extends StatefulWidget {
@@ -8,10 +12,17 @@ class AuraAvatar extends StatefulWidget {
     super.key,
     this.size = 112,
     this.isThinking = false,
+    this.mode = AuraAvatarMode.available,
   });
 
   final double size;
+
+  /// Backwards-compatible shorthand used by older screens and tests.
   final bool isThinking;
+  final AuraAvatarMode mode;
+
+  AuraAvatarMode get effectiveMode =>
+      isThinking ? AuraAvatarMode.analyzing : mode;
 
   @override
   State<AuraAvatar> createState() => _AuraAvatarState();
@@ -51,7 +62,13 @@ class _AuraAvatarState extends State<AuraAvatar>
     return Semantics(
       container: true,
       excludeSemantics: true,
-      label: widget.isThinking ? 'Aura está analizando' : 'Aura está disponible',
+      label: switch (widget.effectiveMode) {
+        AuraAvatarMode.available => 'Aura está disponible',
+        AuraAvatarMode.listening => 'Aura está escuchando',
+        AuraAvatarMode.analyzing => 'Aura está analizando',
+        AuraAvatarMode.protecting => 'Aura está protegiendo el dispositivo',
+        AuraAvatarMode.alert => 'Aura detectó una alerta de seguridad',
+      },
       image: true,
       child: SizedBox.square(
         dimension: widget.size,
@@ -60,7 +77,7 @@ class _AuraAvatarState extends State<AuraAvatar>
           builder: (context, child) => CustomPaint(
             painter: _AuraAvatarPainter(
               phase: _controller.value,
-              thinking: widget.isThinking,
+              mode: widget.effectiveMode,
             ),
             child: Center(
               child: Text(
@@ -85,22 +102,40 @@ class _AuraAvatarState extends State<AuraAvatar>
 }
 
 class _AuraAvatarPainter extends CustomPainter {
-  const _AuraAvatarPainter({required this.phase, required this.thinking});
+  const _AuraAvatarPainter({required this.phase, required this.mode});
 
   final double phase;
-  final bool thinking;
+  final AuraAvatarMode mode;
+
+  Color get _primaryColor => switch (mode) {
+        AuraAvatarMode.available => const Color(0xFF63E9FF),
+        AuraAvatarMode.listening => const Color(0xFF8B70FF),
+        AuraAvatarMode.analyzing => const Color(0xFF55DFFF),
+        AuraAvatarMode.protecting => const Color(0xFF4ADEA5),
+        AuraAvatarMode.alert => const Color(0xFFFF647C),
+      };
+
+  double get _motionMultiplier => switch (mode) {
+        AuraAvatarMode.available => 0.55,
+        AuraAvatarMode.listening => 0.9,
+        AuraAvatarMode.analyzing => 1.8,
+        AuraAvatarMode.protecting => 1.15,
+        AuraAvatarMode.alert => 1.45,
+      };
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.shortestSide * 0.34;
-    final pulse = 0.92 + 0.08 * math.sin(phase * math.pi * 2);
+    final pulseDepth = mode == AuraAvatarMode.alert ? 0.13 : 0.08;
+    final pulse = 0.92 + pulseDepth * math.sin(phase * math.pi * 2);
     final rotation = phase * math.pi * 2;
+    final primary = _primaryColor;
 
     final glow = Paint()
       ..shader = RadialGradient(
         colors: [
-          const Color(0xFF00D9FF).withValues(alpha: 0.24),
+          primary.withValues(alpha: mode == AuraAvatarMode.alert ? 0.32 : 0.24),
           const Color(0xFF6857FF).withValues(alpha: 0.12),
           Colors.transparent,
         ],
@@ -118,16 +153,18 @@ class _AuraAvatarPainter extends CustomPainter {
     final ringPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2
-      ..color = const Color(0xFF63E9FF).withValues(alpha: 0.55);
+      ..color = primary.withValues(alpha: 0.62);
     canvas.drawCircle(center, radius * (1.25 + 0.04 * math.sin(rotation)), ringPaint);
 
     final orbitPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0
-      ..color = const Color(0xFF9A80FF).withValues(alpha: 0.72);
+      ..color = (mode == AuraAvatarMode.alert
+          ? const Color(0xFFFF9AA9)
+          : const Color(0xFF9A80FF)).withValues(alpha: 0.72);
     canvas.save();
     canvas.translate(center.dx, center.dy);
-    canvas.rotate(rotation * (thinking ? 1.8 : 0.55));
+    canvas.rotate(rotation * _motionMultiplier);
     canvas.drawOval(
       Rect.fromCenter(center: Offset.zero, width: radius * 2.8, height: radius * 0.85),
       orbitPaint,
@@ -135,9 +172,9 @@ class _AuraAvatarPainter extends CustomPainter {
     canvas.restore();
 
     final nodePaint = Paint()
-      ..color = const Color(0xFF72F5FF)
+      ..color = primary
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
-    final nodeAngle = rotation * (thinking ? 2.0 : 0.7);
+    final nodeAngle = rotation * _motionMultiplier;
     final node = Offset(
       center.dx + math.cos(nodeAngle) * radius * 1.4,
       center.dy + math.sin(nodeAngle) * radius * 0.42,
@@ -147,5 +184,5 @@ class _AuraAvatarPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _AuraAvatarPainter oldDelegate) =>
-      oldDelegate.phase != phase || oldDelegate.thinking != thinking;
+      oldDelegate.phase != phase || oldDelegate.mode != mode;
 }
