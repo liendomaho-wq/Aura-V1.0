@@ -13,6 +13,7 @@ void main() {
     expect(intent.name, 'toggle_defenses');
     expect(intent.kind, AuraIntentKind.toggleDefenses);
     expect(intent.entities['activate'], isTrue);
+    expect(intent.entities['confirmed_by_user'], isNull);
     expect(intent.toEvent().kind, AgentEventKind.action);
   });
 
@@ -22,7 +23,18 @@ void main() {
     expect(intent.name, 'toggle_defenses');
     expect(intent.kind, AuraIntentKind.toggleDefenses);
     expect(intent.entities['activate'], isFalse);
+    expect(intent.entities['confirmed_by_user'], isNull);
     expect(intent.toEvent().kind, AgentEventKind.action);
+  });
+
+  test('confirmar activar defensas autoriza el cambio solicitado', () async {
+    final intent = await AuraIntentParser.parse(
+      'CONFIRMO activar las defensas',
+    );
+
+    expect(intent.name, 'toggle_defenses');
+    expect(intent.entities['activate'], isTrue);
+    expect(intent.entities['confirmed_by_user'], isTrue);
   });
 
   test('ayuda reconoce la orden de ayuda', () async {
