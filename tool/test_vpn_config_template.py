@@ -15,6 +15,26 @@ crypto_source = CRYPTO_SOURCE.read_text(encoding="utf-8")
 native_tunnel = NATIVE_TUNNEL.read_text(encoding="utf-8")
 native_socks = NATIVE_SOCKS.read_text(encoding="utf-8")
 manifest = Path("android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+CONSOLE_SOURCE = Path("lib/screens/aura_core_screen.dart").read_text(encoding="utf-8")
+
+# A failed or unavailable native authentication result must never unlock the console.
+auth_match = re.search(
+    r"Future<void> _authenticateConsole\(\) async \{(.*?)\n  \}",
+    CONSOLE_SOURCE,
+    re.DOTALL,
+)
+if not auth_match:
+    sys.exit("FAIL: could not locate AuraCoreScreen authentication lifecycle")
+auth_body = auth_match.group(1)
+if "controller.allowUnsecuredLocalSession()" in auth_body:
+    sys.exit("FAIL: console authentication failure must not silently create an unsecured session")
+if not re.search(
+    r"if \(authenticated\) \{.*?setState\(\(\) => _isAuthenticated = true\);.*?return;.*?setState\(\(\) => _isAuthenticated = false\);",
+    auth_body,
+    re.DOTALL,
+):
+    sys.exit("FAIL: console must remain locked unless native authentication returns true")
+print("PASS: console remains locked when native authentication is not confirmed.")
 
 # Aura communicates with remote services only over authenticated HTTPS.
 application_tag = re.search(r"<application\b([^>]*)>", manifest, re.DOTALL)
