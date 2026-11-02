@@ -243,6 +243,18 @@ Métricas del preset móvil sobre test holdout; precision, recall, F1 y FPR son 
 
 Matriz de confusión: `[[13381, 1606], [13916, 43800]]`.
 
+### Órdenes verificables del agente
+
+El agente puede invocar estas operaciones locales desde la conversación:
+
+- `AUDITAR DISPOSITIVO`: consulta el informe nativo de postura Android (root, emulador, instrumentación, overlays y servicios de accesibilidad). Los errores de comprobación se reportan como auditoría incompleta.
+- `ANALIZAR DOMINIO <host>`: usa el bosque local de 500 árboles solo después de validar la integridad y la firma del modelo. Es una clasificación heurística del nombre de dominio; no inspecciona el contenido web ni garantiza seguridad.
+- `ESCANEAR APLICACIONES`: consulta el escáner nativo de aplicaciones, permisos, servicios sensibles, firmas y señales heurísticas.
+- `BLOQUEAR <dominio>`: solicita una regla DNS local. Para ejecutarla se requiere una segunda orden afirmativa que comience con `CONFIRMO`.
+- `CONFIRMO AISLAMIENTO DE EMERGENCIA`, `CONFIRMO PURGA CRIPTOGRÁFICA` y `CONFIRMO ACTIVAR/DESACTIVAR DEFENSAS`: requieren confirmación explícita en un segundo mensaje.
+
+El parser conversacional sigue siendo determinista y basado en reglas; el bosque de decisión es un clasificador de dominios, no un modelo generativo. La integración de un LLM local o remoto permanece pendiente y no se sustituye por respuestas fingidas.
+
 ### Rendimiento en dispositivo
 
 Pendiente de medición en un dispositivo Android real; no se publican cifras de dispositivo hasta ejecutar el benchmark allí.
