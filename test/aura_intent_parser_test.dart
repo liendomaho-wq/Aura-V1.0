@@ -51,6 +51,15 @@ void main() {
     expect(intent.entities, isEmpty);
   });
 
+  test('auditar dispositivo invoca la herramienta nativa de postura Android', () async {
+    final intent = await AuraIntentParser.parse('audita el dispositivo');
+
+    expect(intent.name, 'audit_device');
+    expect(intent.kind, AuraIntentKind.auditDevice);
+    expect(intent.entities, isEmpty);
+    expect(intent.toEvent().kind, AgentEventKind.action);
+  });
+
   test('analizar un dominio invoca la herramienta del modelo local', () async {
     final intent = await AuraIntentParser.parse(
       'analiza el dominio example.org',
