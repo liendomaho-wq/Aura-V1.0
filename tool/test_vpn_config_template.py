@@ -398,3 +398,33 @@ if ".setContentText(contentText)" not in notification_builder:
     sys.exit("FAIL: VPN notification must render the live state summary")
 if ".setContentText(NOTIFICATION_TEXT)" in notification_builder:
     sys.exit("FAIL: VPN notification must not claim a fixed active state")
+
+# Underlay loss and failed metadata synchronization must stop forwarding while
+# preserving the full-route TUN; recovery must also restart a previously stopped
+# native worker when a physical network becomes available again.
+for required_fail_closed_guard in (
+    "val underlayUpdated = try",
+    "if (!underlayUpdated)",
+    "stopTunnelForwardingForNetworkFailure(",
+    "else if (vpnInterface != null && !panicIsolationActive)",
+    "recoverTunnelAfterNetworkChange()",
+    "TProxyService.TProxyStopService()",
+    "tunnelStarted = false",
+    "reportState(false, message)",
+):
+    if required_fail_closed_guard not in text:
+        sys.exit("FAIL: VPN underlay fail-closed lifecycle is missing " + required_fail_closed_guard)
+
+fail_closed = re.search(
+    r"private fun stopTunnelForwardingForNetworkFailure\(message: String\) \{(.*?)\n    \}",
+    text,
+    re.DOTALL,
+)
+if not fail_closed:
+    sys.exit("FAIL: VPN underlay failure must have a dedicated forwarding shutdown path")
+if "TProxyService.TProxyIsRunning()" not in fail_closed.group(1):
+    sys.exit("FAIL: forwarding shutdown must check native worker state")
+if "updateForegroundNotification()" not in fail_closed.group(1):
+    sys.exit("FAIL: degraded network state must be reflected in the VPN notification")
+
+print("PASS: VPN underlay loss stops native forwarding and recovery can restart from a stopped state.")
