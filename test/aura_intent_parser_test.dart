@@ -51,6 +51,17 @@ void main() {
     expect(intent.entities, isEmpty);
   });
 
+  test('analizar un dominio invoca la herramienta del modelo local', () async {
+    final intent = await AuraIntentParser.parse(
+      'analiza el dominio example.org',
+    );
+
+    expect(intent.name, 'analyze_domain');
+    expect(intent.kind, AuraIntentKind.analyzeDomain);
+    expect(intent.entities['domain'], 'example.org');
+    expect(intent.toEvent().kind, AgentEventKind.action);
+  });
+
   test('bloquear un dominio sigue usando block_domain', () async {
     final intent =
         await AuraIntentParser.parse('bloquea evil.example.com');
