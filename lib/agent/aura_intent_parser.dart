@@ -8,6 +8,7 @@ enum AuraIntentKind {
   cryptographicPurge,
   updateDefenses,
   scanApps,
+  analyzeDomain,
   greet,
   identity,
   capabilities,
@@ -46,6 +47,7 @@ class AuraIntent {
           AuraIntentKind.cryptographicPurge ||
           AuraIntentKind.updateDefenses ||
           AuraIntentKind.scanApps ||
+          AuraIntentKind.analyzeDomain ||
           AuraIntentKind.toggleDefenses => AgentEventKind.action,
           AuraIntentKind.greet ||
           AuraIntentKind.identity ||
@@ -112,6 +114,10 @@ class AuraIntentParser {
   );
   static final RegExp _helpCommand = RegExp(
     r'\b(ayuda|help|comandos|[oó]rdenes|que puedes hacer|qué puedes hacer)\b',
+    caseSensitive: false,
+  );
+  static final RegExp _analyzeDomainCommand = RegExp(
+    r'\\b(?:analiza|analizar|revisa|revisar|eval[uú]a|evaluar|comprueba|comprobar)\\s+(?:el\\s+)?(?:dominio|host|sitio|website)\\b',
     caseSensitive: false,
   );
   static final RegExp _scanAppsCommand = RegExp(
@@ -294,6 +300,13 @@ class AuraIntentParser {
         kind: AuraIntentKind.help,
         entities: <String, dynamic>{},
         confidence: 0.9,
+      );
+    } else if (_analyzeDomainCommand.hasMatch(text) && host != null) {
+      intent = AuraIntent(
+        name: 'analyze_domain',
+        kind: AuraIntentKind.analyzeDomain,
+        entities: <String, dynamic>{'domain': host},
+        confidence: 0.96,
       );
     } else if (_scanAppsCommand.hasMatch(text)) {
       intent = AuraIntent(
