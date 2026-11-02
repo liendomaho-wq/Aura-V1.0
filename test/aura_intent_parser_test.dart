@@ -111,6 +111,18 @@ void main() {
     expect(confirmation.entities['confirmed_by_user'], isTrue);
   });
 
+  test('reanudar la red requiere confirmación explícita', () async {
+    final request = await AuraIntentParser.parse('reanudar la red');
+    expect(request.name, 'resume_network');
+    expect(request.entities['confirmed_by_user'], isNull);
+
+    final confirmation = await AuraIntentParser.parse(
+      'CONFIRMO reanudar la red',
+    );
+    expect(confirmation.name, 'resume_network');
+    expect(confirmation.entities['confirmed_by_user'], isTrue);
+  });
+
   test('purga criptográfica requiere confirmación explícita', () async {
     final request = await AuraIntentParser.parse('purga criptográfica');
     expect(request.entities['confirmed_by_user'], isNull);
