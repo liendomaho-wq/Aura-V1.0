@@ -45,6 +45,7 @@
 ### Etapa 2 — agente ejecutor
 - [x] Inventario tipado básico de herramientas y esquemas de entrada/salida.
 - [x] Exponer el escáner nativo de aplicaciones como herramienta `scan_apps` del agente, con informe estructurado y límites explícitos de interpretación.
+- [x] Exponer `checkHostileEnvironment` como `audit_device`, distinguiendo auditoría incompleta, indicadores que requieren revisión y ausencia de indicadores observados sin afirmar seguridad absoluta.
 - [x] Reconocer en lenguaje natural órdenes para analizar/escanea/revisar aplicaciones y reflejar la acción en el historial.
 - [x] Añadir la orden "analizar dominio <host>" conectada al bosque local de 500 árboles; exige modelo y firma verificados, no bloquea automáticamente y expone límites del análisis.
 - [x] Exigir una segunda orden afirmativa que comience por "CONFIRMO" para bloqueo de dominios, aislamiento de emergencia y purga criptográfica; una frase negada no concede autorización.
