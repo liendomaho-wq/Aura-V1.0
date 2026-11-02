@@ -387,7 +387,7 @@ print("PASS: virtual-device path heuristics are contextual and cannot create fal
 
 # VPN notification must display the current protection state, not a fixed success message.
 notification_match = re.search(
-    r"private fun createNotification\\(.*?\\n    \\}",
+    r"private fun createNotification\(.*?\n    \}",
     text,
     re.DOTALL,
 )
@@ -435,7 +435,7 @@ NATIVE_TUNNEL_SOURCE = Path(
     "android/app/src/main/cpp/hev-socks5-tunnel/src/hev-socks5-tunnel.c"
 ).read_text(encoding="utf-8")
 packet_filter = re.search(
-    r"static int\\npacket_is_encrypted_dns\\s*\\(.*?\\n}\\n",
+    r"static int\npacket_is_encrypted_dns\s*\(.*?\n}\n",
     NATIVE_TUNNEL_SOURCE,
     re.DOTALL,
 )
@@ -451,7 +451,7 @@ for packet_guard in (
     if packet_guard not in packet_filter.group(0):
         sys.exit("FAIL: encrypted-DNS packet parser is missing " + packet_guard)
 ingress = re.search(
-    r"static void\\nlwip_io_task_entry\\s*\\(.*?\\n}\\n",
+    r"static void\nlwip_io_task_entry\s*\(.*?\n}\n",
     NATIVE_TUNNEL_SOURCE,
     re.DOTALL,
 )
@@ -461,7 +461,7 @@ ingress_body = ingress.group(0)
 if "packet_is_encrypted_dns (buf" not in ingress_body:
     sys.exit("FAIL: encrypted-DNS classifier is not called from TUN ingress")
 if not re.search(
-    r"if \\(packet_is_encrypted_dns \\(buf,.*?\\)\\) \\{.*?pbuf_free \\(buf\\);\\s*continue;",
+    r"if \(packet_is_encrypted_dns \(buf,.*?\)\) \{.*?pbuf_free \(buf\);\s*continue;",
     ingress_body,
     re.DOTALL,
 ):
@@ -472,7 +472,7 @@ print("PASS: TUN ingress drops recognized DoT, DoQ and known-resolver UDP/443 tr
 if "Iniciando motor de red local; verificando interfaz y forwarding." not in text:
     sys.exit("FAIL: foreground notification must not claim protection before the tunnel is verified")
 start_tunnel = re.search(
-    r"private fun startTunnel\\(\\) \\{(.*?)\\n    @Synchronized",
+    r"private fun startTunnel\(\) \{(.*?)\n    @Synchronized",
     text,
     re.DOTALL,
 )
