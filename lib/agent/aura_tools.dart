@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import '../ai_brain.dart';
+import '../providers/aura_state_provider.dart';
 import '../secure_vault.dart';
 import 'aura_crypto_layer.dart';
 
@@ -52,6 +53,9 @@ abstract class AuraTools {
   static Future<ToolResult> execute(
     ToolStep step, {
     void Function(String message)? onProgress,
+    AuraStateProvider? stateProvider,
+    AuraToolStartedCallback? onToolStarted,
+    AuraToolCompletedCallback? onToolCompleted,
   }) async {
     try {
       switch (step.name) {
@@ -198,7 +202,11 @@ abstract class AuraTools {
             );
           }
           final normalizedDomain = domain.toLowerCase();
-          final brain = AuraAIBrain();
+          final brain = AuraAIBrain(
+            stateProvider: stateProvider,
+            onToolStarted: onToolStarted,
+            onToolCompleted: onToolCompleted,
+          );
           final modelAvailable = await brain.preloadModel();
           if (!modelAvailable) {
             return const ToolResult(
