@@ -29,7 +29,7 @@ workflows:
           set -euo pipefail
           if [[ -n "${AURA_KEYSTORE_FILE:-}" && -z "${AURA_KEYSTORE_PATH:-}" ]]; then
             if [[ -f "$AURA_KEYSTORE_FILE" && -n "${CM_ENV:-}" ]]; then
-              printf 'AURA_KEYSTORE_PATH=%s\\n' "$AURA_KEYSTORE_FILE" >> "$CM_ENV"
+              printf 'AURA_KEYSTORE_PATH=%s\n' "$AURA_KEYSTORE_FILE" >> "$CM_ENV"
             else
               echo '[AURA-PREFLIGHT][WARNING] AURA_KEYSTORE_FILE missing. Falling back to debug signing.'
             fi
