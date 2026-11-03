@@ -102,3 +102,11 @@ No se debe distribuir como protección de producción hasta que CI esté verde, 
 - Se añadió una prueba unitaria para verificar que una acción exitosa no borra un estado crítico o de advertencia.
 
 **Estado:** cambios y regresión guardados en `main`; falta ejecutar la suite Flutter en CI/CodeMagic.
+
+## Incremento de autorización del agente — 2026-11-02
+
+- El parser ya no acepta una confirmación afirmativa si la misma frase contiene negación o cancelación posterior (`no`, `nunca`, `jamás`, `rechazo`, `cancelo`, etc.).
+- Se añadieron regresiones para frases como `CONFIRMO no activar las defensas`, `CONFIRMO que no quiero bloquear...` y `CONFIRMO que no deseo la purga criptográfica`.
+- Las órdenes sensibles siguen exigiendo una confirmación explícita; si la frase es ambigua o negativa, la acción no recibe `confirmed_by_user`.
+
+**Estado:** cambios y pruebas guardados en `main`; pendientes de ejecución en Flutter/CodeMagic.
