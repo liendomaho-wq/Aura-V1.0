@@ -691,15 +691,31 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                   ),
                 ),
                 const Expanded(
-                  child: Text(
-                    'Aura Mobile Defens',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: AuraTokens.textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.2,
-                    ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'AURA',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: AuraTokens.textPrimary,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 3.2,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'AGENTE LOCAL · PRIVADO',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: AuraTokens.accent,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 TextButton(
@@ -739,12 +755,28 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                 ),
               ],
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+            Container(
+              margin: const EdgeInsets.fromLTRB(14, 4, 14, 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: AuraTokens.accent.withValues(alpha: 0.20),
+                ),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AuraTokens.surface.withValues(alpha: 0.96),
+                    AuraTokens.surfaceAlt.withValues(alpha: 0.72),
+                    AuraTokens.accentViolet.withValues(alpha: 0.10),
+                  ],
+                ),
+              ),
               child: Row(
                 children: [
                   AuraAvatar(
-                    size: 100,
+                    size: 112,
                     mode: _isListening
                         ? AuraAvatarMode.listening
                         : _isRunning
@@ -776,7 +808,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                                           : 'Lista para recibir instrucciones y ejecutar comprobaciones locales.',
                           style: const TextStyle(color: AuraTokens.accent, fontSize: 13, fontWeight: FontWeight.w500)),
                         const SizedBox(height: 8),
-                        Text('${state.blockedEvents} bloqueos confirmados en esta sesión',
+                        Text('${state.blockedEvents} eventos de seguridad registrados en esta sesión',
                           style: const TextStyle(color: AuraTokens.textMuted, fontSize: 10)),
                         const SizedBox(height: 3),
                         Text(
