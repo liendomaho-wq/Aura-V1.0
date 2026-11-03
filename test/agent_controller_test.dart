@@ -23,10 +23,47 @@ void main() {
     );
     expect(
       AgentController.resolveSecurityLevel(
-        <String, dynamic>{'ok': true, 'security_level': 'safe'},
+        <String, dynamic>{
+          'ok': true,
+          'security_level': 'warning',
+          'tool': 'analyze_domain',
+        },
         AuraSecurityLevel.critical,
       ),
+      AuraSecurityLevel.critical,
+    );
+    expect(
+      AgentController.resolveSecurityLevel(
+        <String, dynamic>{
+          'ok': true,
+          'security_level': 'safe',
+          'tool': 'analyze_domain',
+        },
+        AuraSecurityLevel.warning,
+      ),
+      AuraSecurityLevel.warning,
+    );
+    expect(
+      AgentController.resolveSecurityLevel(
+        <String, dynamic>{
+          'ok': true,
+          'security_level': 'safe',
+          'tool': 'audit_device',
+        },
+        AuraSecurityLevel.warning,
+      ),
       AuraSecurityLevel.safe,
+    );
+    expect(
+      AgentController.resolveSecurityLevel(
+        <String, dynamic>{
+          'ok': true,
+          'security_level': 'safe',
+          'tool': 'audit_device',
+        },
+        AuraSecurityLevel.critical,
+      ),
+      AuraSecurityLevel.critical,
     );
   });
 
