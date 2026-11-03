@@ -107,3 +107,14 @@
 - CodeMagic completó correctamente la compilación y las pruebas tras la corrección de SemanticsHandle, según confirmación del usuario el 2026-10-30.
 - La validación física de avatar, accesibilidad, batería, túnel, fugas DNS y cambios de red continúa pendiente.
 - La reconstrucción VPN de la rama `rebuild/vpn-from-zero` continúa separada hasta completar validación técnica; no se incorpora automáticamente a main por no disponer aún de una compilación y pruebas físicas confirmadas.
+
+### Incremento visual y de pruebas — 2026-11-02
+
+- [x] La identidad de la pantalla principal prioriza el nombre AURA y el rol de agente local, en lugar de presentar la app como un panel de seguridad genérico.
+- [x] El avatar ocupa el centro de la experiencia con un contenedor visual propio y fondo degradado midnight/cyan/violet.
+- [x] Se mantiene el estado del avatar derivado de la actividad real: disponible, escuchando, analizando, protegiendo o alerta.
+- [x] Se corrigieron los mocks de canal Android de seguridad en las pruebas widget de consola y transparencia.
+- [x] Se eliminó una duplicación accidental en la configuración de los mocks biométricos.
+- [ ] Ejecutar formato, análisis estático y pruebas Flutter sobre el HEAD actualizado.
+- [ ] Validar jerarquía visual, tamaños, accesibilidad y comportamiento con teclado en dispositivos físicos.
+- [ ] Diseñar una identidad/avatar de mayor expresividad que conserve renderizado local, consumo moderado y estados accesibles; no presentar animaciones como actividad de protección si no hay una operación real.
