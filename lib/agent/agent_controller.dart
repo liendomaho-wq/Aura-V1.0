@@ -172,13 +172,16 @@ class AgentController {
   ) =>
       switch (result['security_level']) {
         'critical' => AuraSecurityLevel.critical,
-        'warning' => AuraSecurityLevel.warning,
-        'safe' => AuraSecurityLevel.safe,
-        // A successful tool action is not a device-wide security audit.
-        // Preserve the last known posture unless a tool explicitly reports one.
+        'warning' => current == AuraSecurityLevel.critical
+            ? AuraSecurityLevel.critical
+            : AuraSecurityLevel.warning,
+        'safe' when result['tool'] == 'audit_device' &&
+            current != AuraSecurityLevel.critical =>
+          AuraSecurityLevel.safe,
+        // Only a complete device-posture audit may clear a warning. A successful
+        // domain/model/VPN action cannot certify the device or clear a critical alert.
         _ => current,
       };
-
 
   void bindSecurityState(AuraStateProvider state) {
     _securityState = state;
