@@ -248,6 +248,7 @@ abstract class AuraTools {
             data: <String, dynamic>{
               'ok': completed,
               'user_action_required': threatRequiresReview,
+              if (threatRequiresReview) 'security_level': 'warning',
               'tool': 'analyze_domain',
               'domain': normalizedDomain,
               'analysis_scope': 'local_domain_heuristics',
