@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 /// Visual states are driven by real application state, never by a decorative
 /// timer pretending that a security operation is running.
-enum AuraAvatarMode { available, listening, analyzing, protecting, alert }
+enum AuraAvatarMode { available, listening, analyzing, protecting, warning, alert }
 
 /// A lightweight animated identity for Aura. It is intentionally local:
 /// no remote image, network request, or additional package is required.
@@ -67,6 +67,7 @@ class _AuraAvatarState extends State<AuraAvatar>
         AuraAvatarMode.listening => 'Aura está escuchando',
         AuraAvatarMode.analyzing => 'Aura está analizando',
         AuraAvatarMode.protecting => 'Aura está protegiendo el dispositivo',
+        AuraAvatarMode.warning => 'Aura detectó señales que requieren atención',
         AuraAvatarMode.alert => 'Aura detectó una alerta de seguridad',
       },
       image: true,
@@ -97,6 +98,7 @@ class _AuraAvatarPainter extends CustomPainter {
         AuraAvatarMode.listening => const Color(0xFF8B70FF),
         AuraAvatarMode.analyzing => const Color(0xFF55DFFF),
         AuraAvatarMode.protecting => const Color(0xFF4ADEA5),
+        AuraAvatarMode.warning => const Color(0xFFFFC857),
         AuraAvatarMode.alert => const Color(0xFFFF647C),
       };
 
@@ -105,6 +107,7 @@ class _AuraAvatarPainter extends CustomPainter {
         AuraAvatarMode.listening => 0.9,
         AuraAvatarMode.analyzing => 1.8,
         AuraAvatarMode.protecting => 1.15,
+        AuraAvatarMode.warning => 0.85,
         AuraAvatarMode.alert => 1.45,
       };
 
