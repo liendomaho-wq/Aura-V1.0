@@ -166,6 +166,20 @@ class AgentController {
         (count, variants) => count + variants.length,
       );
 
+  static AuraSecurityLevel resolveSecurityLevel(
+    Map<String, dynamic> result,
+    AuraSecurityLevel current,
+  ) =>
+      switch (result['security_level']) {
+        'critical' => AuraSecurityLevel.critical,
+        'warning' => AuraSecurityLevel.warning,
+        'safe' => AuraSecurityLevel.safe,
+        // A successful tool action is not a device-wide security audit.
+        // Preserve the last known posture unless a tool explicitly reports one.
+        _ => current,
+      };
+
+
   void bindSecurityState(AuraStateProvider state) {
     _securityState = state;
     if (history.any(
@@ -489,14 +503,12 @@ class AgentController {
         _securityState?.clearTelemetryHistory();
       }
       final userActionRequired = result.data['user_action_required'] == true;
-      final securityLevel = switch (result.data['security_level']) {
-        'critical' => AuraSecurityLevel.critical,
-        'warning' => AuraSecurityLevel.warning,
-        'safe' => AuraSecurityLevel.safe,
-        _ => succeeded && !userActionRequired
-            ? AuraSecurityLevel.safe
-            : AuraSecurityLevel.warning,
-      };
+      final currentSecurityLevel =
+          _securityState?.securityLevel ?? AuraSecurityLevel.warning;
+      final securityLevel = resolveSecurityLevel(
+        result.data,
+        currentSecurityLevel,
+      );
       _securityState?.setSecurityLevel(securityLevel);
       _emit(
         AgentEvent(
