@@ -296,7 +296,7 @@ class AuraIntentParser {
         name: 'resume_network',
         kind: AuraIntentKind.resumeNetwork,
         entities: <String, dynamic>{
-          if (_explicitConfirmationCommand.hasMatch(text))
+          if (_hasExplicitConfirmation(text))
             'confirmed_by_user': true,
         },
         confidence: 0.96,
@@ -306,7 +306,7 @@ class AuraIntentParser {
         name: 'cryptographic_purge',
         kind: AuraIntentKind.cryptographicPurge,
         entities: <String, dynamic>{
-          if (_explicitConfirmationCommand.hasMatch(text))
+          if (_hasExplicitConfirmation(text))
             'confirmed_by_user': true,
         },
         confidence: 0.96,
@@ -317,7 +317,7 @@ class AuraIntentParser {
         kind: AuraIntentKind.toggleDefenses,
         entities: <String, dynamic>{
           'activate': true,
-          if (_explicitConfirmationCommand.hasMatch(text))
+          if (_hasExplicitConfirmation(text))
             'confirmed_by_user': true,
         },
         confidence: 0.96,
@@ -328,7 +328,7 @@ class AuraIntentParser {
         kind: AuraIntentKind.toggleDefenses,
         entities: <String, dynamic>{
           'activate': false,
-          if (_explicitConfirmationCommand.hasMatch(text))
+          if (_hasExplicitConfirmation(text))
             'confirmed_by_user': true,
         },
         confidence: 0.96,
@@ -374,7 +374,7 @@ class AuraIntentParser {
         kind: AuraIntentKind.block,
         entities: <String, dynamic>{
           'domain': host,
-          if (_explicitConfirmationCommand.hasMatch(text))
+          if (_hasExplicitConfirmation(text))
             'confirmed_by_user': true,
         },
         confidence: 0.96,
@@ -386,7 +386,7 @@ class AuraIntentParser {
         kind: AuraIntentKind.isolate,
         entities: <String, dynamic>{
           if (packageName != null) 'package_name': packageName,
-          if (_explicitConfirmationCommand.hasMatch(text))
+          if (_hasExplicitConfirmation(text))
             'confirmed_by_user': true,
         },
         confidence: packageName == null ? 0.62 : 0.96,
