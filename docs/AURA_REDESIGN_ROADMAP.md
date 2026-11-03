@@ -117,4 +117,4 @@
 - [x] Se eliminó una duplicación accidental en la configuración de los mocks biométricos.
 - [ ] Ejecutar formato, análisis estático y pruebas Flutter sobre el HEAD actualizado.
 - [ ] Validar jerarquía visual, tamaños, accesibilidad y comportamiento con teclado en dispositivos físicos.
-- [ ] Diseñar una identidad/avatar de mayor expresividad que conserve renderizado local, consumo moderado y estados accesibles; no presentar animaciones como actividad de protección si no hay una operación real.
+- [x] Dar al avatar una expresión facial abstracta y luminosa mediante CustomPainter local, sin imágenes remotas ni dependencias adicionales; conservar estados accesibles y no presentar la animación como actividad de protección real.
