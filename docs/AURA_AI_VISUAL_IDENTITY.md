@@ -29,6 +29,7 @@ El avatar se dibuja localmente con Flutter `CustomPainter`, sin cargar imágenes
 | Escuchando | El reconocimiento de voz está activo | Violeta, órbita más dinámica |
 | Analizando | Una instrucción o herramienta está ejecutándose | Cyan, movimiento más rápido |
 | Protegiendo | Android confirma que la defensa local está activa | Verde |
+| Advertencia | La postura del dispositivo requiere revisión, sin ser crítica | Ámbar |
 | Alerta | La postura o el motor informa una señal de advertencia/crítica | Coral |
 
 La animación solo comunica el estado que la app conoce. No representa progreso ficticio ni acredita por sí misma que el dispositivo esté protegido. La preferencia Android de reducir animaciones detiene el movimiento.
