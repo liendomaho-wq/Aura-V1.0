@@ -76,24 +76,9 @@ class _AuraAvatarState extends State<AuraAvatar>
           animation: _controller,
           builder: (context, child) => CustomPaint(
             painter: _AuraAvatarPainter(
-              phase: _controller.value,
-              mode: widget.effectiveMode,
-            ),
-            child: Center(
-              child: Text(
-                'A',
-                style: TextStyle(
-                  fontSize: widget.size * 0.38,
-                  fontWeight: FontWeight.w200,
-                  letterSpacing: -3,
-                  color: Colors.white.withValues(alpha: 0.96),
-                  shadows: const [
-                    Shadow(color: Color(0xFF00D9FF), blurRadius: 18),
-                    Shadow(color: Color(0xFF765BFF), blurRadius: 28),
-                  ],
-                ),
-              ),
-            ),
+            phase: _controller.value,
+            mode: widget.effectiveMode,
+          ),
           ),
         ),
       ),
@@ -180,6 +165,52 @@ class _AuraAvatarPainter extends CustomPainter {
       center.dy + math.sin(nodeAngle) * radius * 0.42,
     );
     canvas.drawCircle(node, size.shortestSide * 0.035, nodePaint);
+
+    // Give Aura a recognizable, expressive presence without relying on a
+    // remote image or a decorative human photo. Facial motion is tied to the
+    // same real activity mode and remains static when reduced motion is set.
+    final faceCenter = Offset(center.dx, center.dy + radius * 0.015);
+    final eyeGlow = Paint()
+      ..color = primary.withValues(alpha: 0.42)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
+    final eyePaint = Paint()
+      ..color = const Color(0xFFEAFBFF).withValues(alpha: 0.96);
+    final eyeCore = Paint()
+      ..color = primary.withValues(alpha: 0.98);
+    final blink = 0.82 + 0.18 * (0.5 + 0.5 * math.sin(rotation * 2.0));
+    for (final direction in const [-1.0, 1.0]) {
+      final eye = Offset(
+        faceCenter.dx + direction * radius * 0.31,
+        faceCenter.dy - radius * 0.07,
+      );
+      final eyeRect = Rect.fromCenter(
+        center: eye,
+        width: radius * 0.19,
+        height: radius * 0.30 * blink,
+      );
+      canvas.drawOval(eyeRect.inflate(radius * 0.08), eyeGlow);
+      canvas.drawOval(eyeRect, eyePaint);
+      canvas.drawCircle(
+        Offset(eye.dx, eye.dy + radius * 0.015),
+        radius * 0.055,
+        eyeCore,
+      );
+    }
+
+    final mouthPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = math.max(1.4, radius * 0.035)
+      ..strokeCap = StrokeCap.round
+      ..color = primary.withValues(alpha: 0.92);
+    final mouth = Path()
+      ..moveTo(faceCenter.dx - radius * 0.22, faceCenter.dy + radius * 0.24)
+      ..quadraticBezierTo(
+        faceCenter.dx,
+        faceCenter.dy + radius * (mode == AuraAvatarMode.alert ? 0.19 : 0.38),
+        faceCenter.dx + radius * 0.22,
+        faceCenter.dy + radius * 0.24,
+      );
+    canvas.drawPath(mouth, mouthPaint);
   }
 
   @override
