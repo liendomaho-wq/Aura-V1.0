@@ -45,6 +45,7 @@ jobs:
         run: |
           python3 tool/test_vpn_config_template.py
           python3 tool/test_aura_sni_firewall.py
+          python3 tool/test_release_signing_policy.py
 
       - name: Static analysis
         run: flutter analyze --no-pub
