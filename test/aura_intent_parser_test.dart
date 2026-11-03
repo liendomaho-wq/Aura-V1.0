@@ -37,6 +37,26 @@ void main() {
     expect(intent.entities['confirmed_by_user'], isTrue);
   });
 
+  test('una confirmación seguida de una negación no autoriza acciones', () async {
+    final defense = await AuraIntentParser.parse(
+      'CONFIRMO no activar las defensas',
+    );
+    expect(defense.name, 'toggle_defenses');
+    expect(defense.entities['confirmed_by_user'], isNull);
+
+    final block = await AuraIntentParser.parse(
+      'CONFIRMO que no quiero bloquear evil.example.com',
+    );
+    expect(block.name, 'block_domain');
+    expect(block.entities['confirmed_by_user'], isNull);
+
+    final purge = await AuraIntentParser.parse(
+      'CONFIRMO que no deseo la purga criptográfica',
+    );
+    expect(purge.name, 'cryptographic_purge');
+    expect(purge.entities['confirmed_by_user'], isNull);
+  });
+
   test('ayuda reconoce la orden de ayuda', () async {
     final intent = await AuraIntentParser.parse('Qué puedes hacer?');
 
