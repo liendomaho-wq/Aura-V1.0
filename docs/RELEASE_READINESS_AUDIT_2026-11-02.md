@@ -92,3 +92,13 @@ No se debe distribuir como protección de producción hasta que CI esté verde, 
 - Se añadió `tool/test_release_signing_policy.py` a GitHub Actions y CodeMagic para evitar regresiones estáticas de esta política.
 
 **Estado:** cambios guardados en `main`; la nueva prueba y la compilación aún deben ejecutarse en CI/CodeMagic. El build de prueba con firma DEBUG sigue siendo posible y debe tratarse como artefacto de testing, nunca como release de distribución.
+
+## Incremento de integridad del estado del agente — 2026-11-02
+
+- Una acción completada ya no convierte automáticamente la postura global del dispositivo en `safe`.
+- El controlador conserva el último nivel de seguridad cuando la herramienta no devuelve un nivel explícito.
+- La activación VPN y el análisis aislado de un dominio ya no limpian por sí solos una alerta de postura.
+- Solo una herramienta que emite explícitamente un resultado de postura puede cambiar el nivel global; por ejemplo, `audit_device` devuelve su resultado de comprobación y sus limitaciones.
+- Se añadió una prueba unitaria para verificar que una acción exitosa no borra un estado crítico o de advertencia.
+
+**Estado:** cambios y regresión guardados en `main`; falta ejecutar la suite Flutter en CI/CodeMagic.
