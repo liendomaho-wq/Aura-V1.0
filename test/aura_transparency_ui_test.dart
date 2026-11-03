@@ -68,7 +68,7 @@ void main() {
       }
       return true;
     });
-    messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);    messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);
+    messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);
     messenger.setMockMethodCallHandler(telemetryChannel, (call) async {
       if (call.method == 'domainTelemetryStatus') {
         return <String, Object>{
