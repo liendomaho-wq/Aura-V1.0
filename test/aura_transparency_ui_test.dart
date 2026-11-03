@@ -117,7 +117,10 @@ void main() {
     await tester.scrollUntilVisible(
       find.text('¿Por qué se bloqueó?'),
       200,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: find.descendant(
+        of: find.byKey(const ValueKey<String>('aura-event-list')),
+        matching: find.byType(Scrollable),
+      ),
     );
     expect(find.text('¿Por qué se bloqueó?'), findsOneWidget);
     final threatCard = find.byKey(
