@@ -25,6 +25,7 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     const shieldChannel = MethodChannel('com.ciberdefensa.aura/shield');
     const telemetryChannel = MethodChannel('com.ciberdefensa.aura/telemetry');
+    const securityChannel = MethodChannel('com.ciberdefensa.aura/security');
     const biometricChannel = MethodChannel('com.aura.cyberdefense/biometrics');
     const networkEventChannel =
         EventChannel('com.aura.cyberdefense/network_stream');
@@ -36,11 +37,20 @@ void main() {
     addTearDown(() {
       messenger.setMockMethodCallHandler(shieldChannel, null);
       messenger.setMockMethodCallHandler(telemetryChannel, null);
+      messenger.setMockMethodCallHandler(securityChannel, null);
       messenger.setMockMethodCallHandler(biometricChannel, null);
       messenger.setMockStreamHandler(networkEventChannel, null);
       state.dispose();
     });
-    messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);
+    messenger.setMockMethodCallHandler(securityChannel, (call) async {
+      if (call.method == 'checkHostileEnvironment') {
+        return <String, Object>{
+          'untrustedAccessibilityServicePackages': <String>[],
+        };
+      }
+      return true;
+    });
+    messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);    messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);
     messenger.setMockMethodCallHandler(shieldChannel, (call) async {
       calls.add(call.method);
       return true;
