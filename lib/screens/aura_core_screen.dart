@@ -706,7 +706,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                       ),
                       SizedBox(height: 2),
                       Text(
-                        'AGENTE LOCAL · PRIVADO',
+                        'AGENTE LOCAL · ANDROID',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: AuraTokens.accent,
@@ -808,7 +808,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                                           : 'Lista para recibir instrucciones y ejecutar comprobaciones locales.',
                           style: const TextStyle(color: AuraTokens.accent, fontSize: 13, fontWeight: FontWeight.w500)),
                         const SizedBox(height: 8),
-                        Text('${state.blockedEvents} eventos de seguridad registrados en esta sesión',
+                        Text('${state.blockedEvents} bloqueos confirmados en esta sesión',
                           style: const TextStyle(color: AuraTokens.textMuted, fontSize: 10)),
                         const SizedBox(height: 3),
                         Text(
