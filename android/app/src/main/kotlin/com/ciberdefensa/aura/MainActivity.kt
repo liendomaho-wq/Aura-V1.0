@@ -915,9 +915,11 @@ class MainActivity: FlutterFragmentActivity() {
 
                 "stopShield" -> {
                     val intent = Intent(this, AuraVpnService::class.java)
-                    stopService(intent)
+                    val stopAccepted = stopService(intent)
                     stopService(Intent(this, AuraNotificationService::class.java))
-                    result.success(true)
+                    // Do not report a successful stop when Android had no running
+                    // VPN service to stop; Dart must keep the state conservative.
+                    result.success(stopAccepted)
                 }
 
                 "getLatestBlockedIps" -> {
