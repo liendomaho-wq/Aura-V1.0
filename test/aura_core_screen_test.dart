@@ -50,7 +50,7 @@ void main() {
       }
       return true;
     });
-    messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);    messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);
+    messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);
     messenger.setMockMethodCallHandler(shieldChannel, (call) async {
       calls.add(call.method);
       return true;
