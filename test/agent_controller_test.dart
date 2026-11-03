@@ -100,10 +100,10 @@ void main() {
 
   test('help devuelve exactamente la lista de órdenes solicitada', () async {
     const expected = 'ÓRDENES DISPONIBLES — ACTIVAR DEFENSAS · '
-        'DESACTIVAR DEFENSAS · BLOQUEAR <dominio> · AISLAR <paquete> · '
-        'AISLAMIENTO DE EMERGENCIA · REANUDAR LA RED · ACTUALIZAR DEFENSAS · '
-        'AUDITAR DISPOSITIVO · ESCANEAR APLICACIONES · ANALIZAR DOMINIO <host> · ESTADO · PURGA CRIPTOGRÁFICA. '
-        'Para confirmar cambios de VPN, bloqueos, aislamiento o purga, inicia una segunda orden con CONFIRMO.';
+        'DESACTIVAR DEFENSAS · BLOQUEAR <dominio> · REVISAR APP <paquete> · '
+        'AISLAMIENTO DE EMERGENCIA · REANUDAR LA RED · ACTUALIZAR '
+        'DEFENSAS · AUDITAR DISPOSITIVO · ESCANEAR APLICACIONES · ANALIZAR DOMINIO <host> · ESTADO · PURGA CRIPTOGRÁFICA. '
+        'REVISAR APP solo abre Ajustes de Android; no aísla automáticamente otras apps. Para confirmar cambios de VPN, bloqueos, revisión de apps o purga, inicia una segunda orden con CONFIRMO.';
     final controller = AgentController.instance;
     final previousLength = controller.history.length;
 
