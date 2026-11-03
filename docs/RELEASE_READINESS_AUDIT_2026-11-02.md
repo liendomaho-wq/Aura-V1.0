@@ -82,3 +82,13 @@ No se debe distribuir como protección de producción hasta que CI esté verde, 
 - No hay una ejecución de GitHub Actions asociada a ese HEAD en la consulta de verificación; tampoco dispongo de acceso a la consola de Codemagic para confirmar una compilación nueva.
 - Ejecutar en Codemagic `flutter analyze`, todas las pruebas Dart/Flutter, las pruebas Python/C y la compilación Android. Después, validar en un dispositivo físico el consentimiento VPN, el escaneo nativo, las órdenes de confirmación, la auditoría de postura y el consumo de recursos.
 - No aprobar release hasta confirmar firma de producción y completar las pruebas físicas de red, IPv4/IPv6, DNS cifrado, reconexión y batería.
+
+## Incremento de firma Android — 2026-11-02
+
+- Gradle ya no permite usar la firma DEBUG para un build `release` por ausencia de credenciales, salvo que `AURA_ALLOW_DEBUG_SIGNING=true` se establezca explícitamente para un build de prueba.
+- `tool/compile_aura.sh` establece esa autorización explícita únicamente en su ruta de fallback de pruebas; si `AURA_REQUIRE_RELEASE_SIGNING=true`, el script falla antes de compilar sin credenciales de producción.
+- La tarea `printReleaseSigning` ahora rechaza variables de firma ausentes.
+- El workflow de release conserva `AURA_REQUIRE_RELEASE_SIGNING=true` tanto en compilación como en verificación.
+- Se añadió `tool/test_release_signing_policy.py` a GitHub Actions y CodeMagic para evitar regresiones estáticas de esta política.
+
+**Estado:** cambios guardados en `main`; la nueva prueba y la compilación aún deben ejecutarse en CI/CodeMagic. El build de prueba con firma DEBUG sigue siendo posible y debe tratarse como artefacto de testing, nunca como release de distribución.
