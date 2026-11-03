@@ -86,6 +86,18 @@ class AuraIntentParser {
     r'^\s*(?:sí[, ]+)?(?:confirmo|confirmar|autorizo|autoriza|apruebo|aprobar)\b',
     caseSensitive: false,
   );
+  static final RegExp _negatedConfirmationRemainder = RegExp(
+    r'\b(?:no|nunca|jam[aá]s|cancelar|cancelo|rechazo|deniego|anular|anulo)\b',
+    caseSensitive: false,
+  );
+
+  static bool _hasExplicitConfirmation(String text) {
+    final match = _explicitConfirmationCommand.firstMatch(text);
+    if (match == null) return false;
+    // A negation anywhere in the confirmation clause makes authorization
+    // ambiguous, so require the user to restate the affirmative instruction.
+    return !_negatedConfirmationRemainder.hasMatch(text.substring(match.end));
+  }
   static final RegExp _blockCommand = RegExp(
     r'\b(?:bloquea|bloquear|bloquee|bloqueo|block|blockear|deniega|denegar)\b',
     caseSensitive: false,
@@ -274,7 +286,7 @@ class AuraIntentParser {
         name: 'panic_isolation',
         kind: AuraIntentKind.panicIsolation,
         entities: <String, dynamic>{
-          if (_explicitConfirmationCommand.hasMatch(text))
+          if (_hasExplicitConfirmation(text))
             'confirmed_by_user': true,
         },
         confidence: 0.96,
