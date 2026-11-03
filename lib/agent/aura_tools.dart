@@ -248,7 +248,6 @@ abstract class AuraTools {
             data: <String, dynamic>{
               'ok': completed,
               'user_action_required': threatRequiresReview,
-              'security_level': threatRequiresReview ? 'warning' : 'safe',
               'tool': 'analyze_domain',
               'domain': normalizedDomain,
               'analysis_scope': 'local_domain_heuristics',
@@ -398,7 +397,7 @@ abstract class AuraTools {
                 : 'No se pudo restablecer el forwarding del túnel.',
             data: <String, dynamic>{
               'ok': resumed,
-              'security_level': resumed ? 'safe' : 'warning',
+              if (!resumed) 'security_level': 'warning',
             },
           );
         case 'cryptographic_purge':
@@ -507,7 +506,7 @@ abstract class AuraTools {
         data: <String, dynamic>{
           'ok': confirmed,
           if (confirmed) 'vpn_active': activate,
-          'security_level': confirmed && activate ? 'safe' : 'warning',
+          if (!confirmed) 'security_level': 'warning',
         },
       );
     } on PlatformException catch (error) {
