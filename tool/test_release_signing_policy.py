@@ -21,12 +21,12 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
             ROOT / "codemagic.yaml"
         ).read_text(encoding="utf-8")
 
-    def test_android_codemagic_workflow_uses_linux_runner(self):
+    def test_android_codemagic_workflow_uses_free_plan_macos_runner(self):
         self.assertRegex(
             self.codemagic_workflow,
-            re.compile(r"(?m)^\s*instance_type:\s*linux_x2\s*$"),
+            re.compile(r"(?m)^\\s*instance_type:\\s*mac_mini_m2\\s*$"),
         )
-        self.assertNotIn("mac_mini_m1", self.codemagic_workflow)
+        self.assertNotIn("linux_x2", self.codemagic_workflow)
 
     def test_gradle_requires_all_production_signing_values(self):
         for variable in (
