@@ -112,3 +112,10 @@ No se debe distribuir como protección de producción hasta que CI esté verde, 
 **Estado:** cambios y pruebas guardados en `main`; pendientes de ejecución en Flutter/CodeMagic.
 
 - La validación de negación se aplica ahora a todos los tipos de acción sensible: VPN, bloqueo de dominio, revisión de aplicaciones, aislamiento, reanudación y purga. Una frase afirmativa seguida de negación/cancelación no se convierte en consentimiento.
+
+## Ajuste del pipeline Android — 2026-11-03
+
+- El workflow de CodeMagic compila únicamente Android; ya no necesita un runner macOS.
+- Se cambió el runner a `linux_x2` y el límite de build a 90 minutos. Esto evita depender de la descarga del SDK Flutter macOS ARM que había agotado el timeout de 300 segundos en el entorno anterior y usa el tipo de máquina Linux que Codemagic recomienda para builds Android.
+- Se añadió una regresión estática para impedir que el workflow vuelva a seleccionar `mac_mini_m1`.
+- `linux_x2` requiere que el plan de Codemagic tenga billing habilitado. La configuración está guardada, pero la disponibilidad real del runner y el resultado del siguiente build deben confirmarse en Codemagic.
