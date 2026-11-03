@@ -1,9 +1,34 @@
 import 'package:aura_mobile_defens/agent/agent_controller.dart';
+import 'package:aura_mobile_defens/providers/aura_state_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('successful non-audit tools preserve the last device posture', () {
+    expect(
+      AgentController.resolveSecurityLevel(
+        <String, dynamic>{'ok': true},
+        AuraSecurityLevel.critical,
+      ),
+      AuraSecurityLevel.critical,
+    );
+    expect(
+      AgentController.resolveSecurityLevel(
+        <String, dynamic>{'ok': true},
+        AuraSecurityLevel.warning,
+      ),
+      AuraSecurityLevel.warning,
+    );
+    expect(
+      AgentController.resolveSecurityLevel(
+        <String, dynamic>{'ok': true, 'security_level': 'safe'},
+        AuraSecurityLevel.critical,
+      ),
+      AuraSecurityLevel.safe,
+    );
+  });
 
   test('missing native authentication channel fails closed', () async {
     const channel = MethodChannel('com.aura.cyberdefense/biometrics');
