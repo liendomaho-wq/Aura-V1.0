@@ -24,7 +24,7 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
     def test_android_codemagic_workflow_uses_free_plan_macos_runner(self):
         self.assertRegex(
             self.codemagic_workflow,
-            re.compile(r"(?m)^\\s*instance_type:\\s*mac_mini_m2\\s*$"),
+            re.compile(r"(?m)^\s*instance_type:\s*mac_mini_m2\s*$"),
         )
         self.assertNotIn("linux_x2", self.codemagic_workflow)
 
