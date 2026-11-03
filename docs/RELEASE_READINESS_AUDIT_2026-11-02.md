@@ -110,3 +110,5 @@ No se debe distribuir como protección de producción hasta que CI esté verde, 
 - Las órdenes sensibles siguen exigiendo una confirmación explícita; si la frase es ambigua o negativa, la acción no recibe `confirmed_by_user`.
 
 **Estado:** cambios y pruebas guardados en `main`; pendientes de ejecución en Flutter/CodeMagic.
+
+- La validación de negación se aplica ahora a todos los tipos de acción sensible: VPN, bloqueo de dominio, revisión de aplicaciones, aislamiento, reanudación y purga. Una frase afirmativa seguida de negación/cancelación no se convierte en consentimiento.
