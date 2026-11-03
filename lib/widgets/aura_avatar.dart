@@ -76,9 +76,9 @@ class _AuraAvatarState extends State<AuraAvatar>
           animation: _controller,
           builder: (context, child) => CustomPaint(
             painter: _AuraAvatarPainter(
-            phase: _controller.value,
-            mode: widget.effectiveMode,
-          ),
+              phase: _controller.value,
+              mode: widget.effectiveMode,
+            ),
           ),
         ),
       ),
