@@ -188,6 +188,20 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
+            body: AuraAvatar(size: 96, mode: AuraAvatarMode.warning),
+          ),
+        ),
+      );
+      expect(
+        find.bySemanticsLabel(
+          'Aura detectó señales que requieren atención',
+        ),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
             body: AuraAvatar(size: 96, mode: AuraAvatarMode.alert),
           ),
         ),
