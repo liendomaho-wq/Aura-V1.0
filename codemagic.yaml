@@ -2,8 +2,9 @@ workflows:
   android-build:
     name: Aura Android Release Pipeline
     max_build_duration: 90
-    # Android-only build: use Linux to avoid downloading the macOS ARM Flutter SDK.
-    instance_type: linux_x2
+    # macOS M2 is available on Codemagic's individual free plan.
+    # Linux X2 requires billing to be enabled.
+    instance_type: mac_mini_m2
     cache:
       cache_paths:
         - ~/.pub-cache
@@ -28,7 +29,7 @@ workflows:
           set -euo pipefail
           if [[ -n "${AURA_KEYSTORE_FILE:-}" && -z "${AURA_KEYSTORE_PATH:-}" ]]; then
             if [[ -f "$AURA_KEYSTORE_FILE" && -n "${CM_ENV:-}" ]]; then
-              printf 'AURA_KEYSTORE_PATH=%s\n' "$AURA_KEYSTORE_FILE" >> "$CM_ENV"
+              printf 'AURA_KEYSTORE_PATH=%s\\n' "$AURA_KEYSTORE_FILE" >> "$CM_ENV"
             else
               echo '[AURA-PREFLIGHT][WARNING] AURA_KEYSTORE_FILE missing. Falling back to debug signing.'
             fi
