@@ -101,6 +101,16 @@ void main() {
     expect(find.text('Hola, soy Aura.'), findsOneWidget);
     expect(find.byType(AuraAvatar), findsOneWidget);
     expect(find.textContaining('VPN local opcional'), findsOneWidget);
+
+    state.setSecurityLevel(AuraSecurityLevel.warning);
+    await tester.pump();
+    expect(
+      tester.widget<AuraAvatar>(find.byType(AuraAvatar)).effectiveMode,
+      AuraAvatarMode.warning,
+    );
+    state.setSecurityLevel(AuraSecurityLevel.safe);
+    await tester.pump();
+
     await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
     await _pumpAuraFrames(tester);
     expect(calls, <String>['startShield']);
