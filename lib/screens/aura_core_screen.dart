@@ -896,6 +896,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                                 (!_telemetryEndpointConfigured ? 1 : 0);
                         _scrollToLatest(events.length + leadingCardCount);
                         return ListView(
+                          key: const ValueKey<String>('aura-event-list'),
                           controller: _scrollController,
                           padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
                           children: [
