@@ -118,3 +118,5 @@
 - [ ] Ejecutar formato, análisis estático y pruebas Flutter sobre el HEAD actualizado.
 - [ ] Validar jerarquía visual, tamaños, accesibilidad y comportamiento con teclado en dispositivos físicos.
 - [x] Dar al avatar una expresión facial abstracta y luminosa mediante CustomPainter local, sin imágenes remotas ni dependencias adicionales; conservar estados accesibles y no presentar la animación como actividad de protección real.
+
+- [x] Distinguir visual y semánticamente una advertencia ámbar de una alerta crítica coral en el avatar; la postura warning ya no se representa como amenaza crítica.
