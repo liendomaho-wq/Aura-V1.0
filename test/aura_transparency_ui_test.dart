@@ -24,6 +24,7 @@ void main() {
     tester,
   ) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    const securityChannel = MethodChannel('com.ciberdefensa.aura/security');
     const biometricChannel = MethodChannel('com.aura.cyberdefense/biometrics');
     const telemetryChannel = MethodChannel('com.ciberdefensa.aura/telemetry');
     const networkEventChannel =
@@ -53,12 +54,21 @@ void main() {
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     addTearDown(() {
+      messenger.setMockMethodCallHandler(securityChannel, null);
       messenger.setMockMethodCallHandler(biometricChannel, null);
       messenger.setMockMethodCallHandler(telemetryChannel, null);
       messenger.setMockStreamHandler(networkEventChannel, null);
       state.dispose();
     });
-    messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);
+    messenger.setMockMethodCallHandler(securityChannel, (call) async {
+      if (call.method == 'checkHostileEnvironment') {
+        return <String, Object>{
+          'untrustedAccessibilityServicePackages': <String>[],
+        };
+      }
+      return true;
+    });
+    messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);    messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);
     messenger.setMockMethodCallHandler(telemetryChannel, (call) async {
       if (call.method == 'domainTelemetryStatus') {
         return <String, Object>{
