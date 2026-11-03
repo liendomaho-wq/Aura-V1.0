@@ -781,13 +781,15 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                         ? AuraAvatarMode.listening
                         : _isRunning
                             ? AuraAvatarMode.analyzing
-                            : state.securityLevel == AuraSecurityLevel.critical
-                        ? AuraAvatarMode.alert
-                        : state.securityLevel == AuraSecurityLevel.warning
-                            ? AuraAvatarMode.warning
-                            : state.isVpnActive
-                                ? AuraAvatarMode.protecting
-                                : AuraAvatarMode.available,
+                            : switch (state.securityLevel) {
+                                AuraSecurityLevel.critical =>
+                                  AuraAvatarMode.alert,
+                                AuraSecurityLevel.warning =>
+                                  AuraAvatarMode.warning,
+                                AuraSecurityLevel.safe => state.isVpnActive
+                                    ? AuraAvatarMode.protecting
+                                    : AuraAvatarMode.available,
+                              },
                   ),
                   const SizedBox(width: 16),
                   Expanded(
