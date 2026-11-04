@@ -155,6 +155,42 @@ void main() {
     expect(result.data['scan_status'], 'incomplete');
   });
 
+  test('scan_apps rejects an active-access count without matching evidence',
+      () async {
+    messenger.setMockMethodCallHandler(securityChannel, (call) async {
+      return <String, dynamic>{
+        'timestamp': 123,
+        'count': 0,
+        'applications': <dynamic>[],
+        'special_access_count': 1,
+        'active_special_access_count': 1,
+        'special_access': <dynamic>[
+          <String, dynamic>{
+            'package_name': 'com.example.app',
+            'access': 'OVERLAY',
+            'state': 'UNKNOWN',
+          },
+        ],
+        'app_provenance_count': 0,
+        'app_provenance': <dynamic>[],
+        'suspicious_app_count': 0,
+        'suspicious_apps': <dynamic>[],
+        'signature_issue_count': 0,
+        'signature_issues': <dynamic>[],
+        'obfuscated_app_count': 0,
+        'obfuscated_apps': <dynamic>[],
+      };
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(name: 'scan_apps', arguments: <String, dynamic>{}),
+    );
+
+    expect(result.data['ok'], isFalse);
+    expect(result.data['error'], 'invalid_scan_report');
+    expect(result.data['scan_status'], 'incomplete');
+  });
+
   test('toggle_defenses activa el VPN sin certificar la postura del dispositivo',
       () async {
     final calls = <String>[];
