@@ -114,13 +114,22 @@ void main() {
     }
     await _pumpAuraFrames(tester);
 
+    // Authentication and telemetry initialization are asynchronous. Wait
+    // for the authenticated console's event list instead of assuming eight
+    // frames are always enough on slower CI workers.
+    final eventList = find.byKey(
+      const ValueKey<String>('aura-event-list'),
+    );
+    for (var frame = 0; frame < 40 && eventList.evaluate().isEmpty; frame++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(eventList, findsOneWidget);
+    final verticalScrollables = find.byType(Scrollable);
+    expect(verticalScrollables, findsWidgets);
     await tester.scrollUntilVisible(
       find.text('¿Por qué se bloqueó?'),
       200,
-      scrollable: find.descendant(
-        of: find.byKey(const ValueKey<String>('aura-event-list')),
-        matching: find.byType(Scrollable),
-      ),
+      scrollable: verticalScrollables.first,
     );
     expect(find.text('¿Por qué se bloqueó?'), findsOneWidget);
     final threatCard = find.byKey(
