@@ -51,6 +51,7 @@
 - [x] Exigir una segunda orden afirmativa que comience por "CONFIRMO" para bloqueo de dominios, aislamiento de emergencia y purga criptográfica; una frase negada no concede autorización.
 - [x] Acotar el análisis DEX a 16 MiB por archivo y un máximo de ocho entradas DEX por aplicación para reducir riesgo de consumo excesivo ante APK anómalos.
 - [ ] Añadir cancelación, progreso granular y límites temporales al escaneo nativo de APK/Dex.
+- [x] Validar el contrato del informe `scan_apps`: contadores no negativos, listas tipadas, correspondencia entre contadores y evidencias, y conteo de accesos especiales realmente `ACTIVE`.
 - Política central de permisos y confirmaciones.
 - Plan de tareas con progreso, cancelación y recuperación.
 - Verificación post-acción y bitácora de resultados.
@@ -120,3 +121,12 @@
 - [x] Dar al avatar una expresión facial abstracta y luminosa mediante CustomPainter local, sin imágenes remotas ni dependencias adicionales; conservar estados accesibles y no presentar la animación como actividad de protección real.
 
 - [x] Distinguir visual y semánticamente una advertencia ámbar de una alerta crítica coral en el avatar; la postura warning ya no se representa como amenaza crítica.
+
+
+### Incremento de validación del escáner — 2026-11-04
+
+- El límite Dart de `scan_apps` ya no convierte campos nativos ausentes o malformados en contadores cero.
+- El informe se marca como incompleto si faltan colecciones, si sus elementos no son mapas, si los contadores no coinciden con la evidencia, si la marca temporal no es válida o si el total de accesos activos no coincide con las entradas cuyo estado nativo es `ACTIVE`.
+- Se añadieron pruebas de regresión para informes incompletos, contadores incoherentes y accesos especiales no confirmados.
+- Commits de implementación en `main`: `8363955`, `35809c6`, `a584c28`, `9a4a57f` y `dfaf4c9`.
+- **Validación pendiente:** ejecutar `flutter analyze`, `flutter test` y el build Android en CodeMagic sobre el HEAD actual. Esta corrección no convierte el escáner heurístico en detección garantizada de malware.
