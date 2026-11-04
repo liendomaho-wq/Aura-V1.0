@@ -157,9 +157,10 @@ abstract class AuraTools {
             final value = report[key];
             return value is int && value >= 0;
           });
-          final listsAreValid = countToListField.values.every(
-            (key) => report[key] is List,
-          );
+          final listsAreValid = countToListField.values.every((key) {
+            final value = report[key];
+            return value is List && value.every((entry) => entry is Map);
+          });
           final timestamp = report['timestamp'];
           final countsMatchLists = countsAreValid &&
               listsAreValid &&
@@ -171,10 +172,20 @@ abstract class AuraTools {
           final activeSpecialAccessCount =
               report['active_special_access_count'];
           final specialAccessCount = report['special_access_count'];
+          final confirmedActiveSpecialAccess = listsAreValid
+              ? (report['special_access'] as List)
+                  .where(
+                    (entry) =>
+                        (entry as Map)['state'] == 'ACTIVE',
+                  )
+                  .length
+              : -1;
           if (timestamp is! int ||
+              timestamp <= 0 ||
               !countsMatchLists ||
               activeSpecialAccessCount is! int ||
               activeSpecialAccessCount < 0 ||
+              activeSpecialAccessCount != confirmedActiveSpecialAccess ||
               activeSpecialAccessCount > (specialAccessCount as int)) {
             return const ToolResult(
               summary: 'Auditoría de aplicaciones incompleta: Android devolvió un informe ausente o incoherente. No se interpretará como cero aplicaciones ni cero riesgos.',
