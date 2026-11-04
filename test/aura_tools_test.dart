@@ -77,7 +77,12 @@ void main() {
           },
         ],
         'suspicious_app_count': 1,
-        'suspicious_apps': <dynamic>[],
+        'suspicious_apps': <dynamic>[
+          <String, dynamic>{
+            'package_name': 'com.example.app',
+            'app_name': 'Example App',
+          },
+        ],
         'signature_issue_count': 0,
         'signature_issues': <dynamic>[],
         'obfuscated_app_count': 0,
