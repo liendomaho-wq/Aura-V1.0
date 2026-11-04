@@ -145,19 +145,53 @@ abstract class AuraTools {
               data: <String, dynamic>{'ok': false, 'error': 'empty_scan_report'},
             );
           }
-          final activeServices = report['count'] is int ? report['count'] as int : 0;
-          final suspicious = report['suspicious_app_count'] is int
-              ? report['suspicious_app_count'] as int
-              : 0;
-          final activeSpecialAccess = report['active_special_access_count'] is int
-              ? report['active_special_access_count'] as int
-              : 0;
-          final signatureIssues = report['signature_issue_count'] is int
-              ? report['signature_issue_count'] as int
-              : 0;
-          final obfuscated = report['obfuscated_app_count'] is int
-              ? report['obfuscated_app_count'] as int
-              : 0;
+          const countToListField = <String, String>{
+            'count': 'applications',
+            'special_access_count': 'special_access',
+            'app_provenance_count': 'app_provenance',
+            'suspicious_app_count': 'suspicious_apps',
+            'signature_issue_count': 'signature_issues',
+            'obfuscated_app_count': 'obfuscated_apps',
+          };
+          final countsAreValid = countToListField.keys.every((key) {
+            final value = report[key];
+            return value is int && value >= 0;
+          });
+          final listsAreValid = countToListField.values.every(
+            (key) => report[key] is List,
+          );
+          final timestamp = report['timestamp'];
+          final countsMatchLists = countsAreValid &&
+              listsAreValid &&
+              countToListField.entries.every(
+                (entry) =>
+                    report[entry.key] ==
+                    (report[entry.value] as List).length,
+              );
+          final activeSpecialAccessCount =
+              report['active_special_access_count'];
+          final specialAccessCount = report['special_access_count'];
+          if (timestamp is! int ||
+              !countsMatchLists ||
+              activeSpecialAccessCount is! int ||
+              activeSpecialAccessCount < 0 ||
+              activeSpecialAccessCount > (specialAccessCount as int)) {
+            return const ToolResult(
+              summary: 'Auditoría de aplicaciones incompleta: Android devolvió un informe ausente o incoherente. No se interpretará como cero aplicaciones ni cero riesgos.',
+              data: <String, dynamic>{
+                'ok': false,
+                'error': 'invalid_scan_report',
+                'scan_status': 'incomplete',
+                'security_level': 'warning',
+                'tool': 'scan_apps',
+              },
+            );
+          }
+          final activeServices = report['count'] as int;
+          final suspicious = report['suspicious_app_count'] as int;
+          final activeSpecialAccess = activeSpecialAccessCount;
+          final signatureIssues = report['signature_issue_count'] as int;
+          final obfuscated = report['obfuscated_app_count'] as int;
           return ToolResult(
             summary: 'Escaneo local completado: $activeServices apps con servicios sensibles activos, $activeSpecialAccess accesos especiales confirmados, $suspicious con combinación de permisos de alto riesgo, $signatureIssues incidencias de firma y $obfuscated con indicadores de ofuscación. Son señales para revisar, no prueba de malware.',
             data: <String, dynamic>{
