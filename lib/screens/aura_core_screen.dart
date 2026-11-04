@@ -1381,9 +1381,9 @@ class _CoverageAuditCard extends StatelessWidget {
               ),
               const SizedBox(height: AuraTokens.s2),
               Text(
-                'Eventos de la sesión: $blocked '
-                '${blocked == 1 ? 'bloqueo' : 'bloqueos'}, '
-                '$dgaAlerts ${dgaAlerts == 1 ? 'alerta' : 'alertas'} DGA, '
+                'Eventos de la sesión: $sniObserved SNI observados, '
+                '$blocked ${blocked == 1 ? 'bloqueo' : 'bloqueos'}, '
+                '$dgaAlerts ${dgaAlerts == 1 ? 'alerta' : 'alertas'} DGA y '
                 '$encryptedDnsBlocked '
                 '${encryptedDnsBlocked == 1 ? 'bloqueo' : 'bloqueos'} '
                 'de DNS cifrado y $quicBlocked paquetes QUIC descartados. '
