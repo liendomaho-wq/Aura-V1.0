@@ -100,7 +100,7 @@ void main() {
     expect(result.summary, contains('no prueba de malware'));
   });
 
-  test('toggle_defenses activa el VPN y devuelve el estado confirmado',
+  test('toggle_defenses activa el VPN sin certificar la postura del dispositivo',
       () async {
     final calls = <String>[];
     messenger.setMockMethodCallHandler(shieldChannel, (call) async {
@@ -120,11 +120,12 @@ void main() {
     expect(result.data, <String, dynamic>{
       'ok': true,
       'vpn_active': true,
-      'security_level': 'safe',
     });
+    // Starting the VPN is not a device-posture audit and must not clear
+    // an existing warning or critical security state.
   });
 
-  test('toggle_defenses detiene el VPN con nivel de advertencia', () async {
+  test('toggle_defenses detiene el VPN sin alterar la postura auditada', () async {
     final calls = <String>[];
     messenger.setMockMethodCallHandler(shieldChannel, (call) async {
       calls.add(call.method);
@@ -143,8 +144,9 @@ void main() {
     expect(result.data, <String, dynamic>{
       'ok': true,
       'vpn_active': false,
-      'security_level': 'warning',
     });
+    // Stopping the tunnel reports its state; posture remains owned by
+    // audit_device and existing critical alerts are never downgraded.
   });
 
   test('toggle_defenses refuses to change VPN state without user confirmation',
@@ -311,7 +313,8 @@ void main() {
 
     expect(called, isTrue);
     expect(result.data['ok'], isTrue);
-    expect(result.data['security_level'], 'safe');
+    expect(result.data.containsKey('security_level'), isFalse);
+    // Restoring forwarding is not a device-posture audit.
     messenger.setMockMethodCallHandler(panicChannel, null);
   });
 
