@@ -100,6 +100,61 @@ void main() {
     expect(result.summary, contains('no prueba de malware'));
   });
 
+  test('scan_apps marks missing or inconsistent native reports incomplete',
+      () async {
+    messenger.setMockMethodCallHandler(securityChannel, (call) async {
+      expect(call.method, 'scanActiveSensitiveServices');
+      return <String, dynamic>{
+        'timestamp': 123,
+        'count': 0,
+        // Missing required arrays and counters must never become a clean scan.
+      };
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(name: 'scan_apps', arguments: <String, dynamic>{}),
+    );
+
+    expect(result.data['ok'], isFalse);
+    expect(result.data['error'], 'invalid_scan_report');
+    expect(result.data['scan_status'], 'incomplete');
+    expect(result.data['security_level'], 'warning');
+    expect(result.summary, contains('incompleta'));
+    expect(result.summary, isNot(contains('0 apps')));
+  });
+
+  test('scan_apps rejects counts that do not match returned evidence',
+      () async {
+    messenger.setMockMethodCallHandler(securityChannel, (call) async {
+      return <String, dynamic>{
+        'timestamp': 123,
+        'count': 0,
+        'applications': <dynamic>[
+          <String, dynamic>{'package_name': 'com.example.app'},
+        ],
+        'special_access_count': 0,
+        'active_special_access_count': 0,
+        'special_access': <dynamic>[],
+        'app_provenance_count': 0,
+        'app_provenance': <dynamic>[],
+        'suspicious_app_count': 0,
+        'suspicious_apps': <dynamic>[],
+        'signature_issue_count': 0,
+        'signature_issues': <dynamic>[],
+        'obfuscated_app_count': 0,
+        'obfuscated_apps': <dynamic>[],
+      };
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(name: 'scan_apps', arguments: <String, dynamic>{}),
+    );
+
+    expect(result.data['ok'], isFalse);
+    expect(result.data['error'], 'invalid_scan_report');
+    expect(result.data['scan_status'], 'incomplete');
+  });
+
   test('toggle_defenses activa el VPN sin certificar la postura del dispositivo',
       () async {
     final calls = <String>[];
