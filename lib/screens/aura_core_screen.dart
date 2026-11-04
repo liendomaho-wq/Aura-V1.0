@@ -277,10 +277,11 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
           : latestExplanation.decisionThreshold.toStringAsFixed(2);
       _coverageAutotestStatus = 'Diagnóstico local completado. Túnel VPN: '
           '${state.isVpnActive ? 'activo' : 'inactivo'}. '
-          'Eventos de sesión: ${state.sniObservedEvents} SNI, '
-          '${state.blockedEvents} bloqueos, ${state.dgaAlertEvents} alertas DGA '
-          'y ${state.encryptedDnsBlocks} bloqueos de DNS cifrado; '
+          'Eventos de sesión: ${state.blockedEvents} bloqueos, '
+          '${state.dgaAlertEvents} alertas DGA, '
+          '${state.encryptedDnsBlocks} bloqueos de DNS cifrado y '
           '${state.quicBlocked} paquetes QUIC descartados. '
+          'Inspección TLS/SNI: no integrada en el flujo de paquetes del túnel. '
           'UMBRAL DE DECISIÓN: $threshold. No se generó tráfico de prueba.';
     });
   }
@@ -1380,9 +1381,9 @@ class _CoverageAuditCard extends StatelessWidget {
               ),
               const SizedBox(height: AuraTokens.s2),
               Text(
-                'Eventos de la sesión: $sniObserved SNI observados, '
-                '$blocked ${blocked == 1 ? 'bloqueo' : 'bloqueos'}, '
-                '$dgaAlerts ${dgaAlerts == 1 ? 'alerta' : 'alertas'} DGA y '
+                'Eventos de la sesión: $blocked '
+                '${blocked == 1 ? 'bloqueo' : 'bloqueos'}, '
+                '$dgaAlerts ${dgaAlerts == 1 ? 'alerta' : 'alertas'} DGA, '
                 '$encryptedDnsBlocked '
                 '${encryptedDnsBlocked == 1 ? 'bloqueo' : 'bloqueos'} '
                 'de DNS cifrado y $quicBlocked paquetes QUIC descartados. '
@@ -1391,11 +1392,12 @@ class _CoverageAuditCard extends StatelessWidget {
                 style: const TextStyle(color: AuraTokens.textPrimary),
               ),
               const SizedBox(height: AuraTokens.s2),
-              Text(
-                'SNI cifrado (contenido no analizable): $encryptedSni · '
-                'Conexión IP directa (sin dominio que evaluar): $directIp',
-                style: const TextStyle(
-                  color: AuraTokens.textPrimary,
+              const Text(
+                'Inspección TLS/SNI: parser y reglas disponibles, pero todavía '
+                'no están conectados al flujo de paquetes del túnel. Aura no '
+                'afirma inspeccionar ni bloquear tráfico TLS por SNI.',
+                style: TextStyle(
+                  color: AuraTokens.warning,
                   fontFamily: 'monospace',
                 ),
               ),
