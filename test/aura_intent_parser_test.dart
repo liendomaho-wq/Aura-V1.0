@@ -179,6 +179,16 @@ void main() {
     expect(confirmation.entities['confirmed_by_user'], isTrue);
   });
 
+  test('prefixed confirmation authorizes only the parsed requested tool', () async {
+    final intent = await AuraIntentParser.parse(
+      'CONFIRMO bloquear evil.example.com',
+    );
+
+    expect(intent.name, 'block_domain');
+    expect(intent.entities['domain'], 'evil.example.com');
+    expect(intent.entities['confirmed_by_user'], isTrue);
+  });
+
   test('bloquear un dominio sigue usando block_domain', () async {
     final intent =
         await AuraIntentParser.parse('bloquea evil.example.com');
