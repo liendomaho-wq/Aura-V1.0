@@ -428,6 +428,18 @@ class AgentController {
         return;
       }
       effectiveInstruction = 'CONFIRMO $pending';
+      if (effectiveInstruction.length > 2048) {
+        _emit(
+          AgentEvent(
+            kind: AgentEventKind.warning,
+            message: 'La orden pendiente supera el límite interno al preparar la confirmación. Emite una orden más corta.',
+            data: const <String, dynamic>{
+              'error': 'confirmation_replay_too_long',
+            },
+          ),
+        );
+        return;
+      }
     } else {
       // Any new instruction other than the exact confirmation phrase
       // invalidates the previous one-shot authorization request.
