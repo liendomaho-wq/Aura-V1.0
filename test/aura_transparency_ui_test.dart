@@ -112,8 +112,21 @@ void main() {
         },
       });
     }
-    // Keep the explanation fixture in the authenticated session state too;
-    // startup may rebuild session-owned evidence before the console is ready.
+    await _pumpAuraFrames(tester);
+
+    // Authentication and telemetry initialization are asynchronous. Wait
+    // for the authenticated console's event list instead of assuming eight
+    // frames are always enough on slower CI workers.
+    final eventList = find.byKey(
+      const ValueKey<String>('aura-event-list'),
+    );
+    for (var frame = 0; frame < 40 && eventList.evaluate().isEmpty; frame++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(eventList, findsOneWidget);
+
+    // Add verdict evidence only after authentication has completed. Startup may
+    // rebind/reset session state, so seeding before this point is racy on CI.
     state.addExplanation(
       AuraVerdictExplanation(
         id: 'verdict-1',
@@ -136,17 +149,6 @@ void main() {
       ),
     );
     await _pumpAuraFrames(tester);
-
-    // Authentication and telemetry initialization are asynchronous. Wait
-    // for the authenticated console's event list instead of assuming eight
-    // frames are always enough on slower CI workers.
-    final eventList = find.byKey(
-      const ValueKey<String>('aura-event-list'),
-    );
-    for (var frame = 0; frame < 40 && eventList.evaluate().isEmpty; frame++) {
-      await tester.pump(const Duration(milliseconds: 50));
-    }
-    expect(eventList, findsOneWidget);
     final threatCard = find.byKey(
       const ValueKey<String>('verdict-explanation-card-verdict-1'),
     );
