@@ -186,6 +186,10 @@ void main() {
       find.textContaining('no se enviará telemetría'),
       findsNWidgets(2),
     );
+    tester
+        .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
+        .hideCurrentSnackBar();
+    await _pumpAuraFrames(tester);
 
     final safeExplanation = AuraSignalBuilder.buildExplanation(
       host: 'goggle.com',
@@ -198,12 +202,16 @@ void main() {
     );
     state.addExplanation(safeExplanation);
     await _pumpAuraFrames(tester);
-    expect(find.text('¿Por qué se consideró seguro?'), findsOneWidget);
     final safeCard = find.byKey(
       ValueKey<String>('verdict-explanation-card-${safeExplanation.id}'),
     );
-    await tester.ensureVisible(safeCard);
+    await tester.dragUntilVisible(
+      safeCard,
+      eventList,
+      const Offset(0, 300),
+    );
     await tester.pump();
+    expect(find.text('¿Por qué se consideró seguro?'), findsOneWidget);
     await tester.tap(safeCard);
     await _pumpAuraFrames(tester);
     expect(
@@ -229,7 +237,10 @@ void main() {
             '0 paquetes QUIC descartados.'),
         findsOneWidget);
     expect(find.text('8.8.8.8'), findsOneWidget);
-    await tester.tap(find.text('Ejecutar autotest'));
+    final runAutotestButton = find.text('Ejecutar autotest');
+    await tester.ensureVisible(runAutotestButton);
+    await tester.pump();
+    await tester.tap(runAutotestButton);
     await _pumpAuraFrames(tester);
     expect(
         find.textContaining('No se generó tráfico de prueba.'), findsOneWidget);
