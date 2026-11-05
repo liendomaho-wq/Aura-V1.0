@@ -452,7 +452,7 @@ class AgentController {
         }
         try {
           await AuraDynamicWhitelist.instance.initialize();
-        } on Object catch (error) {
+        } on Object {
           _securityState?.setSecurityLevel(AuraSecurityLevel.warning);
           _emit(
             AgentEvent(
