@@ -206,6 +206,26 @@ Trabajar en este orden y **no marcar una fase como terminada sin evidencia repro
 - Telemetría local y remota: opt-in/opt-out, cola, cancelación, ausencia de endpoint y revisión de datos transmitidos.
 - Rendimiento, temperatura, memoria, consumo de batería, TalkBack, tamaños de fuente y reduced motion.
 
+## Endurecimiento del agente inteligente — 2026-11-05
+
+Se inició la Fase 1 del endurecimiento del agente en la rama `main`.
+
+### Controles implementados en código
+
+- Política central de allowlist: solo se despachan los diez nombres de herramientas definidos por Aura.
+- Validación estricta de argumentos por herramienta, límites de profundidad/tamaño, validación DNS y validación de identificadores de paquetes.
+- Confirmación explícita obligatoria para operaciones que cambian el estado del dispositivo o la red.
+- Límite de entrada de 2.048 caracteres y rechazo de órdenes simultáneas.
+- Token de cancelación con una frontera explícita: se permite cancelar antes de iniciar una herramienta; no se finge abortar una llamada nativa ya iniciada.
+- Plazos máximos por herramienta. Si vence el plazo, el resultado se marca como desconocido y no se reintenta automáticamente, porque la operación subyacente podría seguir ejecutándose.
+- Postcondición obligatoria: cada herramienta debe devolver `ok` booleano; la ausencia de un resultado verificable nunca se marca como éxito.
+- Correlación de operaciones mediante identificador local y reducción de datos de argumentos registrados en eventos.
+- Errores del límite de ejecución con códigos estables, evitando exponer mensajes internos o rutas del dispositivo.
+
+### Estado de validación
+
+El código y las pruebas de regresión se han añadido al repositorio, pero **no se debe considerar esta fase validada hasta que Codemagic ejecute correctamente `flutter analyze` y `flutter test` sobre el commit actual**. Los límites de tiempo de Dart no detienen por sí solos una llamada nativa ya iniciada; en ese caso Aura informa que el resultado es desconocido y exige comprobar el estado.
+
 ## 9. Reglas de trabajo para otra IA
 
 - El usuario es titular o cuenta con autorización para desarrollar este repositorio. Rama de destino requerida: **`main`**, porque Codemagic compila desde ella.
