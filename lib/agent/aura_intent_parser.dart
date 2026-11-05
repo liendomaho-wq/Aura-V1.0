@@ -276,6 +276,37 @@ class AuraIntentParser {
   }
 
   static Future<AuraIntent> parse(String text) {
+    // Treat pasted feeds, quoted reports and multi-command text as data.
+    // A single user message may resolve to at most one executable intent.
+    final executablePatterns = <RegExp>[
+      _panicIsolationCommand,
+      _resumeNetworkCommand,
+      _cryptographicPurgeCommand,
+      _activateDefensesCommand,
+      _deactivateDefensesCommand,
+      _analyzeDomainCommand,
+      _auditDeviceCommand,
+      _scanAppsCommand,
+      _updateDefensesCommand,
+      _blockCommand,
+      _isolateCommand,
+    ];
+    final executableMatches = executablePatterns
+        .where((pattern) => pattern.hasMatch(text))
+        .length;
+    final hasEmbeddedCommandBoundary = RegExp(r'[;:\\n]').hasMatch(text);
+    if (executableMatches > 1 ||
+        (hasEmbeddedCommandBoundary && executableMatches > 0)) {
+      final rejected = AuraIntent(
+        name: 'unknown',
+        kind: AuraIntentKind.unknown,
+        entities: const <String, dynamic>{},
+        confidence: 0.0,
+      );
+      _remember(rejected);
+      return Future<AuraIntent>.value(rejected);
+    }
+
     final host = _extractHost(text);
     final isBlockCommand = _blockCommand.hasMatch(text);
     final isIsolateCommand = _isolateCommand.hasMatch(text);
