@@ -215,6 +215,7 @@ Se inició la Fase 1 del endurecimiento del agente en la rama `main`.
 - Política central de allowlist: solo se despachan los diez nombres de herramientas definidos por Aura.
 - Validación estricta de argumentos por herramienta, límites de profundidad/tamaño, validación DNS y validación de identificadores de paquetes.
 - Confirmación explícita obligatoria para operaciones que cambian el estado del dispositivo o la red.
+- Confirmación en dos pasos, de un solo uso y con caducidad de 60 segundos: `CONFIRMO` repite exactamente la orden pendiente; cualquier otra instrucción invalida la autorización pendiente.
 - Límite de entrada de 2.048 caracteres y rechazo de órdenes simultáneas.
 - Token de cancelación con una frontera explícita: se permite cancelar antes de iniciar una herramienta; no se finge abortar una llamada nativa ya iniciada.
 - Plazos máximos por herramienta. Si vence el plazo, el resultado se marca como desconocido y no se reintenta automáticamente, porque la operación subyacente podría seguir ejecutándose.
