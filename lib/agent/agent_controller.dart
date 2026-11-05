@@ -445,7 +445,7 @@ class AgentController {
             AgentEvent(
               kind: AgentEventKind.warning,
               message: 'No se aplicó el bloqueo: el dominio no es válido.',
-              data: <String, dynamic>{'instruction': text},
+              data: <String, dynamic>{'operation_id': operationId},
             ),
           );
           return;
@@ -458,10 +458,9 @@ class AgentController {
             AgentEvent(
               kind: AgentEventKind.warning,
               message:
-                  'No se aplicó el bloqueo: no se pudo verificar la allowlist de infraestructura crítica ($error).',
+                  'No se aplicó el bloqueo: no se pudo verificar la allowlist de infraestructura crítica. No se ejecutó la operación.',
               data: <String, dynamic>{
-                'instruction': text,
-                'domain': domain,
+                'operation_id': operationId,
                 'allowlist_check_failed': true,
               },
             ),
@@ -476,8 +475,7 @@ class AgentController {
               message:
                   'Operación denegada: $domain está protegido por la allowlist de infraestructura crítica.',
               data: <String, dynamic>{
-                'instruction': text,
-                'domain': domain,
+                'operation_id': operationId,
                 'protected_host': true,
               },
             ),
@@ -517,7 +515,10 @@ class AgentController {
           AgentEvent(
             kind: AgentEventKind.warning,
             message: 'No se reconoció una acción local segura.',
-            data: <String, dynamic>{'instruction': text},
+            data: <String, dynamic>{
+            'instruction_length': text.length,
+            'operation_id': operationId,
+          },
           ),
         );
         return;
@@ -673,10 +674,14 @@ class AgentController {
         AgentEvent(
           kind: integrityCheckFailed
               ? AgentEventKind.error
-              : succeeded && !userActionRequired
+              : succeeded &&
+                      !userActionRequired &&
+                      auditLogStatus != 'completion_write_failed'
                   ? AgentEventKind.success
                   : AgentEventKind.warning,
-          message: result.summary,
+          message: auditLogStatus == 'completion_write_failed'
+              ? '${result.summary} La acción pudo completarse, pero su cierre no quedó guardado en la bitácora cifrada.'
+              : result.summary,
           data: <String, dynamic>{
             ...result.data,
             'operation_id': operationId,
