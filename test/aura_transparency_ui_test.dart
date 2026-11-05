@@ -152,19 +152,17 @@ void main() {
     final threatCard = find.byKey(
       const ValueKey<String>('verdict-explanation-card-verdict-1'),
     );
-    // Provider notifications are synchronous, but the authenticated screen
-    // can still be completing its post-frame rebuild on slower CI workers.
-    // Wait for the actual keyed card rather than assuming a fixed frame count.
-    for (var frame = 0; frame < 40 && threatCard.evaluate().isEmpty; frame++) {
-      await tester.pump(const Duration(milliseconds: 50));
-    }
-    // Scroll the actual explanation card into view. Selecting the first
-    // Scrollable in the widget tree is ambiguous because Aura also contains
-    // horizontal quick actions and an optional nested telemetry list; on CI
-    // that can select the wrong scroll position and throw StateError.
-    expect(threatCard, findsOneWidget);
-    await tester.ensureVisible(threatCard);
+    // Aura intentionally scrolls the event list to the newest event after
+    // every provider update. The explanation card is the first lazy ListView
+    // child, so it may not exist in the widget tree until the list is scrolled
+    // back to the top. Drag the specific event list until that card is built.
+    await tester.dragUntilVisible(
+      threatCard,
+      eventList,
+      const Offset(0, 300),
+    );
     await tester.pump();
+    expect(threatCard, findsOneWidget);
     await tester.tap(threatCard);
     await _pumpAuraFrames(tester);
 
