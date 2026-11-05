@@ -427,7 +427,7 @@ class AgentController {
         );
         return;
       }
-      effectiveInstruction = '$pending CONFIRMO';
+      effectiveInstruction = 'CONFIRMO $pending';
     } else {
       // Any new instruction other than the exact confirmation phrase
       // invalidates the previous one-shot authorization request.
