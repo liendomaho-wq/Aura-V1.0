@@ -94,7 +94,7 @@ abstract class AuraTools {
 
     var timedOut = false;
     try {
-      return await _executeTrusted(
+      final result = await _executeTrusted(
         step,
         onProgress: (message) {
           if (!timedOut) onProgress?.call(message);
@@ -122,6 +122,26 @@ abstract class AuraTools {
             },
           );
         },
+      );
+
+      // Every tool must return an explicit boolean outcome. Missing or
+      // malformed postconditions are never promoted to success.
+      if (result.data['ok'] is! bool) {
+        return ToolResult(
+          summary: 'La herramienta no devolvió una postcondición verificable. No se marcará como exitosa.',
+          data: <String, dynamic>{
+            'ok': false,
+            'error': 'invalid_tool_postcondition',
+            'tool': step.name,
+            'security_level': 'warning',
+          },
+        );
+      }
+      final normalizedData = Map<String, dynamic>.from(result.data)
+        ..['tool'] = step.name;
+      return ToolResult(
+        summary: result.summary,
+        data: Map<String, dynamic>.unmodifiable(normalizedData),
       );
     } on Object {
       return ToolResult(
