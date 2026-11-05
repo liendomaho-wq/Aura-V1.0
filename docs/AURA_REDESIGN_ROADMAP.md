@@ -141,6 +141,7 @@
 - [x] Plazos máximos por herramienta; timeout reporta resultado desconocido y bloquea reintento automático.
 - [x] Postcondición booleana obligatoria para no promover resultados incompletos a éxito.
 - [x] Identificador local de operación y reducción de argumentos crudos en eventos de inicio/finalización.
+- [x] Bitácora de operaciones cifrada en SecureVault: el inicio se guarda antes del despacho (fallo = fail-closed), el cierre no conserva valores de argumentos y la purga criptográfica elimina la bitácora.
 - [x] Pruebas unitarias añadidas para política, confirmaciones, límites, cancelación y concurrencia.
 - [ ] Ejecutar `dart format`, `flutter analyze` y `flutter test` sobre el HEAD resultante en CodeMagic.
 - [ ] Revisar resultados reales de CodeMagic y corregir cualquier incompatibilidad antes de declarar Fase 1 cerrada.
