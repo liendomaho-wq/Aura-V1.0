@@ -10,6 +10,7 @@ import '../voice_engine.dart';
 import 'aura_intent_parser.dart';
 import 'aura_tools.dart';
 import 'agent_event.dart';
+import 'agent_execution_guard.dart';
 
 class AgentController {
   AgentController._() {
@@ -157,6 +158,31 @@ class AgentController {
   final List<AgentEvent> history = <AgentEvent>[];
   AuraStateProvider? _securityState;
   bool _locallyAuthenticated = false;
+  AgentCancellationToken? _activeCancellationToken;
+
+  bool get isRunning => _activeCancellationToken != null;
+
+  /// Cancels only while an instruction is still being parsed/prepared.
+  /// Once a native or other side-effecting tool starts, cancellation is
+  /// refused because Android does not provide a reliable abort contract.
+  bool cancelCurrentOperation() {
+    final token = _activeCancellationToken;
+    if (token == null) return false;
+    final cancelled = token.cancel();
+    _emit(
+      AgentEvent(
+        kind: AgentEventKind.warning,
+        message: cancelled
+            ? 'Orden cancelada antes de iniciar una herramienta.'
+            : 'La herramienta ya comenzó. No es seguro fingir una cancelación; espera su resultado o comprueba el estado.',
+        data: <String, dynamic>{
+          'operation_cancelled': cancelled,
+          'execution_started': token.executionStarted,
+        },
+      ),
+    );
+    return cancelled;
+  }
 
   Stream<AgentEvent> get events => _eventController.stream;
   Stream<AgentEvent> get stream => _eventController.stream;
@@ -320,16 +346,63 @@ class AgentController {
   }) async {
     final text = instruction.trim();
     if (text.isEmpty) return;
+    if (text.length > 2048) {
+      _emit(
+        AgentEvent(
+          kind: AgentEventKind.warning,
+          message: 'La instrucción supera el límite de 2.048 caracteres y fue rechazada.',
+          data: const <String, dynamic>{
+            'error': 'instruction_too_long',
+            'max_length': 2048,
+          },
+        ),
+      );
+      return;
+    }
+    if (_activeCancellationToken != null) {
+      _emit(
+        AgentEvent(
+          kind: AgentEventKind.warning,
+          message: 'Aura ya está procesando otra orden. Espera a que termine antes de enviar otra.',
+          data: const <String, dynamic>{'error': 'agent_busy'},
+        ),
+      );
+      return;
+    }
+
+    final token = AgentCancellationToken();
+    _activeCancellationToken = token;
+    try {
+      await _runInstruction(
+        text,
+        confirmedByUser: confirmedByUser,
+        cancellationToken: token,
+      );
+    } finally {
+      if (identical(_activeCancellationToken, token)) {
+        _activeCancellationToken = null;
+      }
+    }
+  }
+
+  Future<void> _runInstruction(
+    String instruction, {
+    required bool confirmedByUser,
+    required AgentCancellationToken cancellationToken,
+  }) async {
+    final text = instruction.trim();
+    if (text.isEmpty) return;
 
     _emit(
       AgentEvent(
         kind: AgentEventKind.thought,
         message: 'Analizando instrucción local.',
-        data: <String, dynamic>{'instruction': text},
+        data: <String, dynamic>{'instruction_length': text.length},
       ),
     );
     try {
       final intent = await AuraIntentParser.parse(text);
+      cancellationToken.throwIfCancelled();
       if (intent.kind == AuraIntentKind.block) {
         final domain = intent.entities['domain'];
         if (domain is! String || domain.isEmpty) {
@@ -467,6 +540,7 @@ class AgentController {
                 )
             : null,
         stateProvider: _securityState,
+        cancellationToken: cancellationToken,
         onToolStarted: (toolName, arguments) => _emit(
           AgentEvent(
             kind: AgentEventKind.thought,
@@ -529,13 +603,27 @@ class AgentController {
           'Actualización completada. El modelo local de 500 árboles fue verificado e instalado.',
         );
       }
+    } on AgentOperationCancelled {
+      _emit(
+        AgentEvent(
+          kind: AgentEventKind.warning,
+          message: 'Orden cancelada antes de iniciar la ejecución de una herramienta.',
+          data: const <String, dynamic>{
+            'error': 'operation_cancelled',
+            'side_effect_started': false,
+          },
+        ),
+      );
     } on Object catch (error) {
       _securityState?.setSecurityLevel(AuraSecurityLevel.warning);
       _emit(
         AgentEvent(
           kind: AgentEventKind.error,
-          message: error.toString(),
-          data: <String, dynamic>{'instruction': text},
+          message: 'No se pudo procesar la instrucción. No se confirmó ninguna acción.',
+          data: <String, dynamic>{
+            'error': 'instruction_processing_failed',
+            'error_type': error.runtimeType.toString(),
+          },
         ),
       );
     }
