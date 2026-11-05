@@ -112,6 +112,29 @@ void main() {
         },
       });
     }
+    // Keep the explanation fixture in the authenticated session state too;
+    // startup may rebuild session-owned evidence before the console is ready.
+    state.addExplanation(
+      AuraVerdictExplanation(
+        id: 'verdict-1',
+        host: 'goggle.com',
+        isThreat: true,
+        source: 'ml',
+        timestamp: 1,
+        modelVersion: '3.0.0',
+        modelSha256:
+            'd190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2',
+        signals: const <AuraSignal>[
+          AuraSignal(
+            featureName: 'min_normalized_levenshtein',
+            label: 'Posible typosquatting',
+            value: 0.1,
+            description:
+                'Índice 6 · min_normalized_levenshtein; 0,10 frente a google.com.',
+          ),
+        ],
+      ),
+    );
     await _pumpAuraFrames(tester);
 
     // Authentication and telemetry initialization are asynchronous. Wait
