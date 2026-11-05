@@ -1,7 +1,7 @@
 # Aura Mobile Defens — documentación técnica y guía de continuidad
 
 > **Documento de traspaso para una IA o desarrollador que continúe el proyecto.**  
-> Última revisión documental: **2026-11-02**. Rama objetivo: `main`.  
+> Última revisión documental: **2026-11-05**. Rama objetivo: `main`.  
 > «Defens» es la ortografía intencional del producto; no corregir. Reporta vulnerabilidades según [SECURITY.md](SECURITY.md).
 
 ## 1. Resumen ejecutivo y estado real
@@ -163,12 +163,21 @@ El script `tool/compile_aura.sh` permite fallback a firma DEBUG cuando faltan va
 
 - El usuario informó en conversaciones recientes que CodeMagic volvió a compilar con éxito. Ese resultado es un reporte del usuario; para certificarlo se necesita el enlace/log del run y su commit SHA.
 - En un log anterior (30-10-2026) se informó un timeout al descargar Flutter stable 3.47.9 para macOS ARM64: curl error 28 tras 300 segundos, descarga parcial de ~961 MB de ~2.26 GB.
-- En ese mismo reporte fallaron los tests `test/aura_core_screen_test.dart` (flujo de activar/detener VPN por el canal nativo) y `test/aura_transparency_ui_test.dart` (explicación, marca local y auditoría). En logs previos también se mencionaron pruebas de splash/auth. No asumir que continúan fallando ni que están arreglados: ejecutar suite completa en el commit actual.
+- En el run de CodeMagic compartido el **2026-11-05**, el paso `Run Aura security regression checks and Flutter tests` terminó con código 1. La prueba fallida identificada al final del log fue `test/aura_transparency_ui_test.dart` — `muestra explicación, marca localmente y abre auditoría`. El log muestra una advertencia de hit-test al buscar el texto `Reportar falso positivo` y, en el fallo final, una aserción `Expected: true / Actual: <false>` en la línea 175: el estado de reporte local no quedó activado durante la prueba.
+- Para hacer la interacción determinista, en `lib/screens/aura_core_screen.dart` se añadió la clave estable `report-false-positive-${explanation.id}` al botón; la prueba ahora localiza el botón por `ValueKey('report-false-positive-verdict-1')`, lo hace visible y lo pulsa directamente. Cambio guardado en `main` mediante commit [`f0e6c32`](https://github.com/liendomaho-wq/Aura-V1.0/commit/f0e6c32cae1d8df2aa9c1d02c44ed4b990401c16), precedido por [`a2613af`](https://github.com/liendomaho-wq/Aura-V1.0/commit/a2613afa17d49d7ccc8806fbc458767b9b01fb93).
+- **Estado de esa corrección: pendiente de verificación.** Aún no hay evidencia de un run verde de CodeMagic sobre `f0e6c32`; no afirmar que la prueba está corregida hasta ejecutar el workflow de nuevo. El log mostrado también lista muchas pruebas repetidas de `aura_core_screen_test.dart`, pero no las identifica como fallidas en el resumen final de ese run. En logs previos también se mencionaron pruebas de splash/auth. Ejecutar la suite completa en el commit actual.
 - `test/aura_core_screen_test.dart` todavía prueba el canal `com.ciberdefensa.aura/shield`, el toggle VPN y la revocación del túnel. La prueba de transparencia usa canales mockeados y datos sintéticos para validar UI/estado local; no demuestra que la inspección de red real funcione.
 - Los tests de benchmark de dispositivo están omitidos por defecto; las métricas de runner Linux no representan rendimiento Android.
 - No hay porcentaje de cobertura medido y publicado.
 
 GitHub Actions incluye workflows de calidad Flutter, build Android debug, integridad/firma, entrenamiento de modelo y despliegue de model pages. Revisar `.github/workflows/` y el estado de Actions en el SHA exacto; un workflow existente no es evidencia de éxito.
+
+### Actualización de interfaz y prueba de transparencia — 2026-11-05
+
+- Se añadió una `ValueKey` estable al botón de reporte de falso positivo para evitar que la prueba dependa de localizar el texto interior del botón.
+- La prueba de transparencia ahora pulsa el control identificado por clave y conserva la comprobación del estado local.
+- Commits en `main`: [`a2613af`](https://github.com/liendomaho-wq/Aura-V1.0/commit/a2613afa17d49d7ccc8806fbc458767b9b01fb93) y [`f0e6c32`](https://github.com/liendomaho-wq/Aura-V1.0/commit/f0e6c32cae1d8df2aa9c1d02c44ed4b990401c16).
+- **No validado todavía:** falta repetir CodeMagic en este HEAD y confirmar que `muestra explicación, marca localmente y abre auditoría` pasa. Si vuelve a fallar, inspeccionar el callback/proveedor que persiste `reportedFalsePositive`; no debilitar la aserción ni convertir el fallo en un éxito simulado.
 
 ## 8. Prioridades para la IA/desarrollador que continúe
 
