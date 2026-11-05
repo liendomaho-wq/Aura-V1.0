@@ -29,28 +29,7 @@ void main() {
     const telemetryChannel = MethodChannel('com.ciberdefensa.aura/telemetry');
     const networkEventChannel =
         EventChannel('com.aura.cyberdefense/network_stream');
-    final state = AuraStateProvider()
-      ..addExplanation(
-        AuraVerdictExplanation(
-          id: 'verdict-1',
-          host: 'goggle.com',
-          isThreat: true,
-          source: 'ml',
-          timestamp: 1,
-          modelVersion: '3.0.0',
-          modelSha256:
-              'd190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2',
-          signals: const <AuraSignal>[
-            AuraSignal(
-              featureName: 'min_normalized_levenshtein',
-              label: 'Posible typosquatting',
-              value: 0.1,
-              description:
-                  'Índice 6 · min_normalized_levenshtein; 0,10 frente a google.com.',
-            ),
-          ],
-        ),
-      );
+    final state = AuraStateProvider();
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     addTearDown(() {
@@ -188,8 +167,11 @@ void main() {
     await tester.tap(find.text('Cerrar'));
     await _pumpAuraFrames(tester);
 
-    await tester.tap(find.text('Reportar falso positivo'));
+    final reportButton = find.text('Reportar falso positivo');
+    expect(reportButton, findsOneWidget);
+    await tester.tap(reportButton);
     await _pumpAuraFrames(tester);
+    expect(state.explanationHistory, hasLength(1));
     expect(state.explanationHistory.single.reportedFalsePositive, isTrue);
     expect(find.text('Reportado localmente'), findsOneWidget);
     expect(
