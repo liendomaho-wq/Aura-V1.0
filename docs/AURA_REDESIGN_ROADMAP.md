@@ -130,3 +130,21 @@
 - Se añadieron pruebas de regresión para informes incompletos, contadores incoherentes y accesos especiales no confirmados.
 - Commits de implementación en `main`: `8363955`, `35809c6`, `a584c28`, `9a4a57f` y `dfaf4c9`.
 - **Validación pendiente:** ejecutar `flutter analyze`, `flutter test` y el build Android en CodeMagic sobre el HEAD actual. Esta corrección no convierte el escáner heurístico en detección garantizada de malware.
+
+### Fase 1 — endurecimiento del agente inteligente — 2026-11-05
+
+- [x] Allowlist central de herramientas y rechazo de nombres no registrados.
+- [x] Contratos estrictos de argumentos por herramienta; límites de tamaño/profundidad y validación DNS/paquetes.
+- [x] Confirmación explícita centralizada para operaciones con efectos laterales.
+- [x] Límite de longitud de instrucciones y rechazo de ejecución concurrente.
+- [x] Cancelación segura antes de cruzar la frontera de ejecución; no se afirma abortar llamadas nativas ya iniciadas.
+- [x] Plazos máximos por herramienta; timeout reporta resultado desconocido y bloquea reintento automático.
+- [x] Postcondición booleana obligatoria para no promover resultados incompletos a éxito.
+- [x] Identificador local de operación y reducción de argumentos crudos en eventos de inicio/finalización.
+- [x] Pruebas unitarias añadidas para política, confirmaciones, límites, cancelación y concurrencia.
+- [ ] Ejecutar `dart format`, `flutter analyze` y `flutter test` sobre el HEAD resultante en CodeMagic.
+- [ ] Revisar resultados reales de CodeMagic y corregir cualquier incompatibilidad antes de declarar Fase 1 cerrada.
+- [ ] Verificar en un dispositivo Android que cancelación, confirmación y resultado desconocido por timeout se comportan según lo documentado.
+
+**Nota de seguridad:** un timeout de Future no mata un trabajo nativo o HTTP que ya empezó. Aura no lo presenta como cancelado ni lo reintenta automáticamente; el resultado se clasifica como desconocido hasta una comprobación independiente.
+
