@@ -10,6 +10,7 @@ import '../ai_brain.dart';
 import '../providers/aura_state_provider.dart';
 import '../secure_vault.dart';
 import 'aura_crypto_layer.dart';
+import 'agent_execution_guard.dart';
 
 class ToolStep {
   const ToolStep({
@@ -51,6 +52,91 @@ abstract class AuraTools {
   static final AuraSecureVault _secureVault = AuraSecureVault();
 
   static Future<ToolResult> execute(
+    ToolStep step, {
+    void Function(String message)? onProgress,
+    AuraStateProvider? stateProvider,
+    AuraToolStartedCallback? onToolStarted,
+    AuraToolCompletedCallback? onToolCompleted,
+    AgentCancellationToken? cancellationToken,
+  }) async {
+    final token = cancellationToken ?? AgentCancellationToken();
+    final policyError = AuraToolExecutionPolicy.validate(
+      step.name,
+      step.arguments,
+    );
+    if (policyError != null) {
+      return ToolResult(
+        summary: policyError == 'user_confirmation_required'
+            ? 'La operación no se ejecutó: requiere confirmación explícita.'
+            : 'La operación fue rechazada por la política de ejecución segura.',
+        data: <String, dynamic>{
+          'ok': false,
+          'error': policyError,
+          'tool': step.name,
+          'security_level': 'warning',
+        },
+      );
+    }
+
+    try {
+      token.markExecutionStarted();
+    } on AgentOperationCancelled {
+      return ToolResult(
+        summary: 'Operación cancelada antes de iniciar; no se ejecutó ninguna herramienta.',
+        data: <String, dynamic>{
+          'ok': false,
+          'error': 'operation_cancelled',
+          'tool': step.name,
+          'side_effect_started': false,
+        },
+      );
+    }
+
+    var timedOut = false;
+    try {
+      return await _executeTrusted(
+        step,
+        onProgress: (message) {
+          if (!timedOut) onProgress?.call(message);
+        },
+        stateProvider: stateProvider,
+        onToolStarted: (toolName, arguments) {
+          if (!timedOut) onToolStarted?.call(toolName, arguments);
+        },
+        onToolCompleted: (toolName, arguments, result) {
+          if (!timedOut) onToolCompleted?.call(toolName, arguments, result);
+        },
+      ).timeout(
+        AuraToolExecutionPolicy.timeoutFor(step.name),
+        onTimeout: () {
+          timedOut = true;
+          return ToolResult(
+            summary: 'La operación excedió el tiempo máximo. Su resultado es desconocido; comprueba el estado antes de volver a intentarlo.',
+            data: <String, dynamic>{
+              'ok': false,
+              'error': 'operation_timeout',
+              'tool': step.name,
+              'outcome': 'unknown',
+              'automatic_retry_allowed': false,
+              'security_level': 'warning',
+            },
+          );
+        },
+      );
+    } on Object {
+      return ToolResult(
+        summary: 'La herramienta no pudo completar la operación. No se confirmó ningún cambio.',
+        data: <String, dynamic>{
+          'ok': false,
+          'error': 'tool_boundary_failure',
+          'tool': step.name,
+          'security_level': 'warning',
+        },
+      );
+    }
+  }
+
+  static Future<ToolResult> _executeTrusted(
     ToolStep step, {
     void Function(String message)? onProgress,
     AuraStateProvider? stateProvider,
