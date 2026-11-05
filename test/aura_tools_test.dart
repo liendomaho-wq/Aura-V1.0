@@ -332,6 +332,30 @@ void main() {
     messenger.setMockMethodCallHandler(engineChannel, null);
   });
 
+  test('isolate_app refuses success when Android omits its postcondition', () async {
+    const engineChannel = MethodChannel('com.aura.cyberdefense/engine');
+    messenger.setMockMethodCallHandler(engineChannel, (_) async {
+      return <String, dynamic>{
+        'message': 'Android abrió la ficha de ajustes.',
+      };
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(
+        name: 'isolate_app',
+        arguments: <String, dynamic>{
+          'package_name': 'com.example.test',
+          'confirmed_by_user': true,
+        },
+      ),
+    );
+
+    expect(result.data['ok'], isFalse);
+    expect(result.data['error'], 'invalid_tool_postcondition');
+    expect(result.data['tool'], 'isolate_app');
+    messenger.setMockMethodCallHandler(engineChannel, null);
+  });
+
   test('isolate_app rejects invalid package identifiers', () async {
     const engineChannel = MethodChannel('com.aura.cyberdefense/engine');
     messenger.setMockMethodCallHandler(engineChannel, (_) async {
