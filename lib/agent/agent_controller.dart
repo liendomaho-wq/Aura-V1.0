@@ -165,7 +165,13 @@ class AgentController {
   String? _pendingConfirmationInstruction;
   DateTime? _pendingConfirmationCreatedAt;
   static final RegExp _confirmationOnly = RegExp(
-    r'^\\s*(?:s[ií][, ]+)?confirmo[.! ]*
+    r'^\s*(?:s[ií][, ]+)?confirmo[.! ]*$',
+    caseSensitive: false,
+  );
+  static final RegExp _explicitDenial = RegExp(
+    r'\b(?:no\s+(?:confirmo|autorizo)|(?:confirmo|autorizo)\s+no|cancelo|rechazo|deniego|anulo)\b',
+    caseSensitive: false,
+  );
 
   bool get isRunning => _activeCancellationToken != null;
 
