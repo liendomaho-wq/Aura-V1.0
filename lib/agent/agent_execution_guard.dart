@@ -61,10 +61,10 @@ abstract final class AuraToolExecutionPolicy {
 
   static const Map<String, Set<String>> _allowedArguments =
       <String, Set<String>>{
-    'update_defenses': <String>{},
-    'audit_device': <String>{},
-    'scan_apps': <String>{},
-    'analyze_domain': <String>{'domain'},
+    'update_defenses': <String>{'confirmed_by_user'},
+    'audit_device': <String>{'confirmed_by_user'},
+    'scan_apps': <String>{'confirmed_by_user'},
+    'analyze_domain': <String>{'domain', 'confirmed_by_user'},
     'toggle_defenses': <String>{'activate', 'confirmed_by_user'},
     'block_domain': <String>{'domain', 'confirmed_by_user'},
     'isolate_app': <String>{'package_name', 'reason', 'confirmed_by_user'},
