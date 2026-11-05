@@ -152,6 +152,12 @@ void main() {
     final threatCard = find.byKey(
       const ValueKey<String>('verdict-explanation-card-verdict-1'),
     );
+    // Provider notifications are synchronous, but the authenticated screen
+    // can still be completing its post-frame rebuild on slower CI workers.
+    // Wait for the actual keyed card rather than assuming a fixed frame count.
+    for (var frame = 0; frame < 40 && threatCard.evaluate().isEmpty; frame++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
     // Scroll the actual explanation card into view. Selecting the first
     // Scrollable in the widget tree is ambiguous because Aura also contains
     // horizontal quick actions and an optional nested telemetry list; on CI
