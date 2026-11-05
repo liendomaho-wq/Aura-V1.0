@@ -206,6 +206,13 @@ Trabajar en este orden y **no marcar una fase como terminada sin evidencia repro
 - Telemetría local y remota: opt-in/opt-out, cola, cancelación, ausencia de endpoint y revisión de datos transmitidos.
 - Rendimiento, temperatura, memoria, consumo de batería, TalkBack, tamaños de fuente y reduced motion.
 
+## Fase 2 del agente ejecutor — avance 2026-11-05
+
+- El parser rechaza órdenes ejecutables concatenadas o incrustadas en texto separado por delimitadores habituales de feeds/citas; el comportamiento es fail-closed.
+- Se añadieron pruebas de regresión para prompt injection en texto de indicadores y confirmaciones incrustadas.
+- La Fase 2 sigue abierta: falta cancelar cooperativamente el escaneo APK/DEX desde Android, emitir progreso nativo granular y completar el planificador de tareas con checkpoints/recuperación. El timeout Dart no detiene por sí solo un escaneo Kotlin ya iniciado.
+- No declarar esta fase cerrada hasta ejecutar flutter analyze, flutter test y build Android en CodeMagic sobre el commit actual.
+
 ## Endurecimiento del agente inteligente — 2026-11-05
 
 Se inició la Fase 1 del endurecimiento del agente en la rama `main`.
