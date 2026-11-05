@@ -1,5 +1,3 @@
-import 'dart:async';
-
 /// Cancellation is guaranteed only before a tool crosses its execution
 /// boundary. Android MethodChannel calls and already-started native work
 /// cannot be safely interrupted by Dart.
