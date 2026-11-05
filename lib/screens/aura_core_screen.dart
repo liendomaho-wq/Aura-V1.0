@@ -1274,6 +1274,9 @@ class _ExplanationCardState extends State<_ExplanationCard> {
               ),
               if (explanation.isThreat)
                 TextButton.icon(
+                  key: ValueKey<String>(
+                    'report-false-positive-${explanation.id}',
+                  ),
                   onPressed: explanation.reportedFalsePositive
                       ? null
                       : () => widget.onReportFalsePositive(explanation.id),
