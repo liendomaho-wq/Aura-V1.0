@@ -67,6 +67,55 @@ void main() {
     );
   });
 
+  test('rejects oversized instructions before parsing or execution', () async {
+    final controller = AgentController.instance;
+    final previousLength = controller.history.length;
+
+    await controller.run(List<String>.filled(2049, 'x').join());
+
+    final events = controller.history.skip(previousLength).toList();
+    expect(events, hasLength(1));
+    expect(events.single.data?['error'], 'instruction_too_long');
+    expect(controller.isRunning, isFalse);
+  });
+
+  test('cancels a command before it crosses the tool execution boundary', () async {
+    final controller = AgentController.instance;
+    final previousLength = controller.history.length;
+
+    final pending = controller.run('audita dispositivo');
+    expect(controller.isRunning, isTrue);
+    expect(controller.cancelCurrentOperation(), isTrue);
+    await pending;
+
+    final events = controller.history.skip(previousLength).toList();
+    expect(
+      events.any((event) => event.data?['error'] == 'operation_cancelled'),
+      isTrue,
+    );
+    expect(
+      events.any((event) => event.kind == AgentEventKind.action),
+      isFalse,
+    );
+    expect(controller.isRunning, isFalse);
+  });
+
+  test('rejects overlapping commands while one is being processed', () async {
+    final controller = AgentController.instance;
+    final previousLength = controller.history.length;
+
+    final first = controller.run('audita dispositivo');
+    await controller.run('escanea aplicaciones');
+    controller.cancelCurrentOperation();
+    await first;
+
+    final events = controller.history.skip(previousLength).toList();
+    expect(
+      events.any((event) => event.data?['error'] == 'agent_busy'),
+      isTrue,
+    );
+  });
+
   test('missing native authentication channel fails closed', () async {
     const channel = MethodChannel('com.aura.cyberdefense/biometrics');
     final messenger =
