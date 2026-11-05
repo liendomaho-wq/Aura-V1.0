@@ -63,6 +63,8 @@ static jboolean native_start_service (JNIEnv *env, jobject thiz,
                                       jstring conig_path, jint fd);
 static jboolean native_stop_service (JNIEnv *env, jobject thiz);
 static jboolean native_is_running (JNIEnv *env, jobject thiz);
+static jboolean native_is_domain_blocked (JNIEnv *env, jobject thiz,
+                                         jstring domain);
 static jlongArray native_get_stats (JNIEnv *env, jobject thiz);
 static void native_set_blocked_ips (JNIEnv *env, jobject thiz,
                                     jobjectArray addresses);
@@ -78,6 +80,8 @@ static JNINativeMethod native_methods[] = {
       (void *)native_start_service },
     { "TProxyStopService", "()Z", (void *)native_stop_service },
     { "TProxyIsRunning", "()Z", (void *)native_is_running },
+        { "TProxyIsDomainBlocked", "(Ljava/lang/String;)Z",
+            (void *)native_is_domain_blocked },
     { "TProxyGetStats", "()[J", (void *)native_get_stats },
         { "TProxySetBlockedIps", "([Ljava/lang/String;)V",
             (void *)native_set_blocked_ips },
@@ -515,6 +519,23 @@ native_block_domain (JNIEnv *env, jobject thiz, jstring domain)
     if (!value)
         return JNI_FALSE;
     result = hev_socks5_tunnel_block_domain (value);
+    (*env)->ReleaseStringUTFChars (env, domain, value);
+    return result > 0 ? JNI_TRUE : JNI_FALSE;
+}
+
+static jboolean
+native_is_domain_blocked (JNIEnv *env, jobject thiz, jstring domain)
+{
+    const char *value;
+    int result;
+
+    (void)thiz;
+    if (!domain)
+        return JNI_FALSE;
+    value = (*env)->GetStringUTFChars (env, domain, NULL);
+    if (!value)
+        return JNI_FALSE;
+    result = hev_socks5_tunnel_is_domain_blocked (value);
     (*env)->ReleaseStringUTFChars (env, domain, value);
     return result > 0 ? JNI_TRUE : JNI_FALSE;
 }

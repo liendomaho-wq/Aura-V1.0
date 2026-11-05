@@ -367,6 +367,15 @@ class MainActivity: FlutterFragmentActivity() {
                     }
                 }
 
+                "isDnsBlockRuleActive" -> {
+                    val arguments = call.arguments as? Map<*, *>
+                    val domain = normalizeThreatDomain(arguments?.get("domain") as? String)
+                    result.success(
+                        domain != null &&
+                            TProxyService.TProxyIsDomainBlocked(domain),
+                    )
+                }
+
                 "addDynamicSniRule" -> {
                     val arguments = call.arguments as? Map<*, *>
                     val domain = normalizeThreatDomain(arguments?.get("domain") as? String)
@@ -921,6 +930,8 @@ class MainActivity: FlutterFragmentActivity() {
                     // VPN service to stop; Dart must keep the state conservative.
                     result.success(stopAccepted)
                 }
+
+                "getShieldStatus" -> result.success(AuraVpnService.shieldStatus())
 
                 "getLatestBlockedIps" -> {
                     // Backward-compatible method name. This returns the active

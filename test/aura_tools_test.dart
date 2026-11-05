@@ -201,7 +201,16 @@ void main() {
     final calls = <String>[];
     messenger.setMockMethodCallHandler(shieldChannel, (call) async {
       calls.add(call.method);
-      return true;
+      return switch (call.method) {
+        'startShield' => true,
+        'getShieldStatus' => <String, dynamic>{
+            'service_active': true,
+            'vpn_interface_active': true,
+            'forwarding_active': true,
+            'isolation_active': false,
+          },
+        _ => null,
+      };
     });
 
     final result = await AuraTools.execute(
@@ -215,6 +224,7 @@ void main() {
     expect(result.summary, 'DEFENSA ACTIVADA — túnel en marcha');
     expect(result.data, <String, dynamic>{
       'ok': true,
+      'tool': 'toggle_defenses',
       'vpn_active': true,
     });
     // Starting the VPN is not a device-posture audit and must not clear
@@ -225,7 +235,16 @@ void main() {
     final calls = <String>[];
     messenger.setMockMethodCallHandler(shieldChannel, (call) async {
       calls.add(call.method);
-      return true;
+      return switch (call.method) {
+        'stopShield' => true,
+        'getShieldStatus' => <String, dynamic>{
+            'service_active': false,
+            'vpn_interface_active': false,
+            'forwarding_active': false,
+            'isolation_active': false,
+          },
+        _ => null,
+      };
     });
 
     final result = await AuraTools.execute(
@@ -239,6 +258,7 @@ void main() {
     expect(result.summary, 'DEFENSA DESACTIVADA — túnel detenido');
     expect(result.data, <String, dynamic>{
       'ok': true,
+      'tool': 'toggle_defenses',
       'vpn_active': false,
     });
     // Stopping the tunnel reports its state; posture remains owned by
@@ -411,12 +431,21 @@ void main() {
 
     expect(result.data['ok'], isFalse);
     expect(result.data['error'], 'user_confirmation_required');
-    expect(result.data['action'], 'resume_network');
+    expect(result.data['tool'], 'resume_network');
     messenger.setMockMethodCallHandler(panicChannel, null);
   });
 
   test('resume_network restores forwarding only after confirmation', () async {
     const panicChannel = MethodChannel('com.aura.cyberdefense/panic');
+    messenger.setMockMethodCallHandler(shieldChannel, (call) async {
+      expect(call.method, 'getShieldStatus');
+      return <String, dynamic>{
+        'service_active': true,
+        'vpn_interface_active': true,
+        'forwarding_active': true,
+        'isolation_active': false,
+      };
+    });
     var called = false;
     messenger.setMockMethodCallHandler(panicChannel, (call) async {
       expect(call.method, 'resumeTunnel');
@@ -433,6 +462,7 @@ void main() {
 
     expect(called, isTrue);
     expect(result.data['ok'], isTrue);
+    expect(result.data['tool'], 'resume_network');
     expect(result.data.containsKey('security_level'), isFalse);
     // Restoring forwarding is not a device-posture audit.
     messenger.setMockMethodCallHandler(panicChannel, null);

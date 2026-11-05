@@ -4,6 +4,7 @@ import 'package:aura_mobile_defens/screens/aura_core_screen.dart';
 import 'package:aura_mobile_defens/widgets/aura_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,6 +17,15 @@ Future<void> _pumpAuraFrames(WidgetTester tester) async {
   }
 }
 
+Future<void> _pumpUntilVpnEnabled(WidgetTester tester) async {
+  final vpnToggle = find.byKey(const ValueKey<String>('vpn-toggle'));
+  for (var frame = 0; frame < 40; frame++) {
+    if (tester.widget<TextButton>(vpnToggle).onPressed != null) return;
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+  expect(tester.widget<TextButton>(vpnToggle).onPressed, isNotNull);
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -23,6 +33,7 @@ void main() {
     tester,
   ) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    FlutterSecureStorage.setMockInitialValues(<String, String>{});
     const shieldChannel = MethodChannel('com.ciberdefensa.aura/shield');
     const telemetryChannel = MethodChannel('com.ciberdefensa.aura/telemetry');
     const securityChannel = MethodChannel('com.ciberdefensa.aura/security');
@@ -30,6 +41,7 @@ void main() {
     const networkEventChannel =
         EventChannel('com.aura.cyberdefense/network_stream');
     final calls = <String>[];
+    var vpnActive = false;
     final state = AuraStateProvider();
     MockStreamHandlerEventSink? networkEventSink;
     final messenger =
@@ -53,7 +65,23 @@ void main() {
     messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);
     messenger.setMockMethodCallHandler(shieldChannel, (call) async {
       calls.add(call.method);
-      return true;
+      if (call.method == 'startShield') {
+        vpnActive = true;
+        return true;
+      }
+      if (call.method == 'stopShield') {
+        vpnActive = false;
+        return true;
+      }
+      if (call.method == 'getShieldStatus') {
+        return <String, dynamic>{
+          'service_active': vpnActive,
+          'vpn_interface_active': vpnActive,
+          'forwarding_active': vpnActive,
+          'isolation_active': false,
+        };
+      }
+      return null;
     });
     messenger.setMockMethodCallHandler(telemetryChannel, (call) async {
       if (call.method == 'domainTelemetryStatus') {
@@ -101,6 +129,7 @@ void main() {
     expect(find.text('Hola, soy Aura.'), findsOneWidget);
     expect(find.byType(AuraAvatar), findsOneWidget);
     expect(find.textContaining('VPN local opcional'), findsOneWidget);
+    await _pumpUntilVpnEnabled(tester);
 
     state.setSecurityLevel(AuraSecurityLevel.warning);
     await tester.pump();

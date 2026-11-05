@@ -78,6 +78,22 @@ class AuraVpnService : VpnService() {
         fun resumeTunnel(): Boolean = activeService?.resumeTunnelForwarding() ?: false
 
         @JvmStatic
+        fun shieldStatus(): Map<String, Boolean> {
+            val service = activeService ?: return mapOf(
+                "service_active" to false,
+                "vpn_interface_active" to false,
+                "forwarding_active" to false,
+                "isolation_active" to false,
+            )
+            return mapOf(
+                "service_active" to true,
+                "vpn_interface_active" to (service.vpnInterface != null),
+                "forwarding_active" to service.tunnelStarted,
+                "isolation_active" to service.panicIsolationActive,
+            )
+        }
+
+        @JvmStatic
         fun clearDnsAuditMemory() {
             synchronized(dnsMetricsLock) {
                 auditedDnsRequests = 0
@@ -132,7 +148,7 @@ class AuraVpnService : VpnService() {
     private val startRequested = AtomicBoolean(false)
     private val notificationHandler = Handler(Looper.getMainLooper())
     private var notificationUpdatePending = false
-    private var vpnInterface: ParcelFileDescriptor? = null
+    @Volatile private var vpnInterface: ParcelFileDescriptor? = null
     private var integrityCheckScheduled = false
     private var feedRefreshScheduled = false
     @Volatile private var panicIsolationActive = false

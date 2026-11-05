@@ -20,6 +20,8 @@ public final class TProxyService {
 
     public static native boolean TProxyBlockDomain(String domain);
 
+    public static native boolean TProxyIsDomainBlocked(String domain);
+
     private static native void addDynamicSniRule(String domain);
     public static native boolean TProxySetDynamicSniAllowlist(String[] domains);
 

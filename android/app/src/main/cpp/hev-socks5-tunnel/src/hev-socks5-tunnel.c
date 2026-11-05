@@ -20,6 +20,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
 #include <arpa/inet.h>
 
 #include <lwip/tcp.h>
@@ -111,11 +112,12 @@ struct _AuraLocalSocks5Session {
 };
 
 static atomic_int local_socks5_running = ATOMIC_VAR_INIT (0);
-static atomic_int local_socks5_accept_started = ATOMIC_VAR_INIT (0);
 static atomic_int local_socks5_listener_fd = ATOMIC_VAR_INIT (-1);
-static HevTask *local_socks5_accept_task;
+static atomic_int local_socks5_wakeup_read_fd = ATOMIC_VAR_INIT (-1);
+static atomic_int local_socks5_wakeup_write_fd = ATOMIC_VAR_INIT (-1);
 static AuraLocalSocks5Session *local_socks5_sessions;
 static pthread_mutex_t local_socks5_sessions_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t local_socks5_wakeup_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void local_socks5_stop (void);
 
@@ -144,17 +146,22 @@ local_socks5_accept_entry (void *data)
 {
     HevTask *task = hev_task_self ();
     int listener_fd;
-    int registered = 0;
+    int wakeup_fd;
+    int listener_registered = 0;
+    int wakeup_registered = 0;
 
     (void)data;
-    atomic_store_explicit (&local_socks5_accept_started, 1, memory_order_release);
     listener_fd = atomic_load_explicit (&local_socks5_listener_fd, memory_order_acquire);
-    if (listener_fd < 0)
-        return;
+    wakeup_fd = atomic_load_explicit (&local_socks5_wakeup_read_fd, memory_order_acquire);
+    if (listener_fd < 0 || wakeup_fd < 0)
+        goto exit;
 
     if (hev_task_add_fd (task, listener_fd, POLLIN) < 0)
         goto exit;
-    registered = 1;
+    listener_registered = 1;
+    if (hev_task_add_fd (task, wakeup_fd, POLLIN) < 0)
+        goto exit;
+    wakeup_registered = 1;
 
     while (atomic_load_explicit (&local_socks5_running, memory_order_acquire)) {
         struct sockaddr_storage peer;
@@ -213,9 +220,11 @@ local_socks5_accept_entry (void *data)
     }
 
 exit:
-    if (registered)
+    if (wakeup_registered)
+        hev_task_del_fd (task, wakeup_fd);
+    if (listener_registered)
         hev_task_del_fd (task, listener_fd);
-    {
+    if (listener_fd >= 0) {
         int expected = listener_fd;
         if (atomic_compare_exchange_strong_explicit (
                 &local_socks5_listener_fd, &expected, -1,
@@ -231,6 +240,7 @@ local_socks5_init (void)
     struct sockaddr_in address = { 0 };
     int one = 1;
     int fd;
+    int wakeup_fds[2];
     int flags;
     HevTask *task;
 
@@ -254,16 +264,25 @@ local_socks5_init (void)
         return -1;
     }
 
-    task = hev_task_new (-1);
-    if (!task) {
+    if (pipe (wakeup_fds) < 0) {
         close (fd);
         return -1;
     }
 
+    task = hev_task_new (-1);
+    if (!task) {
+        close (fd);
+        close (wakeup_fds[0]);
+        close (wakeup_fds[1]);
+        return -1;
+    }
+
     atomic_store_explicit (&local_socks5_listener_fd, fd, memory_order_release);
-    atomic_store_explicit (&local_socks5_accept_started, 0, memory_order_release);
+    atomic_store_explicit (&local_socks5_wakeup_read_fd, wakeup_fds[0],
+                           memory_order_release);
+    atomic_store_explicit (&local_socks5_wakeup_write_fd, wakeup_fds[1],
+                           memory_order_release);
     atomic_store_explicit (&local_socks5_running, 1, memory_order_release);
-    local_socks5_accept_task = task;
     hev_task_run (task, local_socks5_accept_entry, NULL);
     return 0;
 }
@@ -275,25 +294,44 @@ local_socks5_stop (void)
     int was_running = atomic_exchange_explicit (
         &local_socks5_running, 0, memory_order_acq_rel);
 
-    if (was_running && local_socks5_accept_task) {
-        if (!atomic_load_explicit (&local_socks5_accept_started, memory_order_acquire)) {
-            int fd = atomic_exchange_explicit (
-                &local_socks5_listener_fd, -1, memory_order_acq_rel);
-            if (fd >= 0)
-                close (fd);
-        } else {
-            int fd = atomic_load_explicit (
-                &local_socks5_listener_fd, memory_order_acquire);
-            if (fd >= 0)
-                shutdown (fd, SHUT_RDWR);
+    if (was_running) {
+        const char signal = 1;
+        int fd;
+        ssize_t result;
+
+        pthread_mutex_lock (&local_socks5_wakeup_mutex);
+        fd = atomic_load_explicit (&local_socks5_wakeup_write_fd,
+                                  memory_order_acquire);
+        if (fd >= 0) {
+            do {
+                result = write (fd, &signal, sizeof (signal));
+            } while (result < 0 && errno == EINTR);
         }
-        hev_task_wakeup (local_socks5_accept_task);
+        pthread_mutex_unlock (&local_socks5_wakeup_mutex);
     }
 
     pthread_mutex_lock (&local_socks5_sessions_mutex);
     for (session = local_socks5_sessions; session; session = session->next)
         shutdown (session->fd, SHUT_RDWR);
     pthread_mutex_unlock (&local_socks5_sessions_mutex);
+}
+
+static void
+local_socks5_fini (void)
+{
+    int fd;
+
+    local_socks5_stop ();
+    pthread_mutex_lock (&local_socks5_wakeup_mutex);
+    fd = atomic_exchange_explicit (&local_socks5_wakeup_read_fd, -1,
+                                  memory_order_acq_rel);
+    if (fd >= 0)
+        close (fd);
+    fd = atomic_exchange_explicit (&local_socks5_wakeup_write_fd, -1,
+                                   memory_order_acq_rel);
+    if (fd >= 0)
+        close (fd);
+    pthread_mutex_unlock (&local_socks5_wakeup_mutex);
 }
 
 static int
@@ -349,6 +387,14 @@ hev_socks5_tunnel_block_domain (const char *domain)
     if (!READ_ONCE (run))
         return 0;
     return hev_mapped_dns_block_domain (domain);
+}
+
+int
+hev_socks5_tunnel_is_domain_blocked (const char *domain)
+{
+    if (!READ_ONCE (run))
+        return 0;
+    return hev_mapped_dns_is_blocked (domain);
 }
 
 static int
@@ -1246,7 +1292,7 @@ void
 hev_socks5_tunnel_fini (void)
 {
     LOG_D ("socks5 tunnel fini");
-    local_socks5_stop ();
+    local_socks5_fini ();
 
 retry:
     if (atomic_fetch_and (&tsync, ~(SYNC_SEND | SYNC_SENT)) & SYNC_WAIT) {
@@ -1272,8 +1318,11 @@ hev_socks5_tunnel_run (void)
 {
     LOG_D ("socks5 tunnel run");
 
-    if (atomic_fetch_and (&tsync, ~SYNC_STOP) & SYNC_STOP)
+    if (atomic_fetch_and (&tsync, ~SYNC_STOP) & SYNC_STOP) {
+        local_socks5_stop ();
+        hev_task_system_run ();
         return 0;
+    }
 
     task_event = hev_task_ref (task_event);
     hev_task_run (task_event, event_task_entry, NULL);
