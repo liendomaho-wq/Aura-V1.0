@@ -294,7 +294,7 @@ class AuraIntentParser {
     final executableMatches = executablePatterns
         .where((pattern) => pattern.hasMatch(text))
         .length;
-    final hasEmbeddedCommandBoundary = RegExp(r'[;:\\n]').hasMatch(text);
+    final hasEmbeddedCommandBoundary = RegExp(r'[;:\n]').hasMatch(text);
     if (executableMatches > 1 ||
         (hasEmbeddedCommandBoundary && executableMatches > 0)) {
       final rejected = AuraIntent(
