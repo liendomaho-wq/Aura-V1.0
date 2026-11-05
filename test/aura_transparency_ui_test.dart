@@ -124,17 +124,14 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
     expect(eventList, findsOneWidget);
-    final verticalScrollables = find.byType(Scrollable);
-    expect(verticalScrollables, findsWidgets);
-    await tester.scrollUntilVisible(
-      find.text('¿Por qué se bloqueó?'),
-      200,
-      scrollable: verticalScrollables.first,
-    );
-    expect(find.text('¿Por qué se bloqueó?'), findsOneWidget);
     final threatCard = find.byKey(
       const ValueKey<String>('verdict-explanation-card-verdict-1'),
     );
+    // Scroll the actual explanation card into view. Selecting the first
+    // Scrollable in the widget tree is ambiguous because Aura also contains
+    // horizontal quick actions and an optional nested telemetry list; on CI
+    // that can select the wrong scroll position and throw StateError.
+    expect(threatCard, findsOneWidget);
     await tester.ensureVisible(threatCard);
     await tester.pump();
     await tester.tap(threatCard);
