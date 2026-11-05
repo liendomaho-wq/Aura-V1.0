@@ -616,31 +616,38 @@ class AgentController {
           ),
         ),
       );
-      var auditLogPersisted = true;
-      try {
-        await _persistOperationAudit(
-          operationId: operationId,
-          tool: intent.name,
-          phase: 'completed',
-          argumentNames: argumentNames,
-          succeeded: result.data['ok'] == true,
-          errorCode: result.data['error'] is String
-              ? result.data['error'] as String
-              : null,
-        );
-      } on Object {
-        auditLogPersisted = false;
-        _emit(
-          AgentEvent(
-            kind: AgentEventKind.error,
-            message: 'La herramienta terminó, pero no se pudo guardar su cierre en la bitácora cifrada.',
-            data: <String, dynamic>{
-              'error': 'secure_audit_completion_write_failed',
-              'operation_id': operationId,
-              'tool': intent.name,
-            },
-          ),
-        );
+      var auditLogStatus = 'persisted';
+      if (intent.kind == AuraIntentKind.cryptographicPurge &&
+          result.data['ok'] == true) {
+        // The requested purge deliberately deletes the start record and the
+        // entire previous audit history. Do not recreate it after the purge.
+        auditLogStatus = 'cleared_by_requested_purge';
+      } else {
+        try {
+          await _persistOperationAudit(
+            operationId: operationId,
+            tool: intent.name,
+            phase: 'completed',
+            argumentNames: argumentNames,
+            succeeded: result.data['ok'] == true,
+            errorCode: result.data['error'] is String
+                ? result.data['error'] as String
+                : null,
+          );
+        } on Object {
+          auditLogStatus = 'completion_write_failed';
+          _emit(
+            AgentEvent(
+              kind: AgentEventKind.error,
+              message: 'La herramienta terminó, pero no se pudo guardar su cierre en la bitácora cifrada.',
+              data: <String, dynamic>{
+                'error': 'secure_audit_completion_write_failed',
+                'operation_id': operationId,
+                'tool': intent.name,
+              },
+            ),
+          );
+        }
       }
       final vpnActive = result.data['vpn_active'];
       if (vpnActive is bool) _securityState?.setVpnActive(vpnActive);
@@ -673,7 +680,7 @@ class AgentController {
           data: <String, dynamic>{
             ...result.data,
             'operation_id': operationId,
-            'audit_log_persisted': auditLogPersisted,
+            'audit_log_status': auditLogStatus,
           },
         ),
       );
