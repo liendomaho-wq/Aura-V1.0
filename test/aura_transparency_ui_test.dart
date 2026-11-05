@@ -167,11 +167,12 @@ void main() {
     await tester.tap(find.text('Cerrar'));
     await _pumpAuraFrames(tester);
 
-    final reportButton = find.text('Reportar falso positivo');
+    final reportButton = find.byKey(
+      const ValueKey<String>('report-false-positive-verdict-1'),
+    );
     expect(reportButton, findsOneWidget);
-    // The explanation lives inside a scrollable console. Its expanded
-    // contents can extend below the viewport, so tapping the text finder
-    // directly may miss the hit-test region on slower CI devices.
+    // Target the actual button rather than its label so the gesture lands
+    // inside the control's hit region on different CI viewport sizes.
     await tester.ensureVisible(reportButton);
     await tester.pump();
     await tester.tap(reportButton);
