@@ -393,6 +393,8 @@ class AgentController {
   }) async {
     final text = instruction.trim();
     if (text.isEmpty) return;
+    final operationId =
+        'aura-${DateTime.now().microsecondsSinceEpoch}-${++_operationSequence}';
 
     _emit(
       AgentEvent(
