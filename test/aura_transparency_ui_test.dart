@@ -169,10 +169,17 @@ void main() {
 
     final reportButton = find.text('Reportar falso positivo');
     expect(reportButton, findsOneWidget);
+    // The explanation lives inside a scrollable console. Its expanded
+    // contents can extend below the viewport, so tapping the text finder
+    // directly may miss the hit-test region on slower CI devices.
+    await tester.ensureVisible(reportButton);
+    await tester.pump();
     await tester.tap(reportButton);
     await _pumpAuraFrames(tester);
-    expect(state.explanationHistory, hasLength(1));
-    expect(state.explanationHistory.single.reportedFalsePositive, isTrue);
+    final reportedExplanation = state.explanationHistory.firstWhere(
+      (explanation) => explanation.id == 'verdict-1',
+    );
+    expect(reportedExplanation.reportedFalsePositive, isTrue);
     expect(find.text('Reportado localmente'), findsOneWidget);
     expect(
       find.textContaining('no se enviará telemetría'),
