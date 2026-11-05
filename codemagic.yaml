@@ -57,11 +57,17 @@ workflows:
         script: |
           set -euo pipefail
           cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          export AURA_REQUIRE_RELEASE_SIGNING=true
           bash tool/compile_aura.sh
       - name: Verify Android Release artifact signer
         script: |
           set -euo pipefail
           cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk | tee /tmp/certs.txt
+          if grep -q "CN=Android Debug" /tmp/certs.txt; then
+            echo "ERROR: APK firmado con DEBUG. Abortando distribución."
+            exit 1
+          fi
           bash tool/compile_aura.sh --verify-artifact
     artifacts:
       - build/app/outputs/flutter-apk/*.apk

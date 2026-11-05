@@ -45,6 +45,10 @@ case "${1:-}" in
 esac
 [[ "$#" -eq 0 ]] || fail "Unsupported argument. Use --check-signing or --verify-artifact."
 
+if [[ "$mode" == "verify-artifact" && "$USE_DEBUG_SIGNING" == "true" ]]; then
+    fail "Artifact verification requires production signing credentials; DEBUG fallback is not allowed."
+fi
+
 temporary_files=()
 cleanup_temporary_files() {
     local temporary_file
@@ -134,6 +138,10 @@ verify_release_signer() {
         for candidate in "$android_sdk"/build-tools/*/apksigner; do
             [[ -x "$candidate" ]] && apksigner_binary="$candidate"
         done
+    fi
+
+    if [[ "$extension" == "apk" && -z "$apksigner_binary" && "$mode" == "verify-artifact" ]]; then
+        fail "apksigner is required to verify the APK artifact certificate."
     fi
 
     if [[ "$extension" == "apk" && -n "$apksigner_binary" ]]; then

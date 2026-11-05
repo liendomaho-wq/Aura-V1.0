@@ -57,6 +57,41 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
             2,
         )
 
+    def test_codemagic_requires_release_signing_and_rejects_debug_apk(self):
+        build_script = self.codemagic_workflow.split(
+            "- name: Build Android Release artifact", 1
+        )[1].split("- name: Verify Android Release artifact signer", 1)[0]
+        verify_script = self.codemagic_workflow.split(
+            "- name: Verify Android Release artifact signer", 1
+        )[1]
+        self.assertRegex(
+            build_script,
+            re.compile(
+                r"export AURA_REQUIRE_RELEASE_SIGNING=true\s+"
+                r"bash tool/compile_aura\.sh"
+            ),
+        )
+        self.assertIn(
+            "apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk",
+            verify_script,
+        )
+        self.assertIn('grep -q "CN=Android Debug" /tmp/certs.txt', verify_script)
+        self.assertIn("bash tool/compile_aura.sh --verify-artifact", verify_script)
+
+    def test_artifact_verification_fails_closed_for_debug_or_missing_apksigner(self):
+        self.assertRegex(
+            self.build_script,
+            re.compile(
+                r'\[\[ "\$mode" == "verify-artifact" && '
+                r'"\$USE_DEBUG_SIGNING" == "true" \]\][\s\S]*?'
+                r'fail "Artifact verification requires production signing credentials'
+            ),
+        )
+        self.assertIn(
+            'fail "apksigner is required to verify the APK artifact certificate."',
+            self.build_script,
+        )
+
     def test_release_signing_report_rejects_missing_credentials(self):
         task = self.gradle.split('tasks.register("printReleaseSigning")', 1)[1]
         self.assertIn("def missingVariables =", task)
