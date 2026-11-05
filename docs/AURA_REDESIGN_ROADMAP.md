@@ -136,6 +136,7 @@
 - [x] Allowlist central de herramientas y rechazo de nombres no registrados.
 - [x] Contratos estrictos de argumentos por herramienta; límites de tamaño/profundidad y validación DNS/paquetes.
 - [x] Confirmación explícita centralizada para operaciones con efectos laterales.
+- [x] Confirmación de dos pasos, un solo uso y caducidad de 60 segundos; la autorización se vincula a la orden exacta y se invalida ante cualquier instrucción distinta.
 - [x] Límite de longitud de instrucciones y rechazo de ejecución concurrente.
 - [x] Cancelación segura antes de cruzar la frontera de ejecución; no se afirma abortar llamadas nativas ya iniciadas.
 - [x] Plazos máximos por herramienta; timeout reporta resultado desconocido y bloquea reintento automático.
