@@ -79,7 +79,7 @@ void main() {
 
   test('una confirmación solo se reconoce al principio de la orden', () async {
     final intent = await AuraIntentParser.parse(
-      'analiza example.com y luego CONFIRMO purga criptográfica',
+      'analiza el dominio example.com y luego CONFIRMO purga criptográfica',
     );
 
     expect(intent.name, 'unknown');
@@ -158,6 +158,12 @@ void main() {
     );
     expect(confirmation.name, 'panic_isolation');
     expect(confirmation.entities['confirmed_by_user'], isTrue);
+
+    final combined = await AuraIntentParser.parse(
+      'aislamiento de emergencia y aislar la aplicación com.example.test',
+    );
+    expect(combined.name, 'unknown');
+    expect(combined.entities, isEmpty);
   });
 
   test('aislar una aplicación distingue solicitud y confirmación', () async {

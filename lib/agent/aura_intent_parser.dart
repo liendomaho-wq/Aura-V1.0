@@ -292,7 +292,9 @@ class AuraIntentParser {
       _isolateCommand,
     ];
     final executableMatches = executablePatterns
-        .where((pattern) => pattern.hasMatch(text))
+      .where((pattern) => identical(pattern, _isolateCommand)
+        ? _hasIndependentIsolateCommand(text)
+        : pattern.hasMatch(text))
         .length;
     final hasEmbeddedCommandBoundary = RegExp(r'[;:\n]').hasMatch(text);
     if (executableMatches > 1 ||
@@ -448,6 +450,17 @@ class AuraIntentParser {
 
     _remember(intent);
     return Future<AuraIntent>.value(intent);
+  }
+
+  static bool _hasIndependentIsolateCommand(String text) {
+    final panicMatches = _panicIsolationCommand.allMatches(text);
+    return _isolateCommand.allMatches(text).any((isolateMatch) {
+      return !panicMatches.any(
+        (panicMatch) =>
+            isolateMatch.start < panicMatch.end &&
+            panicMatch.start < isolateMatch.end,
+      );
+    });
   }
 
   static AuraIntentKind? _classifyConversation(String text) {
