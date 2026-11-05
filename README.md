@@ -220,6 +220,7 @@ Se inició la Fase 1 del endurecimiento del agente en la rama `main`.
 - Plazos máximos por herramienta. Si vence el plazo, el resultado se marca como desconocido y no se reintenta automáticamente, porque la operación subyacente podría seguir ejecutándose.
 - Postcondición obligatoria: cada herramienta debe devolver `ok` booleano; la ausencia de un resultado verificable nunca se marca como éxito.
 - Correlación de operaciones mediante identificador local y reducción de datos de argumentos registrados en eventos.
+- Bitácora de operaciones cifrada en SecureVault: el registro de inicio se persiste antes de despachar una herramienta; si falla, la operación no comienza. El cierre registra éxito/error y no guarda valores de argumentos. La purga criptográfica elimina también esta bitácora.
 - Errores del límite de ejecución con códigos estables, evitando exponer mensajes internos o rutas del dispositivo.
 
 ### Estado de validación
