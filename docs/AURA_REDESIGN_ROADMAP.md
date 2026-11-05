@@ -150,3 +150,10 @@
 
 **Nota de seguridad:** un timeout de Future no mata un trabajo nativo o HTTP que ya empezó. Aura no lo presenta como cancelado ni lo reintenta automáticamente; el resultado se clasifica como desconocido hasta una comprobación independiente.
 
+
+
+### Avance de la Fase 2 — agente ejecutor — 2026-11-05
+
+- Se añadió rechazo fail-closed de mensajes con más de una intención ejecutable, y de órdenes incrustadas después de separadores típicos de texto pegado. El parser no interpreta feeds o informes pegados como autorización para ejecutar una segunda orden.
+- Se añadieron pruebas de regresión para órdenes concatenadas, texto de indicadores con instrucciones incrustadas y confirmaciones fuera del inicio de la orden.
+- **Pendiente antes de cerrar Fase 2:** cancelación cooperativa/progreso del escaneo nativo APK/DEX, planificador de tareas con checkpoints y recuperación, y ejecución de todas las pruebas en CodeMagic. No se afirma que un timeout Dart detenga el escáner Kotlin.
