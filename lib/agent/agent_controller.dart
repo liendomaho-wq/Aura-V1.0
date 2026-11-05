@@ -158,6 +158,7 @@ class AgentController {
   final List<AgentEvent> history = <AgentEvent>[];
   AuraStateProvider? _securityState;
   bool _locallyAuthenticated = false;
+  static int _operationSequence = 0;
   AgentCancellationToken? _activeCancellationToken;
 
   bool get isRunning => _activeCancellationToken != null;
@@ -397,7 +398,10 @@ class AgentController {
       AgentEvent(
         kind: AgentEventKind.thought,
         message: 'Analizando instrucción local.',
-        data: <String, dynamic>{'instruction_length': text.length},
+        data: <String, dynamic>{
+          'instruction_length': text.length,
+          'operation_id': operationId,
+        },
       ),
     );
     try {
@@ -547,7 +551,9 @@ class AgentController {
             message: 'El motor local inició $toolName.',
             data: <String, dynamic>{
               'tool': toolName,
-              'arguments': arguments,
+              'argument_names': arguments.keys.map((key) => key.toString()).toList(growable: false),
+              'argument_count': arguments.length,
+              'operation_id': operationId,
             },
           ),
         ),
@@ -561,7 +567,9 @@ class AgentController {
                 : 'El motor local no confirmó $toolName; revisa el resultado.',
             data: <String, dynamic>{
               'tool': toolName,
-              'arguments': arguments,
+              'argument_names': arguments.keys.map((key) => key.toString()).toList(growable: false),
+              'argument_count': arguments.length,
+              'operation_id': operationId,
               ...toolResult,
             },
           ),
@@ -595,7 +603,10 @@ class AgentController {
                   ? AgentEventKind.success
                   : AgentEventKind.warning,
           message: result.summary,
-          data: result.data,
+          data: <String, dynamic>{
+            ...result.data,
+            'operation_id': operationId,
+          },
         ),
       );
       if (intent.kind == AuraIntentKind.updateDefenses && succeeded) {
@@ -623,6 +634,7 @@ class AgentController {
           data: <String, dynamic>{
             'error': 'instruction_processing_failed',
             'error_type': error.runtimeType.toString(),
+            'operation_id': operationId,
           },
         ),
       );
