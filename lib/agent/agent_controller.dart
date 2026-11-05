@@ -868,7 +868,7 @@ class AgentController {
     caseSensitive: false,
   );
   static final RegExp _explicitDenial = RegExp(
-    r'\\b(?:no\\s+(?:confirmo|autorizo)|cancelo|rechazo|deniego|anulo)\\b',
+    r'\b(?:no\s+(?:confirmo|autorizo)|cancelo|rechazo|deniego|anulo)\b',
     caseSensitive: false,
   );
 
