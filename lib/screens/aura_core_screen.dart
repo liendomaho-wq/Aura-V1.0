@@ -1034,8 +1034,9 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
               onSubmitted: _dispatch,
               onVoice: _captureVoice,
             ),
-            ],
-          ),
+          ],
+        ),
+      ),
         ],
       ),
     );
