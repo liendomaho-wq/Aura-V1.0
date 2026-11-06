@@ -285,7 +285,8 @@ class _SplashScreenState extends State<SplashScreen>
               builder: (context, constraints) {
                 final compact = constraints.maxHeight < 700;
                 final coreSize = (constraints.maxWidth * 0.72)
-                    .clamp(220.0, compact ? 258.0 : 310.0);
+                    .clamp(220.0, compact ? 258.0 : 310.0)
+                    .toDouble();
                 return SingleChildScrollView(
                   physics: const ClampingScrollPhysics(),
                   child: ConstrainedBox(
