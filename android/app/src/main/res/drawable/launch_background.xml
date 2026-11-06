@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="#183A70"
+                android:centerColor="#0A1730"
+                android:endColor="#030711"
+                android:type="linear" />
+        </shape>
+    </item>
+    <item
+        android:width="190dp"
+        android:height="190dp"
+        android:gravity="center"
+        android:drawable="@drawable/aura_splash_mark" />
+</layer-list>
