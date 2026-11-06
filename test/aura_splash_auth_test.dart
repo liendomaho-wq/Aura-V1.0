@@ -113,6 +113,27 @@ void main() {
     expect(find.text('CONFIGURAR BLOQUEO DEL TELÉFONO'), findsNothing);
   });
 
+  testWidgets('unsecured splash remains scrollable on a compact display', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await pumpSplash(
+      tester,
+      hasStrongBiometric: false,
+      deviceSecure: false,
+    );
+    await tester.pump();
+
+    expect(find.text('CONFIGURAR BLOQUEO DEL TELÉFONO'), findsOneWidget);
+    expect(find.text('CONTINUAR SIN BLOQUEO LOCAL (INSEGURO)'), findsOneWidget);
+    expect(find.byType(SingleChildScrollView), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('an unsecured device shows choices and keeps the splash mounted',
       (
     tester,
