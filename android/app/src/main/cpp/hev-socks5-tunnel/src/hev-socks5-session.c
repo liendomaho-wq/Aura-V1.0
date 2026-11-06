@@ -40,7 +40,7 @@ hev_socks5_session_run (HevSocks5Session *self)
     if (srv->user && srv->pass) {
         hev_socks5_client_set_auth (HEV_SOCKS5_CLIENT (self), srv->user,
                                     srv->pass);
-        LOG_D ("%p socks5 client auth %s:%s", self, srv->user, srv->pass);
+        LOG_D ("%p socks5 client authentication configured", self);
     }
 
     res = hev_socks5_client_handshake (HEV_SOCKS5_CLIENT (self), srv->pipeline);

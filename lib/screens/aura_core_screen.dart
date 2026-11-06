@@ -20,8 +20,13 @@ import '../widgets/aura_avatar.dart';
 const Color _terminalGreen = Color(0xFF00FF00);
 const Color _terminalYellow = Color(0xFFFFFF00);
 const Color _terminalCyan = Color(0xFF00FFFF);
-const int _maxLocalTelemetryEvents = 500;
 const int maxInstructionLength = 240;
+
+String _localTelemetryDomainLabel(Map<String, dynamic> event) {
+  final hash = event['domain_hash'];
+  if (hash is! String || hash.length < 12) return 'dominio protegido';
+  return 'dominio protegido ${hash.substring(0, 12)}';
+}
 
 class AuraCoreScreen extends StatefulWidget {
   const AuraCoreScreen({super.key});
@@ -31,12 +36,15 @@ class AuraCoreScreen extends StatefulWidget {
 }
 
 class _AuraCoreScreenState extends State<AuraCoreScreen> {
-  static const MethodChannel _voiceChannel =
-      MethodChannel('com.ciberdefensa.aura/voice');
-  static const MethodChannel _telemetryChannel =
-      MethodChannel('com.ciberdefensa.aura/telemetry');
-  static const MethodChannel _securityChannel =
-      MethodChannel('com.ciberdefensa.aura/security');
+  static const MethodChannel _voiceChannel = MethodChannel(
+    'com.ciberdefensa.aura/voice',
+  );
+  static const MethodChannel _telemetryChannel = MethodChannel(
+    'com.ciberdefensa.aura/telemetry',
+  );
+  static const MethodChannel _securityChannel = MethodChannel(
+    'com.ciberdefensa.aura/security',
+  );
 
   final TextEditingController _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -90,10 +98,12 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
 
   Future<void> _refreshAccessibilityServices() async {
     try {
-      final report = await _securityChannel
-          .invokeMapMethod<Object?, Object?>('checkHostileEnvironment');
+      final report = await _securityChannel.invokeMapMethod<Object?, Object?>(
+        'checkHostileEnvironment',
+      );
       final rawPackages = report?['untrustedAccessibilityServicePackages'];
-      if (rawPackages is! List || rawPackages.any((value) => value is! String)) {
+      if (rawPackages is! List ||
+          rawPackages.any((value) => value is! String)) {
         throw const FormatException(
           'Android devolvió una lista de accesibilidad inválida.',
         );
@@ -115,8 +125,9 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
 
   Future<void> _openAccessibilitySettings() async {
     try {
-      final opened =
-          await _securityChannel.invokeMethod<bool>('openAccessibilitySettings');
+      final opened = await _securityChannel.invokeMethod<bool>(
+        'openAccessibilitySettings',
+      );
       if (opened != true) {
         AgentController.instance.reportError(
           'Android no confirmó la apertura de accesibilidad. '
@@ -229,27 +240,11 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
 
   Future<void> _recordLocalNetworkEvent(NetworkAuditEvent event) async {
     try {
-      final stored = await AuraLocalTelemetry.recordNetworkEvent(event.toJson());
+      final stored = await AuraLocalTelemetry.recordNetworkEvent(
+        event.toJson(),
+      );
       if (stored && mounted) {
-        final action = event.toJson()['action']!;
-        final events = <Map<String, dynamic>>[
-          ..._localTelemetryEvents,
-          <String, dynamic>{
-            'timestamp': event.timestamp,
-            'requested_domain': event.requestedDomain,
-            'action': action,
-            'type': event.action == NetworkAuditAction.blocked
-                ? 'dominio_bloqueado'
-                : 'escaneo',
-          },
-        ];
-        if (events.length > _maxLocalTelemetryEvents) {
-          events.removeRange(0, events.length - _maxLocalTelemetryEvents);
-        }
-        setState(() {
-          _localTelemetryEvents =
-              List<Map<String, dynamic>>.unmodifiable(events);
-        });
+        await _refreshLocalTelemetryEvents();
       }
     } on Object catch (error) {
       AgentController.instance.reportWarning(
@@ -273,9 +268,11 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
           ? null
           : state.explanationHistory.last;
       final threshold = latestExplanation == null
-          ? state.activeDecisionThreshold?.toStringAsFixed(2) ?? 'sin inferencia'
+          ? state.activeDecisionThreshold?.toStringAsFixed(2) ??
+                'sin inferencia'
           : latestExplanation.decisionThreshold.toStringAsFixed(2);
-      _coverageAutotestStatus = 'Diagnóstico local completado. Túnel VPN: '
+      _coverageAutotestStatus =
+          'Diagnóstico local completado. Túnel VPN: '
           '${state.isVpnActive ? 'activo' : 'inactivo'}. '
           'Eventos de sesión: ${state.blockedEvents} bloqueos, '
           '${state.dgaAlertEvents} alertas DGA, '
@@ -320,9 +317,9 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
   }
 
   void _reportFalsePositive(String explanationId) {
-    context
-        .read<AuraStateProvider>()
-        .markExplanationAsFalsePositive(explanationId);
+    context.read<AuraStateProvider>().markExplanationAsFalsePositive(
+      explanationId,
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
@@ -392,8 +389,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
     } on PlatformException catch (error) {
       if (mounted) {
         context.read<AuraStateProvider>().setSecurityLevel(
-              AuraSecurityLevel.warning,
-            );
+          AuraSecurityLevel.warning,
+        );
         AgentController.instance.reportError(
           error.message ?? 'No se pudo capturar el comando de voz.',
         );
@@ -401,8 +398,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
     } on MissingPluginException {
       if (mounted) {
         context.read<AuraStateProvider>().setSecurityLevel(
-              AuraSecurityLevel.warning,
-            );
+          AuraSecurityLevel.warning,
+        );
         AgentController.instance.reportError(
           'El reconocimiento de voz no está disponible.',
         );
@@ -445,7 +442,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
       final endpointConfigured = rawStatus['endpointConfigured'] as bool;
       AuraLocalTelemetry.configure(endpointConfigured: endpointConfigured);
       var localEnabled = await AuraLocalTelemetry.isEnabled();
-      final localEvents = endpointConfigured
+      var localEvents = endpointConfigured
           ? const <Map<String, dynamic>>[]
           : await AuraLocalTelemetry.loadEvents();
       await showDialog<void>(
@@ -472,9 +469,9 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                     subtitle: Text(
                       endpointConfigured
                           ? 'Modo remoto disponible. Solo se envían eventos '
-                              'con consentimiento y por HTTPS.'
+                                'con consentimiento y por HTTPS.'
                           : 'Modo local: escaneos, dominios bloqueados y marcas '
-                              'de tiempo permanecen en este dispositivo.',
+                                'de tiempo permanecen en este dispositivo.',
                       style: const TextStyle(
                         color: _terminalYellow,
                         fontSize: 11,
@@ -486,10 +483,10 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                         try {
                           final persisted =
                               await _telemetryChannel.invokeMethod<bool>(
-                                    'setDomainTelemetryOptIn',
-                                    value,
-                                  ) ??
-                                  false;
+                                'setDomainTelemetryOptIn',
+                                value,
+                              ) ??
+                              false;
                           if (!dialogContext.mounted) return;
                           setDialogState(() => optedIn = persisted);
                         } on Object catch (error) {
@@ -504,16 +501,21 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                         }
                       } else {
                         try {
-                          final persisted =
-                              await AuraLocalTelemetry.setEnabled(value);
+                          final persisted = await AuraLocalTelemetry.setEnabled(
+                            value,
+                          );
                           if (!dialogContext.mounted) return;
                           setDialogState(() {
                             localEnabled = persisted;
+                            if (!persisted) localEvents = const [];
                           });
                           if (mounted) {
-                            setState(
-                              () => _localTelemetryEnabled = persisted,
-                            );
+                            setState(() {
+                              _localTelemetryEnabled = persisted;
+                              if (!persisted) {
+                                _localTelemetryEvents = const [];
+                              }
+                            });
                           }
                         } on Object catch (error) {
                           if (!dialogContext.mounted) return;
@@ -577,10 +579,10 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                   Text(
                     endpointConfigured
                         ? 'Se envían hashes SHA-256 y clasificación, nunca el '
-                            'dominio en claro. Puedes retirar el consentimiento; '
-                            'al desactivarlo se elimina la cola pendiente.'
+                              'dominio en claro. Puedes retirar el consentimiento; '
+                              'al desactivarlo se elimina la cola pendiente.'
                         : 'Los eventos permanecen en el almacenamiento privado '
-                            'de este dispositivo. No se envían a ningún servidor.',
+                              'de este dispositivo. No se envían a ningún servidor.',
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: 11,
@@ -608,7 +610,6 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
         SnackBar(content: Text('No se pudo abrir el ajuste: $error')),
       );
     }
-
   }
 
   String _localTelemetryLine(Map<String, dynamic> event) {
@@ -617,8 +618,10 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
         ? DateTime.fromMillisecondsSinceEpoch(timestamp).toIso8601String()
         : 'hora desconocida';
     final type = event['type'] is String ? event['type'] as String : 'evento';
-    final domain =
-        event['requested_domain'] ?? event['domain'] ?? 'sin dominio';
+    final hash = event['domain_hash'];
+    final domain = hash is String && hash.length >= 12
+        ? 'dominio protegido ${hash.substring(0, 12)}'
+        : 'dominio protegido';
     final action = event['action'] ?? event['outcome'] ?? '';
     return '$time · $type · $domain · $action';
   }
@@ -668,27 +671,28 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                 IconButton(
                   tooltip: 'Privacidad y telemetría opcional',
                   onPressed: _showTelemetrySettings,
-                  constraints:
-                      const BoxConstraints.tightFor(width: 48, height: 48),
-                  icon: const Icon(
-                    Icons.tune,
-                    color: AuraTokens.accent,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 48,
+                    height: 48,
                   ),
+                  icon: const Icon(Icons.tune, color: AuraTokens.accent),
                 ),
                 IconButton(
                   key: const ValueKey<String>('coverage-audit-toggle'),
                   tooltip: _showCoverageAudit
                       ? 'Volver a la consola'
                       : 'Auditoría de cobertura',
-                  onPressed: () => setState(
-                    () => _showCoverageAudit = !_showCoverageAudit,
+                  onPressed: () =>
+                      setState(() => _showCoverageAudit = !_showCoverageAudit),
+                  constraints: const BoxConstraints.tightFor(
+                    width: 48,
+                    height: 48,
                   ),
-                  constraints:
-                      const BoxConstraints.tightFor(width: 48, height: 48),
                   icon: Icon(
                     Icons.fact_check_outlined,
-                    color:
-                        _showCoverageAudit ? AuraTokens.accent : AuraTokens.textMuted,
+                    color: _showCoverageAudit
+                        ? AuraTokens.accent
+                        : AuraTokens.textMuted,
                   ),
                 ),
                 const Expanded(
@@ -721,21 +725,24 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                 ),
                 TextButton(
                   key: const ValueKey<String>('vpn-toggle'),
-                  onPressed:
-                      _isAuthenticated && !_isShieldBusy ? _toggleShield : null,
+                  onPressed: _isAuthenticated && !_isShieldBusy
+                      ? _toggleShield
+                      : null,
                   style: TextButton.styleFrom(
                     side: BorderSide(
                       color: _isShieldBusy
                           ? Colors.grey
                           : vpnActive
-                              ? AuraTokens.success
-                              : AuraTokens.textMuted,
+                          ? AuraTokens.success
+                          : AuraTokens.textMuted,
                     ),
                     backgroundColor: vpnActive
                         ? AuraTokens.success.withValues(alpha: 0.10)
                         : AuraTokens.surfaceAlt,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     shape: const StadiumBorder(),
                   ),
                   child: _isShieldBusy
@@ -746,8 +753,9 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                       : Text(
                           vpnActive ? 'DEFENSA: ON' : 'DEFENSA: OFF',
                           style: TextStyle(
-                            color:
-                                vpnActive ? AuraTokens.success : AuraTokens.textMuted,
+                            color: vpnActive
+                                ? AuraTokens.success
+                                : AuraTokens.textMuted,
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.4,
@@ -781,44 +789,62 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                     mode: _isListening
                         ? AuraAvatarMode.listening
                         : _isRunning
-                            ? AuraAvatarMode.analyzing
-                            : switch (state.securityLevel) {
-                                AuraSecurityLevel.critical =>
-                                  AuraAvatarMode.alert,
-                                AuraSecurityLevel.warning =>
-                                  AuraAvatarMode.warning,
-                                AuraSecurityLevel.safe => state.isVpnActive
-                                    ? AuraAvatarMode.protecting
-                                    : AuraAvatarMode.available,
-                              },
+                        ? AuraAvatarMode.analyzing
+                        : switch (state.securityLevel) {
+                            AuraSecurityLevel.critical => AuraAvatarMode.alert,
+                            AuraSecurityLevel.warning => AuraAvatarMode.warning,
+                            AuraSecurityLevel.safe =>
+                              state.isVpnActive
+                                  ? AuraAvatarMode.protecting
+                                  : AuraAvatarMode.available,
+                          },
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Hola, soy Aura.',
-                          style: TextStyle(color: AuraTokens.textPrimary,
-                            fontSize: 22, fontWeight: FontWeight.w600)),
+                        const Text(
+                          'Hola, soy Aura.',
+                          style: TextStyle(
+                            color: AuraTokens.textPrimary,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         const SizedBox(height: 4),
                         Text(
                           _isRunning
                               ? 'Estoy ejecutando tu solicitud…'
                               : _isListening
-                                  ? 'Te estoy escuchando…'
-                                  : state.securityLevel == AuraSecurityLevel.critical
-                                      ? 'Alerta crítica: revisa los hallazgos de seguridad.'
-                                      : state.securityLevel == AuraSecurityLevel.warning
-                                          ? 'Hay señales que requieren tu atención.'
-                                          : 'Lista para recibir instrucciones y ejecutar comprobaciones locales.',
-                          style: const TextStyle(color: AuraTokens.accent, fontSize: 13, fontWeight: FontWeight.w500)),
+                              ? 'Te estoy escuchando…'
+                              : state.securityLevel ==
+                                    AuraSecurityLevel.critical
+                              ? 'Alerta crítica: revisa los hallazgos de seguridad.'
+                              : state.securityLevel == AuraSecurityLevel.warning
+                              ? 'Hay señales que requieren tu atención.'
+                              : 'Lista para recibir instrucciones y ejecutar comprobaciones locales.',
+                          style: const TextStyle(
+                            color: AuraTokens.accent,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                         const SizedBox(height: 8),
-                        Text('${state.blockedEvents} bloqueos confirmados en esta sesión',
-                          style: const TextStyle(color: AuraTokens.textMuted, fontSize: 10)),
+                        Text(
+                          '${state.blockedEvents} bloqueos confirmados en esta sesión',
+                          style: const TextStyle(
+                            color: AuraTokens.textMuted,
+                            fontSize: 10,
+                          ),
+                        ),
                         const SizedBox(height: 3),
                         Text(
                           'VPN local opcional · ${state.isVpnActive ? 'activa' : 'inactiva'}',
-                          style: const TextStyle(color: AuraTokens.textMuted, fontSize: 10),
+                          style: const TextStyle(
+                            color: AuraTokens.textMuted,
+                            fontSize: 10,
+                          ),
                         ),
                       ],
                     ),
@@ -893,8 +919,10 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                         final explanationCount =
                             state.explanationHistory.length;
                         final leadingCardCount =
-                            (_showCoverageAudit || explanationCount > 0 ? 1 : 0) +
-                                (!_telemetryEndpointConfigured ? 1 : 0);
+                            (_showCoverageAudit || explanationCount > 0
+                                ? 1
+                                : 0) +
+                            (!_telemetryEndpointConfigured ? 1 : 0);
                         _scrollToLatest(events.length + leadingCardCount);
                         return ListView(
                           key: const ValueKey<String>('aura-event-list'),
@@ -977,78 +1005,71 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
 }
 
 class _LocalTelemetryPanel extends StatelessWidget {
-  const _LocalTelemetryPanel({
-    required this.events,
-    required this.enabled,
-  });
+  const _LocalTelemetryPanel({required this.events, required this.enabled});
 
   final List<Map<String, dynamic>> events;
   final bool enabled;
 
   @override
   Widget build(BuildContext context) => Container(
-        key: const ValueKey<String>('local-telemetry-panel'),
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF07110E),
-          border: Border.all(color: _terminalGreen.withAlpha(115)),
+    key: const ValueKey<String>('local-telemetry-panel'),
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: const Color(0xFF07110E),
+      border: Border.all(color: _terminalGreen.withAlpha(115)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'TELEMETRÍA LOCAL',
+          style: TextStyle(
+            color: _terminalCyan,
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.bold,
+          ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'TELEMETRÍA LOCAL',
-              style: TextStyle(
-                color: _terminalCyan,
-                fontFamily: 'monospace',
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Text(
-              enabled ? 'REGISTRO LOCAL ACTIVO' : 'REGISTRO LOCAL PAUSADO',
-              style: const TextStyle(
-                color: _terminalYellow,
-                fontFamily: 'monospace',
-                fontSize: 10,
-              ),
-            ),
-            const SizedBox(height: 6),
-            if (events.isEmpty)
-              const Text(
-                'Sin escaneos ni bloqueos registrados.',
-                style: TextStyle(
-                  color: AuraTokens.textMuted,
+        Text(
+          enabled ? 'REGISTRO LOCAL ACTIVO' : 'REGISTRO LOCAL PAUSADO',
+          style: const TextStyle(
+            color: _terminalYellow,
+            fontFamily: 'monospace',
+            fontSize: 10,
+          ),
+        ),
+        const SizedBox(height: 6),
+        if (events.isEmpty)
+          const Text(
+            'Sin escaneos ni bloqueos registrados.',
+            style: TextStyle(color: AuraTokens.textMuted, fontSize: 10),
+          )
+        else
+          for (final event in events.reversed.take(5))
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text(
+                '${_formatLocalTimestamp(event['timestamp'])} · '
+                '${event['type'] ?? 'evento'} · '
+                '${_localTelemetryDomainLabel(event)}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: _terminalGreen,
+                  fontFamily: 'monospace',
                   fontSize: 10,
                 ),
-              )
-            else
-              for (final event in events.reversed.take(5))
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Text(
-                    '${_formatLocalTimestamp(event['timestamp'])} · '
-                    '${event['type'] ?? 'evento'} · '
-                    '${event['requested_domain'] ?? event['domain'] ?? 'sin dominio'}',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _terminalGreen,
-                      fontFamily: 'monospace',
-                      fontSize: 10,
-                    ),
-                  ),
-                ),
-          ],
-        ),
-      );
+              ),
+            ),
+      ],
+    ),
+  );
 
-  static String _formatLocalTimestamp(Object? timestamp) =>
-      timestamp is int
-          ? DateTime.fromMillisecondsSinceEpoch(timestamp)
-              .toIso8601String()
-              .replaceFirst('T', ' ')
-          : 'hora desconocida';
+  static String _formatLocalTimestamp(Object? timestamp) => timestamp is int
+      ? DateTime.fromMillisecondsSinceEpoch(
+          timestamp,
+        ).toIso8601String().replaceFirst('T', ' ')
+      : 'hora desconocida';
 }
 
 class _ExplanationCard extends StatefulWidget {
@@ -1131,13 +1152,13 @@ class _ExplanationCardState extends State<_ExplanationCard> {
     final explanation = widget.explanation;
     final signatureStatus = _integrityReport == null
         ? explanation.signatureVerified
-            ? '[OK] Firma RSA verificada al cargar'
-            : '[WARN] Firma RSA sin verificación (asset base)'
+              ? '[OK] Firma RSA verificada al cargar'
+              : '[WARN] Firma RSA sin verificación (asset base)'
         : _integrityReport!.signatureVerified
-            ? '[OK] Firma RSA verificada'
-            : _integrityReport!.verified
-                ? '[WARN] Sin firma RSA; SHA-256 verificado'
-                : '[WARN] Sin verificación de integridad';
+        ? '[OK] Firma RSA verificada'
+        : _integrityReport!.verified
+        ? '[WARN] Sin firma RSA; SHA-256 verificado'
+        : '[WARN] Sin verificación de integridad';
     final digestPrefix = explanation.modelSha256.length >= 8
         ? explanation.modelSha256.substring(0, 8)
         : explanation.modelSha256;
@@ -1241,10 +1262,7 @@ class _ExplanationCardState extends State<_ExplanationCard> {
                 foregroundColor: AuraTokens.accent,
                 padding: EdgeInsets.zero,
               ),
-              child: Text(
-                'SHA-256: $digestPrefix…',
-                textAlign: TextAlign.left,
-              ),
+              child: Text('SHA-256: $digestPrefix…', textAlign: TextAlign.left),
             ),
           ),
           Align(
@@ -1268,9 +1286,7 @@ class _ExplanationCardState extends State<_ExplanationCard> {
                 onPressed: widget.onOpenModelCard,
                 icon: const Icon(Icons.open_in_new, size: 16),
                 label: const Text('Model Card'),
-                style: TextButton.styleFrom(
-                  foregroundColor: AuraTokens.accent,
-                ),
+                style: TextButton.styleFrom(foregroundColor: AuraTokens.accent),
               ),
               if (explanation.isThreat)
                 TextButton.icon(
@@ -1297,10 +1313,7 @@ class _ExplanationCardState extends State<_ExplanationCard> {
               alignment: Alignment.centerLeft,
               child: Text(
                 'Se registrará localmente para revisión; no se enviará telemetría.',
-                style: TextStyle(
-                  color: AuraTokens.textMuted,
-                  fontSize: 11,
-                ),
+                style: TextStyle(color: AuraTokens.textMuted, fontSize: 11),
               ),
             ),
           const SizedBox(height: AuraTokens.s2),
@@ -1321,10 +1334,7 @@ class _ExplanationCardState extends State<_ExplanationCard> {
               child: Text(
                 'La distancia de edición es auxiliar y no forma parte del '
                 'vector del modelo publicado.',
-                style: TextStyle(
-                  color: AuraTokens.textMuted,
-                  fontSize: 11,
-                ),
+                style: TextStyle(color: AuraTokens.textMuted, fontSize: 11),
               ),
             ),
         ],
@@ -1364,93 +1374,90 @@ class _CoverageAuditCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Card(
-        color: AuraTokens.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AuraTokens.rMd),
-          side: const BorderSide(color: AuraTokens.accent),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(AuraTokens.s3),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Auditoría de cobertura',
-                style: TextStyle(
-                  color: AuraTokens.accent,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: AuraTokens.s2),
-              Text(
-                'Eventos de la sesión: $sniObserved SNI observados, '
-                '$blocked ${blocked == 1 ? 'bloqueo' : 'bloqueos'}, '
-                '$dgaAlerts ${dgaAlerts == 1 ? 'alerta' : 'alertas'} DGA y '
-                '$encryptedDnsBlocked '
-                '${encryptedDnsBlocked == 1 ? 'bloqueo' : 'bloqueos'} '
-                'de DNS cifrado y $quicBlocked paquetes QUIC descartados. '
-                'UMBRAL DE DECISIÓN: '
-                '${decisionThreshold?.toStringAsFixed(2) ?? 'sin inferencia'}.',
-                style: const TextStyle(color: AuraTokens.textPrimary),
-              ),
-              const SizedBox(height: AuraTokens.s2),
-              const Text(
-                'Inspección TLS/SNI: parser y reglas disponibles, pero todavía '
-                'no están conectados al flujo de paquetes del túnel. Aura no '
-                'afirma inspeccionar ni bloquear tráfico TLS por SNI.',
-                style: TextStyle(
-                  color: AuraTokens.warning,
-                  fontFamily: 'monospace',
-                ),
-              ),
-              const SizedBox(height: AuraTokens.s2),
-              const Text(
-                'Resolutores públicos observados:',
-                style: TextStyle(
-                  color: AuraTokens.textPrimary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Text(
-                observedResolvers.isEmpty
-                    ? 'Sin resolutores públicos observados en los eventos de esta sesión.'
-                    : observedResolvers.join(', '),
-                style: const TextStyle(
-                  color: AuraTokens.textMuted,
-                  fontFamily: 'monospace',
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(height: AuraTokens.s2),
-              const Text(
-                'Límites conocidos: QUIC/DoQ sin SNI; ECH puede reducir '
-                'la detección; inspección userspace, sin iptables.',
-                style: TextStyle(
-                  color: AuraTokens.warning,
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(height: AuraTokens.s2),
-              FilledButton.icon(
-                onPressed: onRunAutotest,
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Ejecutar autotest'),
-              ),
-              if (autotestStatus != null) ...[
-                const SizedBox(height: AuraTokens.s2),
-                Text(
-                  autotestStatus!,
-                  style: const TextStyle(
-                    color: AuraTokens.textPrimary,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ],
+    color: AuraTokens.surface,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(AuraTokens.rMd),
+      side: const BorderSide(color: AuraTokens.accent),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(AuraTokens.s3),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Auditoría de cobertura',
+            style: TextStyle(
+              color: AuraTokens.accent,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-        ),
-      );
+          const SizedBox(height: AuraTokens.s2),
+          Text(
+            'Eventos de la sesión: $sniObserved SNI observados, '
+            '$blocked ${blocked == 1 ? 'bloqueo' : 'bloqueos'}, '
+            '$dgaAlerts ${dgaAlerts == 1 ? 'alerta' : 'alertas'} DGA y '
+            '$encryptedDnsBlocked '
+            '${encryptedDnsBlocked == 1 ? 'bloqueo' : 'bloqueos'} '
+            'de DNS cifrado y $quicBlocked paquetes QUIC descartados. '
+            'UMBRAL DE DECISIÓN: '
+            '${decisionThreshold?.toStringAsFixed(2) ?? 'sin inferencia'}.',
+            style: const TextStyle(color: AuraTokens.textPrimary),
+          ),
+          const SizedBox(height: AuraTokens.s2),
+          const Text(
+            'Inspección TLS/SNI: parser y reglas disponibles, pero todavía '
+            'no están conectados al flujo de paquetes del túnel. Aura no '
+            'afirma inspeccionar ni bloquear tráfico TLS por SNI.',
+            style: TextStyle(
+              color: AuraTokens.warning,
+              fontFamily: 'monospace',
+            ),
+          ),
+          const SizedBox(height: AuraTokens.s2),
+          const Text(
+            'Resolutores públicos observados:',
+            style: TextStyle(
+              color: AuraTokens.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Text(
+            observedResolvers.isEmpty
+                ? 'Sin resolutores públicos observados en los eventos de esta sesión.'
+                : observedResolvers.join(', '),
+            style: const TextStyle(
+              color: AuraTokens.textMuted,
+              fontFamily: 'monospace',
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: AuraTokens.s2),
+          const Text(
+            'Límites conocidos: QUIC/DoQ sin SNI; ECH puede reducir '
+            'la detección; inspección userspace, sin iptables.',
+            style: TextStyle(color: AuraTokens.warning, fontSize: 12),
+          ),
+          const SizedBox(height: AuraTokens.s2),
+          FilledButton.icon(
+            onPressed: onRunAutotest,
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('Ejecutar autotest'),
+          ),
+          if (autotestStatus != null) ...[
+            const SizedBox(height: AuraTokens.s2),
+            Text(
+              autotestStatus!,
+              style: const TextStyle(
+                color: AuraTokens.textPrimary,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
 }
 
 class _SyslogLine extends StatelessWidget {
@@ -1464,14 +1471,15 @@ class _SyslogLine extends StatelessWidget {
     final isThinking = event.data?['terminal_thinking'] == true;
     final isUser = terminalPrefix == '[USER]';
     final isAura = terminalPrefix == '[AURA]';
-    final timestamp = '${event.ts.hour.toString().padLeft(2, '0')}:'
+    final timestamp =
+        '${event.ts.hour.toString().padLeft(2, '0')}:'
         '${event.ts.minute.toString().padLeft(2, '0')}:'
         '${event.ts.second.toString().padLeft(2, '0')}';
     final textColor = event.kind == AgentEventKind.error
         ? AuraTokens.danger
         : event.kind == AgentEventKind.warning
-            ? AuraTokens.warning
-            : AuraTokens.textPrimary;
+        ? AuraTokens.warning
+        : AuraTokens.textPrimary;
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -1483,7 +1491,9 @@ class _SyslogLine extends StatelessWidget {
           color: isUser ? const Color(0xFF173A70) : AuraTokens.surface,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: isAura ? AuraTokens.accent.withAlpha(65) : Colors.white.withAlpha(14),
+            color: isAura
+                ? AuraTokens.accent.withAlpha(65)
+                : Colors.white.withAlpha(14),
           ),
         ),
         child: Column(
@@ -1563,10 +1573,7 @@ class _TerminalInput extends StatelessWidget {
               ),
               decoration: const InputDecoration(
                 hintText: 'Dile a Aura qué necesitas proteger…',
-                hintStyle: TextStyle(
-                  color: AuraTokens.textMuted,
-                  fontSize: 13,
-                ),
+                hintStyle: TextStyle(color: AuraTokens.textMuted, fontSize: 13),
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: EdgeInsets.symmetric(vertical: 9),

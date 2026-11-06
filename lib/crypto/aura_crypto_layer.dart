@@ -28,8 +28,10 @@ abstract final class AuraCryptoLayer {
   static const String _authenticatedEnvelopeLabel = 'AURA2';
   static const int _rsa2048SignatureLength = 256;
   static const int _hkdfMaximumLength = 255 * _sha256Length;
-  static const MethodChannel _nativeCryptoChannel =
-      MethodChannel('com.aura.cyberdefense/engine');
+  static const MethodChannel _nativeCryptoChannel = MethodChannel(
+    'com.aura.cyberdefense/engine',
+  );
+
   /// Raw Base64 SubjectPublicKeyInfo DER; verification fails closed when unset.
   static const String _auraPublicKeyEnv = String.fromEnvironment(
     'AURA_PUBLIC_KEY',
@@ -37,8 +39,25 @@ abstract final class AuraCryptoLayer {
         'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuG7nFF0UbTjT6Y8Ju0p31nVPiqx3aq6yg7+g/JtRJ+Y9WDAY504WdCnACplCVwju/5tnJhkvD3kWbsmfX45t9ZqMyCBo4stXbvRdbpe2WwMmxR/9ZHGGQQ1vjKyE4klsQ03aC836GW8l5y1IV/jknU4C03GRRMjfhkwTKpMjqq3kZAgQ62Yo2Prw0fB2c7b/2RjN5yiUZLtjh8FEQBhe8aW+4lrxEVkRJZxPrkbYdQoqBQKm2hQq1AUHurXx+HwHqDplb6mTcNttbnFtrkS0IDqXrhDSAHjaMLY8k6zyCutL7kTPBrAb44KaYvTRhMRBeUyOXHIb9YfxgAA0cCNs5wIDAQAB',
   );
   static const List<int> _sha256DigestInfoPrefix = <int>[
-    0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65,
-    0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20,
+    0x30,
+    0x31,
+    0x30,
+    0x0d,
+    0x06,
+    0x09,
+    0x60,
+    0x86,
+    0x48,
+    0x01,
+    0x65,
+    0x03,
+    0x04,
+    0x02,
+    0x01,
+    0x05,
+    0x00,
+    0x04,
+    0x20,
   ];
   static const String _derivationSalt = 'Aura Mobile Defens model key v1';
   static const String _derivationInfo = 'aura-model-aes-256-cbc-pkcs7';
@@ -75,9 +94,7 @@ abstract final class AuraCryptoLayer {
     try {
       var outputOffset = 0;
       for (var counter = 1; outputOffset < length; counter++) {
-        final blockInput = Uint8List(
-          previousBlock.length + info.length + 1,
-        )
+        final blockInput = Uint8List(previousBlock.length + info.length + 1)
           ..setRange(0, previousBlock.length, previousBlock)
           ..setRange(
             previousBlock.length,
@@ -86,9 +103,7 @@ abstract final class AuraCryptoLayer {
           )
           ..[previousBlock.length + info.length] = counter;
         final block = Uint8List.fromList(
-          crypto.Hmac(crypto.sha256, pseudoRandomKey)
-              .convert(blockInput)
-              .bytes,
+          crypto.Hmac(crypto.sha256, pseudoRandomKey).convert(blockInput).bytes,
         );
         secureZeroMemory(blockInput);
         secureZeroMemory(previousBlock);
@@ -113,10 +128,7 @@ abstract final class AuraCryptoLayer {
     }
   }
 
-  static bool verifySignature(
-    Uint8List fileBytes,
-    Uint8List signatureBytes,
-  ) {
+  static bool verifySignature(Uint8List fileBytes, Uint8List signatureBytes) {
     try {
       if (_auraPublicKeyEnv.isEmpty || fileBytes.isEmpty) return false;
       final publicKey = _parseBase64PublicKey(_auraPublicKeyEnv);
@@ -135,10 +147,7 @@ abstract final class AuraCryptoLayer {
         modulusLength,
       );
       final digest = crypto.sha256.convert(fileBytes).bytes;
-      final digestInfo = <int>[
-        ..._sha256DigestInfoPrefix,
-        ...digest,
-      ];
+      final digestInfo = <int>[..._sha256DigestInfoPrefix, ...digest];
       final paddingLength = modulusLength - digestInfo.length - 3;
       if (paddingLength < 8 ||
           encodedMessage.length != modulusLength ||
@@ -170,8 +179,7 @@ abstract final class AuraCryptoLayer {
   static bool verifyModelSignature({
     required Uint8List modelBytes,
     required Uint8List signatureBytes,
-  }) =>
-      verifySignature(modelBytes, signatureBytes);
+  }) => verifySignature(modelBytes, signatureBytes);
 
   static (BigInt, BigInt) _parseBase64PublicKey(String base64Key) {
     if (base64Key.isEmpty) {
@@ -188,7 +196,9 @@ abstract final class AuraCryptoLayer {
     final der = Uint8List.fromList(base64.decode(base64Key));
     final sequence = _readDerElement(der, 0);
     if (sequence.$1 != 0x30 || sequence.$3 != der.length) {
-      throw const FormatException('La clave RSA no contiene una secuencia DER.');
+      throw const FormatException(
+        'La clave RSA no contiene una secuencia DER.',
+      );
     }
 
     final first = _readDerElement(sequence.$2, 0);
@@ -196,7 +206,17 @@ abstract final class AuraCryptoLayer {
       final algorithm = first.$2;
       final algorithmOid = _readDerElement(algorithm, 0);
       const rsaEncryptionOid = <int>[
-        0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
+        0x06,
+        0x09,
+        0x2a,
+        0x86,
+        0x48,
+        0x86,
+        0xf7,
+        0x0d,
+        0x01,
+        0x01,
+        0x01,
       ];
       final actualOidDer = _encodeDerElement(algorithmOid.$1, algorithmOid.$2);
       if (!_bytesEqual(actualOidDer, rsaEncryptionOid)) {
@@ -217,12 +237,13 @@ abstract final class AuraCryptoLayer {
           bitString.$2.isEmpty ||
           bitString.$2.first != 0 ||
           bitString.$3 != sequence.$2.length) {
-        throw const FormatException('El SubjectPublicKeyInfo RSA no es válido.');
+        throw const FormatException(
+          'El SubjectPublicKeyInfo RSA no es válido.',
+        );
       }
       final rsaSequence = Uint8List.sublistView(bitString.$2, 1);
       final innerSequence = _readDerElement(rsaSequence, 0);
-      if (innerSequence.$1 != 0x30 ||
-          innerSequence.$3 != rsaSequence.length) {
+      if (innerSequence.$1 != 0x30 || innerSequence.$3 != rsaSequence.length) {
         throw const FormatException('La clave RSA embebida no es válida.');
       }
       return _readRsaIntegers(innerSequence.$2);
@@ -233,13 +254,16 @@ abstract final class AuraCryptoLayer {
   static (BigInt, BigInt) _readRsaIntegers(Uint8List sequence) {
     final modulus = _readDerElement(sequence, 0);
     final exponent = _readDerElement(sequence, modulus.$3);
-    if (modulus.$1 != 0x02 || exponent.$1 != 0x02 ||
+    if (modulus.$1 != 0x02 ||
+        exponent.$1 != 0x02 ||
         exponent.$3 != sequence.length ||
         modulus.$2.isEmpty ||
         exponent.$2.isEmpty ||
         !_isCanonicalPositiveInteger(modulus.$2) ||
         !_isCanonicalPositiveInteger(exponent.$2)) {
-      throw const FormatException('Los componentes de la clave RSA no son válidos.');
+      throw const FormatException(
+        'Los componentes de la clave RSA no son válidos.',
+      );
     }
     final modulusValue = _bigIntFromBytes(modulus.$2);
     final exponentValue = _bigIntFromBytes(exponent.$2);
@@ -247,22 +271,19 @@ abstract final class AuraCryptoLayer {
         exponentValue <= BigInt.one ||
         exponentValue.isEven ||
         exponentValue >= modulusValue) {
-      throw const FormatException('La clave pública RSA no cumple los parámetros.');
+      throw const FormatException(
+        'La clave pública RSA no cumple los parámetros.',
+      );
     }
     return (modulusValue, exponentValue);
   }
 
   static bool _isCanonicalPositiveInteger(Uint8List bytes) {
     if (bytes.isEmpty || (bytes.first & 0x80) != 0) return false;
-    return bytes.length == 1 ||
-        bytes.first != 0 ||
-        (bytes[1] & 0x80) != 0;
+    return bytes.length == 1 || bytes.first != 0 || (bytes[1] & 0x80) != 0;
   }
 
-  static (int, Uint8List, int) _readDerElement(
-    Uint8List bytes,
-    int offset,
-  ) {
+  static (int, Uint8List, int) _readDerElement(Uint8List bytes, int offset) {
     if (offset < 0 || offset + 2 > bytes.length) {
       throw const FormatException('La estructura DER está truncada.');
     }
@@ -284,18 +305,16 @@ abstract final class AuraCryptoLayer {
         contentLength = (contentLength << 8) | bytes[cursor++];
       }
       if (contentLength < 128) {
-        throw const FormatException('La longitud DER no usa codificación mínima.');
+        throw const FormatException(
+          'La longitud DER no usa codificación mínima.',
+        );
       }
     }
     final contentEnd = cursor + contentLength;
     if (contentEnd > bytes.length) {
       throw const FormatException('El contenido DER está truncado.');
     }
-    return (
-      tag,
-      Uint8List.sublistView(bytes, cursor, contentEnd),
-      contentEnd,
-    );
+    return (tag, Uint8List.sublistView(bytes, cursor, contentEnd), contentEnd);
   }
 
   static Uint8List _encodeDerElement(int tag, Uint8List value) {
@@ -332,7 +351,9 @@ abstract final class AuraCryptoLayer {
       remaining >>= 8;
     }
     if (remaining != BigInt.zero) {
-      throw const FormatException('El mensaje RSA excede la longitud esperada.');
+      throw const FormatException(
+        'El mensaje RSA excede la longitud esperada.',
+      );
     }
     return bytes;
   }
@@ -346,13 +367,22 @@ abstract final class AuraCryptoLayer {
     return difference == 0;
   }
 
-  static String encryptModel(
+  static String encryptModel(String plaintext, String secureKey, {IV? iv}) {
+    final secureKeyBytes = Uint8List.fromList(utf8.encode(secureKey));
+    try {
+      return encryptModelWithKeyBytes(plaintext, secureKeyBytes, iv: iv);
+    } finally {
+      secureZeroMemory(secureKeyBytes);
+    }
+  }
+
+  static String encryptModelWithKeyBytes(
     String plaintext,
-    String secureKey, {
+    Uint8List secureKeyBytes, {
     IV? iv,
   }) {
     try {
-      if (secureKey.isEmpty) {
+      if (secureKeyBytes.isEmpty) {
         throw const AuraCryptoException('La clave segura está vacía.');
       }
       if (utf8.encode(plaintext).length > _maxModelPlaintextBytes) {
@@ -368,9 +398,11 @@ abstract final class AuraCryptoLayer {
 
       final initializationVector = iv ?? IV.fromSecureRandom(_ivLength);
       if (initializationVector.bytes.length != _ivLength) {
-        throw const AuraCryptoException('El vector IV AES debe tener 16 bytes.');
+        throw const AuraCryptoException(
+          'El vector IV AES debe tener 16 bytes.',
+        );
       }
-      final derivedKey = _deriveKey(secureKey);
+      final derivedKey = _deriveKey(secureKeyBytes);
       late final Uint8List ciphertextBytes;
       try {
         ciphertextBytes = Uint8List.fromList(
@@ -383,15 +415,13 @@ abstract final class AuraCryptoLayer {
       }
 
       final ivBytes = Uint8List.fromList(initializationVector.bytes);
-      final tag = _createEnvelopeTag(secureKey, ivBytes, ciphertextBytes);
+      final tag = _createEnvelopeTag(secureKeyBytes, ivBytes, ciphertextBytes);
       try {
-        final payload = <int>[
-          ...ivBytes,
-          ...ciphertextBytes,
-          ...tag,
-        ];
+        final payload = <int>[...ivBytes, ...ciphertextBytes, ...tag];
         return _authenticatedEnvelopePrefix +
-            payload.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+            payload
+                .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+                .join();
       } finally {
         secureZeroMemory(ivBytes);
         secureZeroMemory(ciphertextBytes);
@@ -405,16 +435,32 @@ abstract final class AuraCryptoLayer {
   }
 
   static String decryptModel(String encryptedHex, String secureKey) {
+    final secureKeyBytes = Uint8List.fromList(utf8.encode(secureKey));
     try {
-      if (secureKey.isEmpty) {
+      return decryptModelWithKeyBytes(encryptedHex, secureKeyBytes);
+    } finally {
+      secureZeroMemory(secureKeyBytes);
+    }
+  }
+
+  static String decryptModelWithKeyBytes(
+    String encryptedHex,
+    Uint8List secureKeyBytes,
+  ) {
+    try {
+      if (secureKeyBytes.isEmpty) {
         throw const AuraCryptoException('La clave segura está vacía.');
       }
-      final authenticated = encryptedHex.startsWith(_authenticatedEnvelopePrefix);
+      final authenticated = encryptedHex.startsWith(
+        _authenticatedEnvelopePrefix,
+      );
       final encodedPayload = authenticated
           ? encryptedHex.substring(_authenticatedEnvelopePrefix.length)
           : encryptedHex;
-      final maxEncodedPayloadLength = 2 *
-          (_ivLength + _maxModelCiphertextBytes +
+      final maxEncodedPayloadLength =
+          2 *
+          (_ivLength +
+              _maxModelCiphertextBytes +
               (authenticated ? _hmacLength : 0));
       if (encodedPayload.isEmpty ||
           encodedPayload.length.isOdd ||
@@ -428,8 +474,7 @@ abstract final class AuraCryptoLayer {
       final payload = _decodeHex(encodedPayload);
       try {
         final tagLength = authenticated ? _hmacLength : 0;
-        final ciphertextLength =
-            payload.length - _ivLength - tagLength;
+        final ciphertextLength = payload.length - _ivLength - tagLength;
         if (ciphertextLength < _aesBlockLength ||
             ciphertextLength % _aesBlockLength != 0) {
           throw const AuraCryptoException(
@@ -448,7 +493,7 @@ abstract final class AuraCryptoLayer {
             _ivLength + ciphertextLength,
           );
           if (!_verifyEnvelopeTag(
-            secureKey,
+            secureKeyBytes,
             ivBytes,
             ciphertextBytes,
             suppliedTag,
@@ -459,7 +504,7 @@ abstract final class AuraCryptoLayer {
           }
         }
 
-        final derivedKey = _deriveKey(secureKey);
+        final derivedKey = _deriveKey(secureKeyBytes);
         try {
           return Encrypter(
             AES(Key(derivedKey), mode: AESMode.cbc, padding: 'PKCS7'),
@@ -481,41 +526,31 @@ abstract final class AuraCryptoLayer {
   }
 
   static Uint8List _decodeHex(String value) => Uint8List.fromList(
-        List<int>.generate(
-          value.length ~/ 2,
-          (index) => int.parse(
-            value.substring(index * 2, index * 2 + 2),
-            radix: 16,
-          ),
-          growable: false,
-        ),
-      );
+    List<int>.generate(
+      value.length ~/ 2,
+      (index) =>
+          int.parse(value.substring(index * 2, index * 2 + 2), radix: 16),
+      growable: false,
+    ),
+  );
 
-  static Uint8List _deriveMacKey(String secureKey) {
-    final inputKeyMaterial = Uint8List.fromList(utf8.encode(secureKey));
+  static Uint8List _deriveMacKey(Uint8List secureKeyBytes) {
     final salt = Uint8List.fromList(utf8.encode(_derivationSalt));
-    final info = Uint8List.fromList(
-      utf8.encode('aura-model-hmac-sha-256-v2'),
-    );
+    final info = Uint8List.fromList(utf8.encode('aura-model-hmac-sha-256-v2'));
     try {
-      return deriveKeyHKDF(
-        ikm: inputKeyMaterial,
-        salt: salt,
-        info: info,
-      );
+      return deriveKeyHKDF(ikm: secureKeyBytes, salt: salt, info: info);
     } finally {
-      secureZeroMemory(inputKeyMaterial);
       secureZeroMemory(salt);
       secureZeroMemory(info);
     }
   }
 
   static Uint8List _createEnvelopeTag(
-    String secureKey,
+    Uint8List secureKeyBytes,
     Uint8List ivBytes,
     Uint8List ciphertextBytes,
   ) {
-    final macKey = _deriveMacKey(secureKey);
+    final macKey = _deriveMacKey(secureKeyBytes);
     final authenticatedData = Uint8List.fromList(<int>[
       ...utf8.encode(_authenticatedEnvelopeLabel),
       ...ivBytes,
@@ -523,9 +558,7 @@ abstract final class AuraCryptoLayer {
     ]);
     try {
       return Uint8List.fromList(
-        crypto.Hmac(crypto.sha256, macKey)
-            .convert(authenticatedData)
-            .bytes,
+        crypto.Hmac(crypto.sha256, macKey).convert(authenticatedData).bytes,
       );
     } finally {
       secureZeroMemory(macKey);
@@ -534,14 +567,14 @@ abstract final class AuraCryptoLayer {
   }
 
   static bool _verifyEnvelopeTag(
-    String secureKey,
+    Uint8List secureKeyBytes,
     Uint8List ivBytes,
     Uint8List ciphertextBytes,
     Uint8List suppliedTag,
   ) {
     if (suppliedTag.length != _hmacLength) return false;
     final expectedTag = _createEnvelopeTag(
-      secureKey,
+      secureKeyBytes,
       ivBytes,
       ciphertextBytes,
     );
@@ -556,8 +589,20 @@ abstract final class AuraCryptoLayer {
     String encryptedHex,
     String secureKey,
   ) async {
+    final secureKeyBytes = Uint8List.fromList(utf8.encode(secureKey));
+    try {
+      return await decryptModelSecureWithKeyBytes(encryptedHex, secureKeyBytes);
+    } finally {
+      secureZeroMemory(secureKeyBytes);
+    }
+  }
+
+  static Future<String> decryptModelSecureWithKeyBytes(
+    String encryptedHex,
+    Uint8List secureKeyBytes,
+  ) async {
     if (defaultTargetPlatform != TargetPlatform.android) {
-      return decryptModel(encryptedHex, secureKey);
+      return decryptModelWithKeyBytes(encryptedHex, secureKeyBytes);
     }
 
     Uint8List? payload;
@@ -566,15 +611,18 @@ abstract final class AuraCryptoLayer {
     Uint8List? ciphertext;
     Uint8List? plaintextBytes;
     try {
-      final authenticated =
-          encryptedHex.startsWith(_authenticatedEnvelopePrefix);
+      final authenticated = encryptedHex.startsWith(
+        _authenticatedEnvelopePrefix,
+      );
       final encodedPayload = authenticated
           ? encryptedHex.substring(_authenticatedEnvelopePrefix.length)
           : encryptedHex;
-      final maxEncodedPayloadLength = 2 *
-          (_ivLength + _maxModelCiphertextBytes +
+      final maxEncodedPayloadLength =
+          2 *
+          (_ivLength +
+              _maxModelCiphertextBytes +
               (authenticated ? _hmacLength : 0));
-      if (secureKey.isEmpty ||
+      if (secureKeyBytes.isEmpty ||
           encodedPayload.isEmpty ||
           encodedPayload.length.isOdd ||
           encodedPayload.length > maxEncodedPayloadLength ||
@@ -586,8 +634,7 @@ abstract final class AuraCryptoLayer {
 
       payload = _decodeHex(encodedPayload);
       final tagLength = authenticated ? _hmacLength : 0;
-      final ciphertextLength =
-          payload.length - _ivLength - tagLength;
+      final ciphertextLength = payload.length - _ivLength - tagLength;
       if (ciphertextLength < _aesBlockLength ||
           ciphertextLength % _aesBlockLength != 0 ||
           ciphertextLength > _maxModelCiphertextBytes) {
@@ -606,7 +653,7 @@ abstract final class AuraCryptoLayer {
         );
         try {
           if (!_verifyEnvelopeTag(
-            secureKey,
+            secureKeyBytes,
             ivBytes,
             ciphertext,
             suppliedTag,
@@ -620,7 +667,7 @@ abstract final class AuraCryptoLayer {
         }
       }
 
-      derivedKey = _deriveKey(secureKey);
+      derivedKey = _deriveKey(secureKeyBytes);
       plaintextBytes = await _nativeCryptoChannel.invokeMethod<Uint8List>(
         'decryptModelNative',
         <String, Object>{
@@ -651,18 +698,12 @@ abstract final class AuraCryptoLayer {
     }
   }
 
-  static Uint8List _deriveKey(String secureKey) {
-    final inputKeyMaterial = Uint8List.fromList(utf8.encode(secureKey));
+  static Uint8List _deriveKey(Uint8List secureKeyBytes) {
     final salt = Uint8List.fromList(utf8.encode(_derivationSalt));
     final info = Uint8List.fromList(utf8.encode(_derivationInfo));
     try {
-      return deriveKeyHKDF(
-        ikm: inputKeyMaterial,
-        salt: salt,
-        info: info,
-      );
+      return deriveKeyHKDF(ikm: secureKeyBytes, salt: salt, info: info);
     } finally {
-      secureZeroMemory(inputKeyMaterial);
       secureZeroMemory(salt);
       secureZeroMemory(info);
     }

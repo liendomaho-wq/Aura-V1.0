@@ -57,7 +57,8 @@ class NetworkAuditEvent {
     final normalizedDestination = destinationAddress is String
         ? _normalizeIpAddress(destinationAddress)
         : null;
-    if (timestamp is! num || sourceApp is! String ||
+    if (timestamp is! num ||
+        sourceApp is! String ||
         requestedDomain is! String ||
         (action != 'BLOCKED' &&
             action != 'DGA_ALERT' &&
@@ -169,8 +170,10 @@ String? _normalizeIpAddress(String input) {
     return groups.map((group) => group.toRadixString(16)).join(':');
   }
 
-  final before =
-      groups.take(bestStart).map((group) => group.toRadixString(16)).join(':');
+  final before = groups
+      .take(bestStart)
+      .map((group) => group.toRadixString(16))
+      .join(':');
   final after = groups
       .skip(bestStart + bestLength)
       .map((group) => group.toRadixString(16))
@@ -179,10 +182,12 @@ String? _normalizeIpAddress(String input) {
 }
 
 class AuraNetworkAuditor {
-  static const EventChannel _networkEvents =
-      EventChannel('com.aura.cyberdefense/network_stream');
-    static const MethodChannel _engineChannel =
-      MethodChannel('com.aura.cyberdefense/engine');
+  static const EventChannel _networkEvents = EventChannel(
+    'com.aura.cyberdefense/network_stream',
+  );
+  static const MethodChannel _engineChannel = MethodChannel(
+    'com.aura.cyberdefense/engine',
+  );
   static const int _maxRecentEvents = 500;
   static const int _maxPendingWrites = 256;
   static const int _writeBatchSize = 32;
@@ -194,10 +199,10 @@ class AuraNetworkAuditor {
   final Queue<NetworkAuditEvent> _recentEvents = Queue<NetworkAuditEvent>();
   final Queue<Map<String, Object>> _pendingWrites =
       Queue<Map<String, Object>>();
-    final Queue<NetworkAuditEvent> _pendingThreatEvents =
+  final Queue<NetworkAuditEvent> _pendingThreatEvents =
       Queue<NetworkAuditEvent>();
   final AuraSecureVault _secureVault;
-    late final AuraAIBrain _aiBrain;
+  late final AuraAIBrain _aiBrain;
 
   StreamSubscription<Object?>? _nativeSubscription;
   Future<void> _writeTask = Future<void>.value();
@@ -207,7 +212,7 @@ class AuraNetworkAuditor {
   int _droppedPendingWrites = 0;
 
   AuraNetworkAuditor({AuraSecureVault? secureVault, AuraAIBrain? aiBrain})
-      : _secureVault = secureVault ?? AuraSecureVault() {
+    : _secureVault = secureVault ?? AuraSecureVault() {
     _aiBrain = aiBrain ?? AuraAIBrain();
     _aiBrain.setDnsBlockRuleHandler(addDnsBlockRule);
     start();
@@ -257,14 +262,16 @@ class AuraNetworkAuditor {
       throw RangeError.range(limit, 1, _maxRecentEvents, 'limit');
     }
     final events = _recentEvents.toList();
-    final selected = events.skip(events.length > limit ? events.length - limit : 0);
+    final selected = events.skip(
+      events.length > limit ? events.length - limit : 0,
+    );
     return jsonEncode({
       'event_type': 'network_dns_audit',
       'events': selected.map((event) => event.toJson()).toList(),
     });
   }
 
-    Future<String> analyzeRecentNetworkEvents({int limit = 100}) =>
+  Future<String> analyzeRecentNetworkEvents({int limit = 100}) =>
       _aiBrain.analyzeThreatPayload(buildTelemetryPayload(limit: limit));
 
   Future<void> dispose() async {
@@ -294,8 +301,8 @@ class AuraNetworkAuditor {
 
     if (event.action == NetworkAuditAction.blocked ||
         event.action == NetworkAuditAction.dgaAlert ||
-      event.action == NetworkAuditAction.sniObserved ||
-      event.action == NetworkAuditAction.sniEncrypted) {
+        event.action == NetworkAuditAction.sniObserved ||
+        event.action == NetworkAuditAction.sniEncrypted) {
       if (_pendingThreatEvents.length < 64) {
         _pendingThreatEvents.addLast(event);
       }
@@ -306,15 +313,18 @@ class AuraNetworkAuditor {
       _pendingWrites.removeFirst();
       _droppedPendingWrites++;
     }
-    _pendingWrites.addLast(event.toJson());
+    _pendingWrites.addLast(<String, Object>{
+      'timestamp': event.timestamp,
+      'action': event.toJson()['action']!,
+      'record_type': 'network_audit',
+    });
     _drainWrites();
   }
 
   Future<bool> addDnsBlockRule(String domain) async {
-    final blocked = await _engineChannel.invokeMethod<bool>(
-      'addDnsBlockRule',
-      {'domain': domain},
-    );
+    final blocked = await _engineChannel.invokeMethod<bool>('addDnsBlockRule', {
+      'domain': domain,
+    });
     return blocked ?? false;
   }
 

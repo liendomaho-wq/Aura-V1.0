@@ -1,15 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AuraSecureVault {
   static const String _auditLogsKey = 'aura_audit_logs_v1';
   static const String _modelMasterKeyStorageKey = 'aura_model_master_key_v1';
+  static const String _domainHashKeyStorageKey = 'aura_domain_hash_key_v1';
   static const int maxAuditLogs = 500;
-  static int _modelKeyGeneration = 0;
-  static Future<String>? _sharedModelMasterKeyLoad;
   // v10 migrates the legacy v9 EncryptedSharedPreferences data to
   // RSA-OAEP key wrapping + AES-GCM storage. Keep a crash-safe backup during
   // migration and never silently erase secrets if the keystore reports an error.
@@ -18,6 +19,9 @@ class AuraSecureVault {
     migrateOnAlgorithmChange: true,
     migrateWithBackup: true,
   );
+
+  @visibleForTesting
+  static AndroidOptions get androidMigrationOptions => _androidOptions;
   static Future<void> _writeQueue = Future<void>.value();
 
   /// Serializes mutations and key creation across every vault instance.
@@ -35,61 +39,122 @@ class AuraSecureVault {
   }
 
   final FlutterSecureStorage _storage;
-  final bool _usesDefaultStorage;
-  Future<String>? _modelMasterKeyLoad;
-  int _cachedModelKeyGeneration = -1;
 
   AuraSecureVault({FlutterSecureStorage? storage})
-      : _usesDefaultStorage = storage == null,
-        _storage = storage ??
-            const FlutterSecureStorage(aOptions: _androidOptions);
+    : _storage =
+          storage ?? const FlutterSecureStorage(aOptions: _androidOptions);
 
-  Future<String> getOrCreateModelMasterKey() {
-    if (_usesDefaultStorage) {
-      return _sharedModelMasterKeyLoad ??=
-          _enqueue(_loadOrCreateModelMasterKey);
+  Future<T> withModelMasterKey<T>(
+    FutureOr<T> Function(Uint8List secureKeyBytes) action,
+  ) => _enqueue(() async {
+    final encodedKey = await _loadOrCreateModelMasterKey();
+    final secureKeyBytes = Uint8List.fromList(utf8.encode(encodedKey));
+    try {
+      return await action(secureKeyBytes);
+    } finally {
+      secureKeyBytes.fillRange(0, secureKeyBytes.length, 0);
     }
-    if (_modelMasterKeyLoad == null ||
-        _cachedModelKeyGeneration != _modelKeyGeneration) {
-      _cachedModelKeyGeneration = _modelKeyGeneration;
-      _modelMasterKeyLoad = _enqueue(_loadOrCreateModelMasterKey);
+  });
+
+  Future<void> initializeModelMasterKey() => withModelMasterKey<void>((_) {});
+
+  Future<T> withDomainTelemetryKey<T>(
+    FutureOr<T> Function(Uint8List keyBytes) action,
+  ) => _enqueue(() async {
+    final keyBytes = await _loadOrCreateRandomKey(_domainHashKeyStorageKey);
+    try {
+      return await action(keyBytes);
+    } finally {
+      keyBytes.fillRange(0, keyBytes.length, 0);
     }
-    return _modelMasterKeyLoad!;
-  }
+  });
 
   Future<String> _loadOrCreateModelMasterKey() async {
     final existingKey = await _storage.read(key: _modelMasterKeyStorageKey);
-    if (existingKey != null && _isValidModelMasterKey(existingKey)) {
+    if (existingKey != null) {
+      if (!_isValidModelMasterKey(existingKey)) {
+        throw StateError(
+          'SecureVault encontró una clave maestra existente no válida; '
+          'se conserva para evitar perder datos cifrados.',
+        );
+      }
       return existingKey;
     }
 
     final random = math.Random.secure();
-    final keyBytes = List<int>.generate(
-      32,
-      (_) => random.nextInt(256),
-      growable: false,
+    final keyBytes = Uint8List.fromList(
+      List<int>.generate(32, (_) => random.nextInt(256), growable: false),
     );
-    final generatedKey = base64UrlEncode(keyBytes).replaceAll('=', '');
-    keyBytes.fillRange(0, keyBytes.length, 0);
-    await _storage.write(
-      key: _modelMasterKeyStorageKey,
-      value: generatedKey,
-    );
-    final persistedKey = await _storage.read(key: _modelMasterKeyStorageKey);
-    if (persistedKey != generatedKey || !_isValidModelMasterKey(persistedKey)) {
+    try {
+      final generatedKey = base64UrlEncode(keyBytes).replaceAll('=', '');
+      await _storage.write(key: _modelMasterKeyStorageKey, value: generatedKey);
+      final persistedKey = await _storage.read(key: _modelMasterKeyStorageKey);
+      if (persistedKey != generatedKey ||
+          !_isValidModelMasterKey(persistedKey)) {
+        throw StateError(
+          'No se pudo inicializar una clave aleatoria de 256 bits en SecureVault.',
+        );
+      }
+      return persistedKey!;
+    } finally {
+      keyBytes.fillRange(0, keyBytes.length, 0);
+    }
+  }
+
+  Future<Uint8List> _loadOrCreateRandomKey(String storageKey) async {
+    final existingKey = await _storage.read(key: storageKey);
+    if (existingKey != null) {
+      try {
+        final decoded = Uint8List.fromList(
+          base64Url.decode(base64Url.normalize(existingKey)),
+        );
+        if (decoded.length == 32) return decoded;
+        decoded.fillRange(0, decoded.length, 0);
+      } on FormatException {
+        // Preserve invalid stored data and fail closed below.
+      }
       throw StateError(
-        'No se pudo inicializar una clave aleatoria de 256 bits en SecureVault.',
+        'SecureVault encontró una clave de privacidad no válida; '
+        'se conserva para evitar cambiar el hash de datos existentes.',
       );
     }
-    return persistedKey!;
+
+    final random = math.Random.secure();
+    final generated = Uint8List.fromList(
+      List<int>.generate(32, (_) => random.nextInt(256), growable: false),
+    );
+    try {
+      final encoded = base64UrlEncode(generated).replaceAll('=', '');
+      await _storage.write(key: storageKey, value: encoded);
+      final persisted = await _storage.read(key: storageKey);
+      if (persisted != encoded) {
+        throw StateError('No se pudo verificar la clave local de privacidad.');
+      }
+      final decoded = Uint8List.fromList(
+        base64Url.decode(base64Url.normalize(persisted!)),
+      );
+      if (decoded.length != 32) {
+        decoded.fillRange(0, decoded.length, 0);
+        throw StateError('La clave local de privacidad no tiene 256 bits.');
+      }
+      return decoded;
+    } finally {
+      generated.fillRange(0, generated.length, 0);
+    }
   }
 
   bool _isValidModelMasterKey(String? value) {
     if (value == null || value.isEmpty) return false;
+    Uint8List? decoded;
     try {
-      return base64Url.decode(base64Url.normalize(value)).length == 32;
+      decoded = Uint8List.fromList(
+        base64Url.decode(base64Url.normalize(value)),
+      );
+      return decoded.length == 32;
     } on FormatException {
       return false;
+    } finally {
+      if (decoded != null) decoded.fillRange(0, decoded.length, 0);
     }
   }
 
@@ -103,10 +168,7 @@ class AuraSecureVault {
         final bounded = combined.length > maxAuditLogs
             ? combined.sublist(combined.length - maxAuditLogs)
             : combined;
-        await _storage.write(
-          key: _auditLogsKey,
-          value: jsonEncode(bounded),
-        );
+        await _storage.write(key: _auditLogsKey, value: jsonEncode(bounded));
       });
 
   Future<List<Map<String, dynamic>>> getAuditLogs() async {
@@ -114,7 +176,9 @@ class AuraSecureVault {
     if (encoded == null || encoded.isEmpty) return <Map<String, dynamic>>[];
     final decoded = jsonDecode(encoded);
     if (decoded is! List || decoded.any((entry) => entry is! Map)) {
-      throw const FormatException('El historial de auditoría almacenado no es válido.');
+      throw const FormatException(
+        'El historial de auditoría almacenado no es válido.',
+      );
     }
     final records = decoded
         .map((entry) => Map<String, dynamic>.from(entry as Map))
@@ -139,14 +203,6 @@ class AuraSecureVault {
       _enqueue(() => _storage.delete(key: _auditLogsKey));
 
   Future<void> purgeSensitiveData() {
-    // Invalidate cached futures immediately. Any key request arriving after
-    // this point is queued behind the purge and cannot resurrect a pre-purge
-    // key while deleteAll() is in progress.
-    _modelKeyGeneration++;
-    _sharedModelMasterKeyLoad = null;
-    _modelMasterKeyLoad = null;
-    _cachedModelKeyGeneration = -1;
-
     return _enqueue(() async {
       await _storage.deleteAll();
       if ((await _storage.readAll()).isNotEmpty) {

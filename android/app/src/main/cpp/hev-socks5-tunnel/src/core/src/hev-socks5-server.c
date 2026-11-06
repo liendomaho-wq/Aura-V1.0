@@ -23,6 +23,15 @@
 
 #define task_io_yielder hev_socks5_task_io_yielder
 
+static void
+clear_secret_buffer (uint8_t *buffer, size_t length)
+{
+    volatile uint8_t *bytes = buffer;
+
+    while (buffer && length--)
+        *bytes++ = 0;
+}
+
 HevSocks5Server *
 hev_socks5_server_new (int fd)
 {
@@ -154,12 +163,14 @@ hev_socks5_server_read_auth_user (HevSocks5Server *self)
     res = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, name, nlen + 1,
                                    MSG_WAITALL, task_io_yielder, self);
     if (res != (nlen + 1)) {
+        clear_secret_buffer (name, sizeof (name));
         LOG_I ("%p socks5 server read auth user.name", self);
         return -1;
     }
 
     plen = name[nlen];
     if (plen == 0) {
+        clear_secret_buffer (name, sizeof (name));
         LOG_I ("%p socks5 server auth user.plen %u", self, plen);
         return -1;
     }
@@ -167,22 +178,25 @@ hev_socks5_server_read_auth_user (HevSocks5Server *self)
     res = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, pass, plen,
                                    MSG_WAITALL, task_io_yielder, self);
     if (res != plen) {
+        clear_secret_buffer (name, sizeof (name));
+        clear_secret_buffer (pass, sizeof (pass));
         LOG_I ("%p socks5 server read auth user.pass", self);
         return -1;
     }
 
     user = hev_socks5_authenticator_get (self->auth, (char *)name, nlen);
     if (!user) {
-        name[nlen] = '\0';
-        LOG_I ("%p socks5 server auth user: %s", self, name);
+        clear_secret_buffer (name, sizeof (name));
+        clear_secret_buffer (pass, sizeof (pass));
+        LOG_I ("%p socks5 server rejected unknown credentials", self);
         return -1;
     }
 
     res = hev_socks5_user_check (user, (char *)pass, plen);
+    clear_secret_buffer (name, sizeof (name));
+    clear_secret_buffer (pass, sizeof (pass));
     if (res < 0) {
-        name[nlen] = '\0';
-        pass[plen] = '\0';
-        LOG_I ("%p socks5 server auth user: %s pass: %s", self, name, pass);
+        LOG_I ("%p socks5 server rejected credentials", self);
         return -1;
     }
 
@@ -300,9 +314,6 @@ hev_socks5_server_read_request (HevSocks5Server *self, int *cmd, int *rep,
 
     if (LOG_ON ()) {
         const char *type;
-        const char *str;
-        char buf[272];
-
         switch (req.cmd) {
         case HEV_SOCKS5_REQ_CMD_CONNECT:
             type = "tcp";
@@ -316,8 +327,7 @@ hev_socks5_server_read_request (HevSocks5Server *self, int *cmd, int *rep,
             break;
         }
 
-        str = hev_socks5_addr_into_str (&req.addr, buf, sizeof (buf));
-        LOG_I ("%p socks5 server %s %s", self, type, str);
+        LOG_I ("%p socks5 server request type %s", self, type);
     }
 
     *cmd = req.cmd;

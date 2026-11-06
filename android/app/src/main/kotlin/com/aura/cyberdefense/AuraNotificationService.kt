@@ -119,7 +119,7 @@ class AuraNotificationService : Service() {
                 if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
                     Log.w(
                         "AuraFirewall",
-                        "Blocked TLS host $domain; notifications are disabled by the user.",
+                        "Blocked TLS host notification suppressed because notifications are disabled.",
                     )
                     return
                 }
@@ -142,12 +142,12 @@ class AuraNotificationService : Service() {
                     },
                     notification,
                 )
-            } catch (exception: SecurityException) {
-                Log.e("AuraFirewall", "Could not post blocked-host alert for $domain.", exception)
-            } catch (exception: IllegalArgumentException) {
-                Log.e("AuraFirewall", "Could not construct blocked-host alert for $domain.", exception)
-            } catch (exception: IllegalStateException) {
-                Log.e("AuraFirewall", "Could not initialize blocked-host alert for $domain.", exception)
+            } catch (_: SecurityException) {
+                Log.e("AuraFirewall", "Could not post blocked-host alert.")
+            } catch (_: IllegalArgumentException) {
+                Log.e("AuraFirewall", "Could not construct blocked-host alert.")
+            } catch (_: IllegalStateException) {
+                Log.e("AuraFirewall", "Could not initialize blocked-host alert.")
             }
         }
 

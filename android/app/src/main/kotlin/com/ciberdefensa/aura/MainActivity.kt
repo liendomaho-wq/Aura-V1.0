@@ -777,12 +777,12 @@ class MainActivity: FlutterFragmentActivity() {
 
                 "recordDomainOutcome" -> {
                     val arguments = call.arguments as? Map<*, *>
-                    val domain = arguments?.get("domain") as? String
+                    val domainHash = arguments?.get("domain_hash") as? String
                     val outcome = arguments?.get("outcome") as? String
                     val source = arguments?.get("source") as? String
                     val modelVersion = arguments?.get("model_version") as? String
                         ?: BuildConfig.AURA_MODEL_VERSION
-                    if (domain == null || outcome == null || source == null) {
+                    if (domainHash == null || outcome == null || source == null) {
                         result.error(
                             "INVALID_TELEMETRY_EVENT",
                             "El evento de telemetría está incompleto.",
@@ -793,7 +793,7 @@ class MainActivity: FlutterFragmentActivity() {
                             result.success(
                                 AuraTelemetryService.recordDomainOutcome(
                                     applicationContext,
-                                    domain,
+                                    domainHash,
                                     outcome,
                                     source,
                                     modelVersion,

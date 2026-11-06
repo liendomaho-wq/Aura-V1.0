@@ -21,10 +21,7 @@ import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
-import java.net.IDN
 import java.net.URI
-import java.security.MessageDigest
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 private const val TELEMETRY_TAG = "AuraTelemetry"
@@ -39,10 +36,7 @@ object AuraTelemetryService {
     private const val MIN_EVENT_INTERVAL_MS = 1_000L
     private const val FLUSH_INTERVAL_MINUTES = 5L
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
-    private val EVENT_HOST_PATTERN = Regex(
-        "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+" +
-            "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$",
-    )
+    private val EVENT_HASH_PATTERN = Regex("^[0-9a-f]{64}$")
     private val httpClient = OkHttpClient.Builder()
         .followRedirects(false)
         .followSslRedirects(false)
@@ -94,16 +88,13 @@ object AuraTelemetryService {
 
     fun recordDomainOutcome(
         context: Context,
-        domain: String,
+        domainHash: String,
         outcome: String,
         source: String,
         modelVersion: String,
     ): Boolean {
-        val normalizedDomain = IDN.toASCII(
-            domain.trim().trimEnd('.').lowercase(Locale.ROOT),
-        ).lowercase(Locale.ROOT)
-        require(EVENT_HOST_PATTERN.matches(normalizedDomain)) {
-            "A valid domain is required for telemetry."
+        require(EVENT_HASH_PATTERN.matches(domainHash)) {
+            "A keyed domain hash is required for telemetry."
         }
         require(outcome == "blocked" || outcome == "allowed") {
             "Telemetry outcome must be blocked or allowed."
@@ -132,7 +123,7 @@ object AuraTelemetryService {
             val queue = readQueue(preferences)
             queue.put(
                 JSONObject()
-                    .put("hash", sha256(normalizedDomain))
+                    .put("hash", domainHash)
                     .put("outcome", outcome)
                     .put("source", source)
                     .put("model_version", modelVersion)
@@ -248,8 +239,8 @@ object AuraTelemetryService {
     private fun readQueue(preferences: android.content.SharedPreferences): JSONArray =
         try {
             JSONArray(preferences.getString(QUEUE_KEY, "[]"))
-        } catch (error: JSONException) {
-            Log.e(TELEMETRY_TAG, "Discarding a malformed local telemetry queue.", error)
+        } catch (_: JSONException) {
+            Log.e(TELEMETRY_TAG, "Discarding a malformed local telemetry queue.")
             JSONArray()
         }
 
@@ -269,11 +260,6 @@ object AuraTelemetryService {
             false
         }
 
-    private fun sha256(value: String): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(value.toByteArray(Charsets.UTF_8))
-            .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
-
 }
 
 class AuraTelemetryFlushWorker(
@@ -287,22 +273,20 @@ class AuraTelemetryFlushWorker(
             } else {
                 Result.retry()
             }
-        } catch (error: IOException) {
+        } catch (_: IOException) {
             if (!AuraTelemetryService.status(applicationContext).optedIn) {
                 Result.success()
             } else {
                 Log.e(
                     TELEMETRY_TAG,
                     "Telemetry upload failed; queued events were retained.",
-                    error,
                 )
                 Result.retry()
             }
-        } catch (error: JSONException) {
+        } catch (_: JSONException) {
             Log.e(
                 TELEMETRY_TAG,
                 "Telemetry queue contains invalid event data.",
-                error,
             )
             Result.failure()
         }

@@ -268,7 +268,7 @@ object AuraHostileEnvironment {
         }
 
         if (indicators.isNotEmpty()) {
-            Log.w(LOG_TAG, "Potential screen overlay detected: ${indicators.joinToString()}")
+            Log.w(LOG_TAG, "Potential screen overlay indicators detected: ${indicators.size}.")
         }
         return OverlayReport(
             isDetected = indicators.isNotEmpty(),

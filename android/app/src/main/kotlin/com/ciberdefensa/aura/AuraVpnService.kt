@@ -593,8 +593,8 @@ class AuraVpnService : VpnService() {
         val network = underlyingNetwork ?: return null
         return try {
             network.getAllByName(normalized).firstOrNull()?.hostAddress?.substringBefore('%')
-        } catch (exception: Exception) {
-            Log.w("AuraVPN", "No se pudo resolver el destino en la red física.", exception)
+        } catch (_: Exception) {
+            Log.w("AuraVPN", "No se pudo resolver el destino en la red física.")
             null
         }
     }

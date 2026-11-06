@@ -122,7 +122,7 @@ class _SplashScreenState extends State<SplashScreen>
         _bootStatusText =
             'ACCESO LOCAL VALIDADO; INICIALIZANDO BÓVEDA SEGURA...';
       });
-      await _secureVault.getOrCreateModelMasterKey();
+      await _secureVault.initializeModelMasterKey();
       if (!mounted) return;
       setState(() {
         _loadingProgress = 0.55;

@@ -21,15 +21,14 @@ import 'security/shannon_entropy.dart';
 
 export 'security/shannon_entropy.dart';
 
-typedef AuraToolStartedCallback = void Function(
-  String toolName,
-  Map<String, Object?> arguments,
-);
-typedef AuraToolCompletedCallback = void Function(
-  String toolName,
-  Map<String, Object?> arguments,
-  Map<String, Object?> result,
-);
+typedef AuraToolStartedCallback =
+    void Function(String toolName, Map<String, Object?> arguments);
+typedef AuraToolCompletedCallback =
+    void Function(
+      String toolName,
+      Map<String, Object?> arguments,
+      Map<String, Object?> result,
+    );
 typedef AuraDnsBlockRuleHandler = Future<bool> Function(String domain);
 typedef AuraModelIntegrityFailureHandler = void Function(String message);
 
@@ -120,12 +119,15 @@ class AuraAIBrain {
   static const int _maxModelBytes = 5 * 1024 * 1024;
   static const int _maxEncryptedModelHexBytes =
       2 * (_maxModelBytes + 16 + 16 + 32) + 'aura2:'.length;
-  static const MethodChannel _engineChannel =
-      MethodChannel('com.aura.cyberdefense/engine');
-  static const MethodChannel _shieldChannel =
-      MethodChannel('com.ciberdefensa.aura/shield');
-  static const MethodChannel _telemetryChannel =
-      MethodChannel('com.ciberdefensa.aura/telemetry');
+  static const MethodChannel _engineChannel = MethodChannel(
+    'com.aura.cyberdefense/engine',
+  );
+  static const MethodChannel _shieldChannel = MethodChannel(
+    'com.ciberdefensa.aura/shield',
+  );
+  static const MethodChannel _telemetryChannel = MethodChannel(
+    'com.ciberdefensa.aura/telemetry',
+  );
   static final List<WeakReference<AuraAIBrain>> _instances = [];
   static AuraModelIntegrityFailureHandler? onModelIntegrityFailure;
   static bool _forceRuleFallback = false;
@@ -146,11 +148,11 @@ class AuraAIBrain {
     AuraToolStartedCallback? onToolStarted,
     AuraToolCompletedCallback? onToolCompleted,
     AuraDnsBlockRuleHandler? onDnsBlockRule,
-  })  : _stateProvider = stateProvider,
-        _secureVault = secureVault ?? AuraSecureVault(),
-        _onToolStarted = onToolStarted,
-        _onToolCompleted = onToolCompleted,
-        _onDnsBlockRule = onDnsBlockRule {
+  }) : _stateProvider = stateProvider,
+       _secureVault = secureVault ?? AuraSecureVault(),
+       _onToolStarted = onToolStarted,
+       _onToolCompleted = onToolCompleted,
+       _onDnsBlockRule = onDnsBlockRule {
     _instances.removeWhere((reference) => reference.target == null);
     _instances.add(WeakReference<AuraAIBrain>(this));
   }
@@ -169,21 +171,19 @@ class AuraAIBrain {
   Future<bool> addDnsBlockRule(String domain) async {
     final handler = _onDnsBlockRule;
     if (handler != null) return handler(domain);
-    final result = await _engineChannel.invokeMethod<bool>(
-      'addDnsBlockRule',
-      {'domain': domain},
-    );
+    final result = await _engineChannel.invokeMethod<bool>('addDnsBlockRule', {
+      'domain': domain,
+    });
     return result ?? false;
   }
 
   Future<String> analyzeCyberThreat(
     String userInput, {
     bool enforceBlocklistHits = true,
-  }) =>
-      analyzeThreatPayload(
-        userInput,
-        enforceBlocklistHits: enforceBlocklistHits,
-      );
+  }) => analyzeThreatPayload(
+    userInput,
+    enforceBlocklistHits: enforceBlocklistHits,
+  );
 
   Future<bool> preloadModel() async {
     final model = await _getModel();
@@ -222,8 +222,8 @@ class AuraAIBrain {
         if (!await installedDigest.exists()) {
           throw const FormatException('Falta el digest local del modelo.');
         }
-        final expectedArtifactDigest =
-            (await installedDigest.readAsString()).trim();
+        final expectedArtifactDigest = (await installedDigest.readAsString())
+            .trim();
         final actualArtifactDigest = sha256.convert(artifactBytes).toString();
         if (!_isSha256(expectedArtifactDigest) ||
             actualArtifactDigest != expectedArtifactDigest.toLowerCase()) {
@@ -232,10 +232,11 @@ class AuraAIBrain {
           );
         }
 
-        final secureKey = await _secureVault.getOrCreateModelMasterKey();
-        final plaintext = await AuraCryptoLayer.decryptModelSecure(
-          utf8.decode(artifactBytes),
-          secureKey,
+        final plaintext = await _secureVault.withModelMasterKey(
+          (secureKeyBytes) => AuraCryptoLayer.decryptModelSecureWithKeyBytes(
+            utf8.decode(artifactBytes!),
+            secureKeyBytes,
+          ),
         );
         plaintextBytes = Uint8List.fromList(utf8.encode(plaintext));
         final installedSignature = File('${installedModel.path}.sig');
@@ -268,8 +269,9 @@ class AuraAIBrain {
           assetData.lengthInBytes,
         ),
       );
-      final expectedAssetDigest =
-          (await rootBundle.loadString(_modelDigestAssetPath)).trim();
+      final expectedAssetDigest = (await rootBundle.loadString(
+        _modelDigestAssetPath,
+      )).trim();
       final actualAssetDigest = sha256.convert(artifactBytes).toString();
       if (!_isSha256(expectedAssetDigest) ||
           actualAssetDigest != expectedAssetDigest.toLowerCase() ||
@@ -303,7 +305,8 @@ class AuraAIBrain {
         signatureVerified: false,
         modelVersion: modelVersion,
         sha256: expectedLoadedDigest,
-        message: 'No se pudo verificar la integridad del modelo. Se requiere revisión.',
+        message:
+            'No se pudo verificar la integridad del modelo. Se requiere revisión.',
       );
     } finally {
       artifactBytes?.fillRange(0, artifactBytes.length, 0);
@@ -363,8 +366,9 @@ class AuraAIBrain {
     Map<String, dynamic>? decoded;
     try {
       decoded = _decodeAndValidateModel(utf8.decode(modelBytes));
-      final rollbackMessage =
-          modelVersionRollbackMessage(_modelVersion(decoded));
+      final rollbackMessage = modelVersionRollbackMessage(
+        _modelVersion(decoded),
+      );
       if (rollbackMessage != null) {
         onModelIntegrityFailure?.call(rollbackMessage);
         throw FormatException(rollbackMessage);
@@ -373,12 +377,14 @@ class AuraAIBrain {
           .map((reference) => reference.target)
           .whereType<AuraAIBrain>()
           .toList(growable: false);
-      final vault =
-          brains.isEmpty ? AuraSecureVault() : brains.first._secureVault;
-      final secureKey = await vault.getOrCreateModelMasterKey();
-      final encryptedHex = AuraCryptoLayer.encryptModel(
-        utf8.decode(modelBytes),
-        secureKey,
+      final vault = brains.isEmpty
+          ? AuraSecureVault()
+          : brains.first._secureVault;
+      final encryptedHex = await vault.withModelMasterKey(
+        (secureKeyBytes) => AuraCryptoLayer.encryptModelWithKeyBytes(
+          utf8.decode(modelBytes),
+          secureKeyBytes,
+        ),
       );
       final encryptedBytes = Uint8List.fromList(utf8.encode(encryptedHex));
       final localDigest = sha256.convert(encryptedBytes).toString();
@@ -391,8 +397,9 @@ class AuraAIBrain {
       _forceRuleFallback = false;
       for (final brain in brains) {
         _clearModelValue(brain._modelCache);
-        final cachedModel =
-            Map<String, dynamic>.from(jsonDecode(jsonEncode(decoded)) as Map);
+        final cachedModel = Map<String, dynamic>.from(
+          jsonDecode(jsonEncode(decoded)) as Map,
+        );
         brain._modelCache = cachedModel;
         brain._modelLoad = Future<Map<String, dynamic>>.value(cachedModel);
         brain._loadedModelSha256 = actualDigest;
@@ -410,9 +417,10 @@ class AuraAIBrain {
     bool notifyHud = true,
   }) async {
     _forceRuleFallback = true;
-    for (final brain in _instances
-        .map((reference) => reference.target)
-        .whereType<AuraAIBrain>()) {
+    for (final brain
+        in _instances
+            .map((reference) => reference.target)
+            .whereType<AuraAIBrain>()) {
       _clearModelValue(brain._modelCache);
       brain._modelCache = null;
       brain._modelLoad = Future<Map<String, dynamic>>.value(
@@ -452,7 +460,8 @@ class AuraAIBrain {
             featureOrder,
             shared_features.AuraAIInference.legacyFeatureOrder,
           )) {
-        featureCount = shared_features.AuraAIInference.legacyFeatureOrder.length;
+        featureCount =
+            shared_features.AuraAIInference.legacyFeatureOrder.length;
       } else if (featureOrder is List &&
           _sameModelFeatureOrder(
             featureOrder,
@@ -620,9 +629,8 @@ class AuraAIBrain {
   }) async {
     try {
       final extractedDomains = _extractDomains(payload);
-      final blocklistedDomains =
-          await shared_features.AuraAIInference.findBlocklistedDomains(
-              extractedDomains);
+      final blocklistedDomains = await shared_features
+          .AuraAIInference.findBlocklistedDomains(extractedDomains);
       for (final domain in blocklistedDomains) {
         await _recordDomainOutcome(
           domain,
@@ -633,12 +641,12 @@ class AuraAIBrain {
       final blocklistResults = enforceBlocklistHits
           ? await _enforceBlocklistHits(blocklistedDomains)
           : blocklistedDomains
-              .map(
-                (domain) =>
-                    'AMENAZA: $domain coincide con la blocklist verificada. '
-                    'No se modificó el firewall; requiere confirmación explícita.',
-              )
-              .toList(growable: false);
+                .map(
+                  (domain) =>
+                      'AMENAZA: $domain coincide con la blocklist verificada. '
+                      'No se modificó el firewall; requiere confirmación explícita.',
+                )
+                .toList(growable: false);
       final protectedDomains = <String>[];
       final analyzableDomains = <String>[];
       for (final domain in extractedDomains) {
@@ -650,13 +658,9 @@ class AuraAIBrain {
         }
       }
       for (final domain in protectedDomains) {
-        await _recordDomainOutcome(
-          domain,
-          'allowed',
-          source: 'allowlist',
-        );
+        await _recordDomainOutcome(domain, 'allowed', source: 'allowlist');
         developer.log(
-          'Dominio protegido por allowlist local: $domain',
+          'Dominio protegido por allowlist local.',
           name: 'AuraAIInference',
           level: 800,
         );
@@ -772,11 +776,7 @@ class AuraAIBrain {
             'error': 'user_confirmation_required',
             'enforcement_scope': 'local_dns_engine_only',
           };
-          _onToolCompleted?.call(
-            'mitigate_network_threat',
-            arguments,
-            result,
-          );
+          _onToolCompleted?.call('mitigate_network_threat', arguments, result);
           results.add(
             'POSIBLE AMENAZA: $domain (${(threatScore * 100).toStringAsFixed(0)}% '
             'de votos del modelo). No se bloqueó automáticamente; requiere revisión '
@@ -817,11 +817,7 @@ class AuraAIBrain {
         if (!blocked && failure == null)
           'error': 'El motor no confirmó la regla DNS.',
       };
-      _onToolCompleted?.call(
-        'mitigate_network_threat',
-        arguments,
-        toolResult,
-      );
+      _onToolCompleted?.call('mitigate_network_threat', arguments, toolResult);
       final reason = knownEncryptedDnsEndpoints.contains(domain)
           ? ' RESOLUTOR CIFRADO EXTERNO — EVASIÓN DE FILTRO.'
           : '';
@@ -841,21 +837,20 @@ class AuraAIBrain {
   }) async {
     if (!Platform.isAndroid) return;
     try {
+      final domainHash = await AuraLocalTelemetry.hashDomain(domain);
       await AuraLocalTelemetry.recordDomainOutcome(
         domain: domain,
         outcome: outcome,
         source: source,
         modelVersion: modelVersion,
       );
-      await _telemetryChannel.invokeMethod<bool>(
-        'recordDomainOutcome',
-        <String, Object>{
-          'domain': domain,
-          'outcome': outcome,
-          'source': source,
-          if (modelVersion != null) 'model_version': modelVersion,
-        },
-      );
+      await _telemetryChannel
+          .invokeMethod<bool>('recordDomainOutcome', <String, Object>{
+            'domain_hash': domainHash,
+            'outcome': outcome,
+            'source': source,
+            if (modelVersion != null) 'model_version': modelVersion,
+          });
     } on Object catch (error, stackTrace) {
       developer.log(
         'No se pudo encolar el evento opcional de telemetría.',
@@ -879,7 +874,6 @@ class AuraAIBrain {
       );
       final installedDigest = File('${installedModel.path}.sha256');
       final installedSignature = File('${installedModel.path}.sig');
-      final secureKey = await _secureVault.getOrCreateModelMasterKey();
       if (await installedModel.exists()) {
         artifactBytes = await installedModel.readAsBytes();
         if (artifactBytes.isEmpty ||
@@ -901,13 +895,13 @@ class AuraAIBrain {
             'El SHA-256 del modelo cifrado local no coincide.',
           );
         }
-        final plaintext = await AuraCryptoLayer.decryptModelSecure(
-          utf8.decode(artifactBytes),
-          secureKey,
+        final plaintext = await _secureVault.withModelMasterKey(
+          (secureKeyBytes) => AuraCryptoLayer.decryptModelSecureWithKeyBytes(
+            utf8.decode(artifactBytes!),
+            secureKeyBytes,
+          ),
         );
-        final plaintextBytes = Uint8List.fromList(
-          utf8.encode(plaintext),
-        );
+        final plaintextBytes = Uint8List.fromList(utf8.encode(plaintext));
         late final String plaintextDigest;
         try {
           if (!await installedSignature.exists()) {
@@ -948,8 +942,9 @@ class AuraAIBrain {
             'El modelo base está vacío o supera el tamaño permitido.',
           );
         }
-        final expectedDigest =
-            (await rootBundle.loadString(_modelDigestAssetPath)).trim();
+        final expectedDigest = (await rootBundle.loadString(
+          _modelDigestAssetPath,
+        )).trim();
         final actualDigest = sha256.convert(artifactBytes).toString();
         if (!_isSha256(expectedDigest) ||
             actualDigest != expectedDigest.toLowerCase()) {
@@ -957,8 +952,7 @@ class AuraAIBrain {
             'El SHA-256 del modelo base empaquetado no coincide.',
           );
         }
-        final signatureData =
-            await rootBundle.load(_modelSignatureAssetPath);
+        final signatureData = await rootBundle.load(_modelSignatureAssetPath);
         final signatureBytes = Uint8List.fromList(
           signatureData.buffer.asUint8List(
             signatureData.offsetInBytes,
@@ -1017,9 +1011,9 @@ class AuraAIBrain {
       results.add(
         suspiciousTld || highEntropy
             ? 'Regla local conservadora: revisar manualmente $domain; '
-                'modelo no disponible, no se aplica bloqueo automático.'
+                  'modelo no disponible, no se aplica bloqueo automático.'
             : 'Regla local: $domain no coincide con un indicador básico; '
-                'modelo no disponible, resultado no concluyente.',
+                  'modelo no disponible, resultado no concluyente.',
       );
     }
     return results.join('\n');

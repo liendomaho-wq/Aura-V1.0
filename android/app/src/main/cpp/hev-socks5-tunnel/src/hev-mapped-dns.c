@@ -276,6 +276,7 @@ domain_is_suspicious (const char *domain)
     return 0;
 }
 
+#ifdef __ANDROID__
 static int
 normalize_domain (const char *domain, char normalized[DNS_MAX_NAME + 1])
 {
@@ -314,6 +315,7 @@ normalize_domain (const char *domain, char normalized[DNS_MAX_NAME + 1])
     normalized[length] = '\0';
     return 0;
 }
+#endif
 
 int
 hev_mapped_dns_block_domain (const char *domain)

@@ -277,7 +277,7 @@ hev_socks5_client_connect (HevSocks5Client *self, const char *addr, int port)
     int timeout;
     int fd, res;
 
-    LOG_D ("%p socks5 client connect [%s]:%d", self, addr, port);
+    LOG_D ("%p socks5 client connect", self);
 
     timeout = hev_socks5_get_connect_timeout ();
     hev_socks5_set_timeout (HEV_SOCKS5 (self), timeout);
@@ -286,7 +286,7 @@ hev_socks5_client_connect (HevSocks5Client *self, const char *addr, int port)
     addr_family = hev_socks5_get_addr_family (HEV_SOCKS5 (self));
     res = hev_socks5_name_into_sockaddr6 (addr, port, &saddr, &addr_family);
     if (res < 0) {
-        LOG_I ("%p socks5 client resolve [%s]:%d", self, addr, port);
+        LOG_I ("%p socks5 client destination resolution failed", self);
         return -1;
     }
 
