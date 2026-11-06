@@ -4,6 +4,7 @@ import 'dart:collection';
 import 'package:flutter/foundation.dart';
 
 import '../explanation/aura_verdict_explanation.dart';
+import '../services/aura_threat_correlator.dart';
 
 enum AuraSecurityLevel { safe, warning, critical }
 
@@ -18,6 +19,7 @@ class AuraStateProvider extends ChangeNotifier {
   final List<Map<String, dynamic>> _telemetryEvents = [];
   final List<AuraVerdictExplanation> _explanationHistory = [];
   final AuraCriticalAlert? _onCriticalAlert;
+  final AuraThreatCorrelator _threatCorrelator;
   String _liveConsoleLogs = 'SISTEMA AURA: Núcleo defensivo activo e íntegro.';
   bool _isVpnActive = false;
   bool _isScanning = false;
@@ -36,8 +38,11 @@ class AuraStateProvider extends ChangeNotifier {
   int _dgaAlertEvents = 0;
   String? _lastNetworkAction;
 
-  AuraStateProvider({AuraCriticalAlert? onCriticalAlert})
-      : _onCriticalAlert = onCriticalAlert;
+  AuraStateProvider({
+    AuraCriticalAlert? onCriticalAlert,
+    AuraThreatCorrelator? threatCorrelator,
+  }) : _onCriticalAlert = onCriticalAlert,
+       _threatCorrelator = threatCorrelator ?? AuraThreatCorrelator();
 
   bool get isVpnActive => _isVpnActive;
   bool get isScanning => _isScanning;
@@ -57,20 +62,24 @@ class AuraStateProvider extends ChangeNotifier {
   int get dgaAlertEvents => _dgaAlertEvents;
   String? get lastNetworkAction => _lastNetworkAction;
   String get avatarAnimation => switch (_securityLevel) {
-        AuraSecurityLevel.safe => 'idle_friendly',
-        AuraSecurityLevel.warning => 'scanning_active',
-        AuraSecurityLevel.critical => 'threat_mitigation_mode',
-      };
+    AuraSecurityLevel.safe => 'idle_friendly',
+    AuraSecurityLevel.warning => 'scanning_active',
+    AuraSecurityLevel.critical => 'threat_mitigation_mode',
+  };
   UnmodifiableListView<Map<String, dynamic>> get telemetryEvents =>
       UnmodifiableListView(_telemetryEvents);
   UnmodifiableListView<AuraVerdictExplanation> get explanationHistory =>
       UnmodifiableListView(_explanationHistory);
+  List<AuraThreatAlert> get threatAlerts => _threatCorrelator.alerts;
+  String get correlatedThreatReport => _threatCorrelator.buildReport();
   UnmodifiableListView<String> get observedPublicDnsResolvers =>
       UnmodifiableListView(
         _telemetryEvents
-            .where((event) =>
-                event['public_dns_resolver'] == true &&
-                event['destination_address'] is String)
+            .where(
+              (event) =>
+                  event['public_dns_resolver'] == true &&
+                  event['destination_address'] is String,
+            )
             .map((event) => event['destination_address'] as String)
             .toSet()
             .toList(growable: false),
@@ -119,6 +128,7 @@ class AuraStateProvider extends ChangeNotifier {
   }
 
   void addTelemetryEvent(Map<String, dynamic> event) {
+    _threatCorrelator.recordNetworkEvent(event);
     _telemetryEvents.add(Map<String, dynamic>.unmodifiable(event));
     _lastNetworkAction = event['action'] as String?;
     if (event['action'] == 'ENCRYPTED_DNS_BLOCKED') {
@@ -145,6 +155,10 @@ class AuraStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void recordAppScanResult(Map<String, dynamic> result) {
+    if (_threatCorrelator.recordAppScanResult(result)) notifyListeners();
+  }
+
   void addExplanation(AuraVerdictExplanation explanation) {
     _explanationHistory.add(explanation);
     if (_explanationHistory.length > maxExplanationHistory) {
@@ -163,8 +177,9 @@ class AuraStateProvider extends ChangeNotifier {
     if (index < 0 || _explanationHistory[index].reportedFalsePositive) {
       return;
     }
-    _explanationHistory[index] =
-        _explanationHistory[index].copyWith(reportedFalsePositive: true);
+    _explanationHistory[index] = _explanationHistory[index].copyWith(
+      reportedFalsePositive: true,
+    );
     notifyListeners();
   }
 
@@ -195,6 +210,7 @@ class AuraStateProvider extends ChangeNotifier {
   void clearTelemetryHistory() {
     _telemetryEvents.clear();
     _explanationHistory.clear();
+    _threatCorrelator.clear();
     _lastNetworkAction = null;
     _localForestEvaluations = 0;
     _quicBlocked = 0;

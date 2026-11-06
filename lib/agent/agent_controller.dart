@@ -6,6 +6,7 @@ import '../ai_brain.dart';
 import '../infrastructure/security/aura_dynamic_whitelist.dart';
 import '../providers/aura_state_provider.dart';
 import '../services/aura_local_telemetry.dart';
+import '../services/aura_threat_correlator.dart';
 import '../secure_vault.dart';
 import '../voice_engine.dart';
 import 'aura_intent_parser.dart';
@@ -21,10 +22,12 @@ class AgentController {
   static final AgentController instance = AgentController._();
 
   static const int historyCapacity = 400;
-  static const MethodChannel _biometricChannel =
-      MethodChannel('com.aura.cyberdefense/biometrics');
-  static const MethodChannel _notificationChannel =
-      MethodChannel('com.aura.cyberdefense/notifications');
+  static const MethodChannel _biometricChannel = MethodChannel(
+    'com.aura.cyberdefense/biometrics',
+  );
+  static const MethodChannel _notificationChannel = MethodChannel(
+    'com.aura.cyberdefense/notifications',
+  );
   static const String kernelGreeting =
       '[ KERNEL MASTER ACTIVE ] Aura Centinela en línea. Listo para auditar los sockets. Ingrese un comando o consulta táctica.';
   static final AuraVoiceEngine _voiceEngine = AuraVoiceEngine();
@@ -201,26 +204,27 @@ class AgentController {
   Stream<AgentEvent> get stream => _eventController.stream;
 
   static int get responseVariantCount => _responses.values.fold<int>(
-        0,
-        (count, variants) => count + variants.length,
-      );
+    0,
+    (count, variants) => count + variants.length,
+  );
 
   static AuraSecurityLevel resolveSecurityLevel(
     Map<String, dynamic> result,
     AuraSecurityLevel current,
-  ) =>
-      switch (result['security_level']) {
-        'critical' => AuraSecurityLevel.critical,
-        'warning' => current == AuraSecurityLevel.critical
-            ? AuraSecurityLevel.critical
-            : AuraSecurityLevel.warning,
-        'safe' when result['tool'] == 'audit_device' &&
+  ) => switch (result['security_level']) {
+    'critical' => AuraSecurityLevel.critical,
+    'warning' =>
+      current == AuraSecurityLevel.critical
+          ? AuraSecurityLevel.critical
+          : AuraSecurityLevel.warning,
+    'safe'
+        when result['tool'] == 'audit_device' &&
             current != AuraSecurityLevel.critical =>
-          AuraSecurityLevel.safe,
-        // Only a complete device-posture audit may clear a warning. A successful
-        // domain/model/VPN action cannot certify the device or clear a critical alert.
-        _ => current,
-      };
+      AuraSecurityLevel.safe,
+    // Only a complete device-posture audit may clear a warning. A successful
+    // domain/model/VPN action cannot certify the device or clear a critical alert.
+    _ => current,
+  };
 
   void bindSecurityState(AuraStateProvider state) {
     _securityState = state;
@@ -234,16 +238,15 @@ class AgentController {
   Future<bool> authenticateBiometricDevice() async {
     if (_locallyAuthenticated) return true;
     try {
-      final authenticated = await _biometricChannel.invokeMethod<bool>(
+      final authenticated =
+          await _biometricChannel.invokeMethod<bool>(
             'authenticateFingerprint',
           ) ??
           false;
       _locallyAuthenticated = authenticated;
       return authenticated;
     } on PlatformException catch (error) {
-      reportError(
-        'Fallo biométrico nativo: ${error.message ?? error.code}',
-      );
+      reportError('Fallo biométrico nativo: ${error.message ?? error.code}');
       return false;
     } on MissingPluginException {
       reportError('El canal biométrico nativo no está disponible.');
@@ -256,10 +259,8 @@ class AgentController {
 
   Future<Map<String, dynamic>> getLocalAuthStatus() async {
     try {
-      final status =
-          await _biometricChannel.invokeMethod<Map<dynamic, dynamic>>(
-            'getLocalAuthStatus',
-          );
+      final status = await _biometricChannel
+          .invokeMethod<Map<dynamic, dynamic>>('getLocalAuthStatus');
       if (status == null) {
         throw StateError('Android devolvió un estado de autenticación vacío.');
       }
@@ -285,16 +286,15 @@ class AgentController {
 
   Future<bool> authenticateDeviceCredential() async {
     try {
-      final authenticated = await _biometricChannel.invokeMethod<bool>(
+      final authenticated =
+          await _biometricChannel.invokeMethod<bool>(
             'authenticateDeviceCredential',
           ) ??
           false;
       _locallyAuthenticated = authenticated;
       return authenticated;
     } on PlatformException catch (error) {
-      reportError(
-        'Fallo de credencial nativa: ${error.message ?? error.code}',
-      );
+      reportError('Fallo de credencial nativa: ${error.message ?? error.code}');
       return false;
     } on MissingPluginException {
       reportError('El canal de credenciales nativas no está disponible.');
@@ -311,7 +311,9 @@ class AgentController {
     } on PlatformException catch (error) {
       reportError('No se pudo abrir ajustes: ${error.message ?? error.code}');
     } on MissingPluginException {
-      reportError('El canal para abrir ajustes de seguridad no está disponible.');
+      reportError(
+        'El canal para abrir ajustes de seguridad no está disponible.',
+      );
     } on Object catch (error) {
       reportError('Error al abrir ajustes de seguridad: $error');
     }
@@ -379,17 +381,15 @@ class AgentController {
     );
   }
 
-  Future<void> run(
-    String instruction, {
-    bool confirmedByUser = false,
-  }) async {
+  Future<void> run(String instruction, {bool confirmedByUser = false}) async {
     final text = instruction.trim();
     if (text.isEmpty) return;
     if (text.length > 2048) {
       _emit(
         AgentEvent(
           kind: AgentEventKind.warning,
-          message: 'La instrucción supera el límite de 2.048 caracteres y fue rechazada.',
+          message:
+              'La instrucción supera el límite de 2.048 caracteres y fue rechazada.',
           data: const <String, dynamic>{
             'error': 'instruction_too_long',
             'max_length': 2048,
@@ -402,7 +402,8 @@ class AgentController {
       _emit(
         AgentEvent(
           kind: AgentEventKind.warning,
-          message: 'Aura ya está procesando otra orden. Espera a que termine antes de enviar otra.',
+          message:
+              'Aura ya está procesando otra orden. Espera a que termine antes de enviar otra.',
           data: const <String, dynamic>{'error': 'agent_busy'},
         ),
       );
@@ -421,7 +422,8 @@ class AgentController {
         _emit(
           AgentEvent(
             kind: AgentEventKind.warning,
-            message: 'No hay una operación pendiente de confirmación o la solicitud expiró. Vuelve a emitir la orden.',
+            message:
+                'No hay una operación pendiente de confirmación o la solicitud expiró. Vuelve a emitir la orden.',
             data: const <String, dynamic>{'error': 'no_pending_confirmation'},
           ),
         );
@@ -432,7 +434,8 @@ class AgentController {
         _emit(
           AgentEvent(
             kind: AgentEventKind.warning,
-            message: 'La orden pendiente supera el límite interno al preparar la confirmación. Emite una orden más corta.',
+            message:
+                'La orden pendiente supera el límite interno al preparar la confirmación. Emite una orden más corta.',
             data: const <String, dynamic>{
               'error': 'confirmation_replay_too_long',
             },
@@ -494,8 +497,8 @@ class AgentController {
         AuraIntentKind.toggleDefenses,
       };
       final requiresConfirmation = confirmationKinds.contains(intent.kind);
-      final hasConfirmation = confirmedByUser ||
-          intent.entities['confirmed_by_user'] == true;
+      final hasConfirmation =
+          confirmedByUser || intent.entities['confirmed_by_user'] == true;
       if (requiresConfirmation && !hasConfirmation) {
         if (_explicitDenial.hasMatch(text)) {
           _pendingConfirmationInstruction = null;
@@ -503,7 +506,8 @@ class AgentController {
           _emit(
             AgentEvent(
               kind: AgentEventKind.warning,
-              message: 'Operación rechazada. No se guardó ninguna autorización pendiente.',
+              message:
+                  'Operación rechazada. No se guardó ninguna autorización pendiente.',
               data: <String, dynamic>{
                 'error': 'user_denied_operation',
                 'operation_id': operationId,
@@ -518,7 +522,8 @@ class AgentController {
         _emit(
           AgentEvent(
             kind: AgentEventKind.warning,
-            message: 'La orden requiere confirmación. Responde CONFIRMO dentro de 60 segundos para ejecutar exactamente esta operación.',
+            message:
+                'La orden requiere confirmación. Responde CONFIRMO dentro de 60 segundos para ejecutar exactamente esta operación.',
             data: <String, dynamic>{
               'error': 'user_confirmation_required',
               'confirmation_pending': true,
@@ -581,6 +586,43 @@ class AgentController {
         AuraIntentKind.provocation => AuraIntentKind.insult,
         _ => intent.kind,
       };
+      if (intent.kind == AuraIntentKind.status ||
+          intent.kind == AuraIntentKind.securityCheck ||
+          intent.kind == AuraIntentKind.analyzeThreats) {
+        final level = _securityState?.securityLevel;
+        final report =
+            _securityState?.correlatedThreatReport ??
+            'El correlador local no está disponible.';
+        final alerts =
+            _securityState?.threatAlerts ?? const <AuraThreatAlert>[];
+        final prefix = switch (intent.kind) {
+          AuraIntentKind.status =>
+            'Estado de seguridad reportado por la aplicación: ${level?.name ?? 'no disponible'}.',
+          AuraIntentKind.securityCheck =>
+            'Revisión local del estado de seguridad: ${level?.name ?? 'no disponible'}.',
+          _ => 'Análisis local de amenazas basado en eventos observados.',
+        };
+        final message = '$prefix $report';
+        _emit(intent.toEvent());
+        _emit(
+          AgentEvent(
+            kind: alerts.isEmpty
+                ? AgentEventKind.success
+                : AgentEventKind.warning,
+            message: message,
+            data: <String, dynamic>{
+              'intent': intent.name,
+              'security_level': level?.name,
+              'correlated_alert_count': alerts.length,
+              'correlated_alerts': alerts
+                  .map((alert) => alert.toMap())
+                  .toList(),
+            },
+          ),
+        );
+        await _speakResponse(message);
+        return;
+      }
       final variants = _responses[responseKind];
       if (variants != null) {
         final cursor = _responseCursors[responseKind] ?? 0;
@@ -609,32 +651,17 @@ class AgentController {
             kind: AgentEventKind.warning,
             message: 'No se reconoció una acción local segura.',
             data: <String, dynamic>{
-            'instruction_length': text.length,
-            'operation_id': operationId,
-          },
+              'instruction_length': text.length,
+              'operation_id': operationId,
+            },
           ),
         );
-        return;
-      }
-
-      if (intent.kind == AuraIntentKind.status) {
-        final level = _securityState?.securityLevel;
-        final message = 'Estado de seguridad reportado por la aplicación: '
-            '${level?.name ?? 'no disponible'}.';
-        _emit(intent.toEvent());
-        _emit(
-          AgentEvent(
-            kind: AgentEventKind.success,
-            message: message,
-            data: <String, dynamic>{'security_level': level?.name},
-          ),
-        );
-        await _speakResponse(message);
         return;
       }
 
       if (intent.kind == AuraIntentKind.help) {
-        const helpMessage = 'ÓRDENES DISPONIBLES — ACTIVAR DEFENSAS · '
+        const helpMessage =
+            'ÓRDENES DISPONIBLES — ACTIVAR DEFENSAS · '
             'DESACTIVAR DEFENSAS · BLOQUEAR <dominio> · REVISAR APP <paquete> · '
             'AISLAMIENTO DE EMERGENCIA · REANUDAR LA RED · ACTUALIZAR '
             'DEFENSAS · AUDITAR DISPOSITIVO · ESCANEAR APLICACIONES · ANALIZAR DOMINIO <host> · ESTADO · PURGA CRIPTOGRÁFICA. '
@@ -671,12 +698,12 @@ class AgentController {
         ToolStep(name: intent.name, arguments: toolArguments),
         onProgress: intent.kind == AuraIntentKind.updateDefenses
             ? (message) => _emit(
-                  AgentEvent(
-                    kind: AgentEventKind.thought,
-                    message: message,
-                    data: <String, dynamic>{'tool': intent.name},
-                  ),
-                )
+                AgentEvent(
+                  kind: AgentEventKind.thought,
+                  message: message,
+                  data: <String, dynamic>{'tool': intent.name},
+                ),
+              )
             : null,
         stateProvider: _securityState,
         cancellationToken: cancellationToken,
@@ -686,7 +713,9 @@ class AgentController {
             message: 'El motor local inició $toolName.',
             data: <String, dynamic>{
               'tool': toolName,
-              'argument_names': arguments.keys.map((key) => key.toString()).toList(growable: false),
+              'argument_names': arguments.keys
+                  .map((key) => key.toString())
+                  .toList(growable: false),
               'argument_count': arguments.length,
               'operation_id': operationId,
             },
@@ -702,7 +731,9 @@ class AgentController {
                 : 'El motor local no confirmó $toolName; revisa el resultado.',
             data: <String, dynamic>{
               'tool': toolName,
-              'argument_names': arguments.keys.map((key) => key.toString()).toList(growable: false),
+              'argument_names': arguments.keys
+                  .map((key) => key.toString())
+                  .toList(growable: false),
               'argument_count': arguments.length,
               'operation_id': operationId,
               ...toolResult,
@@ -710,6 +741,9 @@ class AgentController {
           ),
         ),
       );
+      if (intent.kind == AuraIntentKind.scanApps && result.data['ok'] == true) {
+        _securityState?.recordAppScanResult(result.data);
+      }
       var auditLogStatus = 'persisted';
       if (intent.kind == AuraIntentKind.cryptographicPurge &&
           result.data['ok'] == true) {
@@ -733,7 +767,8 @@ class AgentController {
           _emit(
             AgentEvent(
               kind: AgentEventKind.error,
-              message: 'La herramienta terminó, pero no se pudo guardar su cierre en la bitácora cifrada.',
+              message:
+                  'La herramienta terminó, pero no se pudo guardar su cierre en la bitácora cifrada.',
               data: <String, dynamic>{
                 'error': 'secure_audit_completion_write_failed',
                 'operation_id': operationId,
@@ -748,7 +783,7 @@ class AgentController {
       final succeeded = result.data['ok'] == true;
       final integrityCheckFailed =
           result.data['critical_integrity_failure'] == true ||
-              result.data['security_level'] == 'critical';
+          result.data['security_level'] == 'critical';
       if (intent.kind == AuraIntentKind.cryptographicPurge && succeeded) {
         await AuraLocalTelemetry.clearEvents();
         history.clear();
@@ -768,10 +803,10 @@ class AgentController {
           kind: integrityCheckFailed
               ? AgentEventKind.error
               : succeeded &&
-                      !userActionRequired &&
-                      auditLogStatus != 'completion_write_failed'
-                  ? AgentEventKind.success
-                  : AgentEventKind.warning,
+                    !userActionRequired &&
+                    auditLogStatus != 'completion_write_failed'
+              ? AgentEventKind.success
+              : AgentEventKind.warning,
           message: auditLogStatus == 'completion_write_failed'
               ? '${result.summary} La acción pudo completarse, pero su cierre no quedó guardado en la bitácora cifrada.'
               : result.summary,
@@ -791,7 +826,8 @@ class AgentController {
       _emit(
         AgentEvent(
           kind: AgentEventKind.warning,
-          message: 'Orden cancelada antes de iniciar la ejecución de una herramienta.',
+          message:
+              'Orden cancelada antes de iniciar la ejecución de una herramienta.',
           data: const <String, dynamic>{
             'error': 'operation_cancelled',
             'side_effect_started': false,
@@ -803,7 +839,8 @@ class AgentController {
       _emit(
         AgentEvent(
           kind: AgentEventKind.error,
-          message: 'No se pudo procesar la instrucción. No se confirmó ninguna acción.',
+          message:
+              'No se pudo procesar la instrucción. No se confirmó ninguna acción.',
           data: <String, dynamic>{
             'error': 'instruction_processing_failed',
             'error_type': error.runtimeType.toString(),

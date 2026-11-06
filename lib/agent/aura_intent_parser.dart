@@ -9,6 +9,7 @@ enum AuraIntentKind {
   updateDefenses,
   scanApps,
   analyzeDomain,
+  analyzeThreats,
   auditDevice,
   greet,
   identity,
@@ -40,45 +41,47 @@ class AuraIntent {
   final double confidence;
 
   AgentEvent toEvent() => AgentEvent(
-        kind: switch (kind) {
-          AuraIntentKind.block ||
-          AuraIntentKind.isolate ||
-          AuraIntentKind.panicIsolation ||
-          AuraIntentKind.resumeNetwork ||
-          AuraIntentKind.cryptographicPurge ||
-          AuraIntentKind.updateDefenses ||
-          AuraIntentKind.scanApps ||
-          AuraIntentKind.analyzeDomain ||
-          AuraIntentKind.auditDevice ||
-          AuraIntentKind.toggleDefenses => AgentEventKind.action,
-          AuraIntentKind.greet ||
-          AuraIntentKind.identity ||
-          AuraIntentKind.capabilities ||
-          AuraIntentKind.securityCheck ||
-          AuraIntentKind.insult ||
-          AuraIntentKind.praise ||
-          AuraIntentKind.existential ||
-          AuraIntentKind.fear ||
-          AuraIntentKind.provocation ||
-          AuraIntentKind.humor => AgentEventKind.thought,
-          AuraIntentKind.status ||
-          AuraIntentKind.help => AgentEventKind.thought,
-          AuraIntentKind.unknown => AgentEventKind.warning,
-        },
-        message: name,
-        data: <String, dynamic>{
-          'entities': Map<String, dynamic>.from(entities),
-          'confidence': confidence,
-        },
-      );
+    kind: switch (kind) {
+      AuraIntentKind.block ||
+      AuraIntentKind.isolate ||
+      AuraIntentKind.panicIsolation ||
+      AuraIntentKind.resumeNetwork ||
+      AuraIntentKind.cryptographicPurge ||
+      AuraIntentKind.updateDefenses ||
+      AuraIntentKind.scanApps ||
+      AuraIntentKind.analyzeDomain ||
+      AuraIntentKind.auditDevice ||
+      AuraIntentKind.toggleDefenses => AgentEventKind.action,
+      AuraIntentKind.greet ||
+      AuraIntentKind.identity ||
+      AuraIntentKind.capabilities ||
+      AuraIntentKind.securityCheck ||
+      AuraIntentKind.insult ||
+      AuraIntentKind.praise ||
+      AuraIntentKind.existential ||
+      AuraIntentKind.fear ||
+      AuraIntentKind.provocation ||
+      AuraIntentKind.humor => AgentEventKind.thought,
+      AuraIntentKind.analyzeThreats => AgentEventKind.thought,
+      AuraIntentKind.status || AuraIntentKind.help => AgentEventKind.thought,
+      AuraIntentKind.unknown => AgentEventKind.warning,
+    },
+    message: name,
+    data: <String, dynamic>{
+      'entities': Map<String, dynamic>.from(entities),
+      'confidence': confidence,
+    },
+  );
 }
 
 class AuraIntentParser {
   AuraIntentParser._();
 
   static const int historyCapacity = 5;
-  static final List<AuraIntent?> _historyBuffer =
-      List<AuraIntent?>.filled(historyCapacity, null);
+  static final List<AuraIntent?> _historyBuffer = List<AuraIntent?>.filled(
+    historyCapacity,
+    null,
+  );
   static int _nextHistoryIndex = 0;
   static int _historySize = 0;
 
@@ -98,6 +101,7 @@ class AuraIntentParser {
     // ambiguous, so require the user to restate the affirmative instruction.
     return !_negatedConfirmationRemainder.hasMatch(text.substring(match.end));
   }
+
   static final RegExp _blockCommand = RegExp(
     r'\b(?:bloquea|bloquear|bloquee|bloqueo|block|blockear|deniega|denegar)\b',
     caseSensitive: false,
@@ -136,6 +140,10 @@ class AuraIntentParser {
   );
   static final RegExp _analyzeDomainCommand = RegExp(
     r'\b(?:analiza|analizar|revisa|revisar|eval[uú]a|evaluar|comprueba|comprobar)\s+(?:el\s+)?(?:dominio|host|sitio|website)\b',
+    caseSensitive: false,
+  );
+  static final RegExp _analyzeThreatsCommand = RegExp(
+    r'\b(?:analiza|analizar|revisa|revisar|muestra|ver)\s+(?:(?:las?|los)\s+)?amenazas\b',
     caseSensitive: false,
   );
   static final RegExp _auditDeviceCommand = RegExp(
@@ -257,8 +265,8 @@ class AuraIntentParser {
   );
 
   static List<AuraIntent> get history {
-    final oldestIndex = (_nextHistoryIndex - _historySize + historyCapacity) %
-        historyCapacity;
+    final oldestIndex =
+        (_nextHistoryIndex - _historySize + historyCapacity) % historyCapacity;
     return List<AuraIntent>.unmodifiable(
       List<AuraIntent>.generate(
         _historySize,
@@ -292,9 +300,11 @@ class AuraIntentParser {
       _isolateCommand,
     ];
     final executableMatches = executablePatterns
-      .where((pattern) => identical(pattern, _isolateCommand)
-        ? _hasIndependentIsolateCommand(text)
-        : pattern.hasMatch(text))
+        .where(
+          (pattern) => identical(pattern, _isolateCommand)
+              ? _hasIndependentIsolateCommand(text)
+              : pattern.hasMatch(text),
+        )
         .length;
     final hasEmbeddedCommandBoundary = RegExp(r'[;:\n]').hasMatch(text);
     if (executableMatches > 1 ||
@@ -319,8 +329,7 @@ class AuraIntentParser {
         name: 'panic_isolation',
         kind: AuraIntentKind.panicIsolation,
         entities: <String, dynamic>{
-          if (_hasExplicitConfirmation(text))
-            'confirmed_by_user': true,
+          if (_hasExplicitConfirmation(text)) 'confirmed_by_user': true,
         },
         confidence: 0.96,
       );
@@ -329,8 +338,7 @@ class AuraIntentParser {
         name: 'resume_network',
         kind: AuraIntentKind.resumeNetwork,
         entities: <String, dynamic>{
-          if (_hasExplicitConfirmation(text))
-            'confirmed_by_user': true,
+          if (_hasExplicitConfirmation(text)) 'confirmed_by_user': true,
         },
         confidence: 0.96,
       );
@@ -339,8 +347,7 @@ class AuraIntentParser {
         name: 'cryptographic_purge',
         kind: AuraIntentKind.cryptographicPurge,
         entities: <String, dynamic>{
-          if (_hasExplicitConfirmation(text))
-            'confirmed_by_user': true,
+          if (_hasExplicitConfirmation(text)) 'confirmed_by_user': true,
         },
         confidence: 0.96,
       );
@@ -350,8 +357,7 @@ class AuraIntentParser {
         kind: AuraIntentKind.toggleDefenses,
         entities: <String, dynamic>{
           'activate': true,
-          if (_hasExplicitConfirmation(text))
-            'confirmed_by_user': true,
+          if (_hasExplicitConfirmation(text)) 'confirmed_by_user': true,
         },
         confidence: 0.96,
       );
@@ -361,8 +367,7 @@ class AuraIntentParser {
         kind: AuraIntentKind.toggleDefenses,
         entities: <String, dynamic>{
           'activate': false,
-          if (_hasExplicitConfirmation(text))
-            'confirmed_by_user': true,
+          if (_hasExplicitConfirmation(text)) 'confirmed_by_user': true,
         },
         confidence: 0.96,
       );
@@ -372,6 +377,13 @@ class AuraIntentParser {
         kind: AuraIntentKind.help,
         entities: <String, dynamic>{},
         confidence: 0.9,
+      );
+    } else if (_analyzeThreatsCommand.hasMatch(text)) {
+      intent = AuraIntent(
+        name: 'analyze_threats',
+        kind: AuraIntentKind.analyzeThreats,
+        entities: <String, dynamic>{},
+        confidence: 0.96,
       );
     } else if (_analyzeDomainCommand.hasMatch(text) && host != null) {
       intent = AuraIntent(
@@ -407,8 +419,7 @@ class AuraIntentParser {
         kind: AuraIntentKind.block,
         entities: <String, dynamic>{
           'domain': host,
-          if (_hasExplicitConfirmation(text))
-            'confirmed_by_user': true,
+          if (_hasExplicitConfirmation(text)) 'confirmed_by_user': true,
         },
         confidence: 0.96,
       );
@@ -419,8 +430,7 @@ class AuraIntentParser {
         kind: AuraIntentKind.isolate,
         entities: <String, dynamic>{
           if (packageName != null) 'package_name': packageName,
-          if (_hasExplicitConfirmation(text))
-            'confirmed_by_user': true,
+          if (_hasExplicitConfirmation(text)) 'confirmed_by_user': true,
         },
         confidence: packageName == null ? 0.62 : 0.96,
       );
@@ -477,27 +487,29 @@ class AuraIntentParser {
       if (tokenMatches > 0) matches[entry.key] = tokenMatches;
     }
     if (matches.isEmpty) return null;
-    return matches.entries.reduce(
-      (best, candidate) =>
-          candidate.value > best.value ? candidate : best,
-    ).key;
+    return matches.entries
+        .reduce(
+          (best, candidate) => candidate.value > best.value ? candidate : best,
+        )
+        .key;
   }
 
   static String _intentName(AuraIntentKind kind) => switch (kind) {
-        AuraIntentKind.greet => 'greet',
-        AuraIntentKind.identity => 'identity',
-        AuraIntentKind.capabilities => 'capabilities',
-        AuraIntentKind.securityCheck => 'security_check',
-        AuraIntentKind.insult => 'insult',
-        AuraIntentKind.praise => 'praise',
-        AuraIntentKind.existential => 'existential',
-        AuraIntentKind.fear => 'fear',
-        AuraIntentKind.provocation => 'provocation',
-        AuraIntentKind.humor => 'humor',
-        AuraIntentKind.help => 'help',
-        AuraIntentKind.toggleDefenses => 'toggle_defenses',
-        _ => 'unknown',
-      };
+    AuraIntentKind.greet => 'greet',
+    AuraIntentKind.identity => 'identity',
+    AuraIntentKind.capabilities => 'capabilities',
+    AuraIntentKind.securityCheck => 'security_check',
+    AuraIntentKind.analyzeThreats => 'analyze_threats',
+    AuraIntentKind.insult => 'insult',
+    AuraIntentKind.praise => 'praise',
+    AuraIntentKind.existential => 'existential',
+    AuraIntentKind.fear => 'fear',
+    AuraIntentKind.provocation => 'provocation',
+    AuraIntentKind.humor => 'humor',
+    AuraIntentKind.help => 'help',
+    AuraIntentKind.toggleDefenses => 'toggle_defenses',
+    _ => 'unknown',
+  };
 
   static String? _extractHost(String text) {
     for (final match in _ipv4Pattern.allMatches(text)) {
