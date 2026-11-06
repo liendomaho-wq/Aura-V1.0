@@ -64,7 +64,7 @@ class AuraVpnService : VpnService() {
 
         @JvmStatic
         fun protectSocket(socketFd: Int): Boolean =
-            activeService?.protect(socketFd) ?: false
+            activeService?.protectAndBindSocket(socketFd) ?: false
 
         @JvmStatic
         fun resolveHostForTunnel(hostname: String): String? =
@@ -590,6 +590,29 @@ class AuraVpnService : VpnService() {
         return candidates.firstOrNull {
             it.second.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
         }?.first ?: candidates.firstOrNull()?.first
+    }
+
+    /**
+     * Native tun2socks creates upstream sockets before connecting them. Protecting
+     * alone only excludes a socket from this VPN; it does not pin it to the
+     * physical Network selected by Aura. Bind it explicitly so a handover cannot
+     * send the proxy socket through a different default network (or back into
+     * the VPN routing path).
+     */
+    private fun protectAndBindSocket(socketFd: Int): Boolean {
+        val network = underlyingNetwork ?: return false
+        if (!protect(socketFd)) return false
+        return try {
+            network.bindSocket(socketFd)
+            true
+        } catch (exception: Exception) {
+            Log.w(
+                "AuraVPN",
+                "No se pudo fijar el socket nativo a la red física seleccionada.",
+                exception,
+            )
+            false
+        }
     }
 
     private fun resolveHostOnUnderlyingNetwork(hostname: String): String? {
