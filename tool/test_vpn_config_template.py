@@ -522,7 +522,7 @@ for required_cleanup_guard in (
         )
 
 resume_match = re.search(
-    r"private fun resumeTunnelForwarding\\(\\): Boolean \\{(.*?)\\n    \\}",
+    r"private fun resumeTunnelForwarding\(\): Boolean \{(.*?)\n    \}",
     text,
     re.DOTALL,
 )
