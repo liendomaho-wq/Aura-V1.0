@@ -360,25 +360,37 @@ class AuraVpnService : VpnService() {
     @Synchronized
     private fun resumeTunnelForwarding(): Boolean {
         if (!panicIsolationActive) return tunnelStarted
-        val tun = vpnInterface ?: return false
-        val configFile = File(filesDir, "aura-hev-socks5.yml")
-        if (!configFile.isFile) return false
 
         return try {
+            val tun = vpnInterface
+                ?: throw IOException("La interfaz VPN no está disponible para reanudar el forwarding.")
+            val configFile = File(filesDir, "aura-hev-socks5.yml")
+            if (!configFile.isFile) {
+                throw IOException("No existe la configuración del túnel para reanudarlo.")
+            }
+
+            // The native worker can outlive a stale Kotlin flag; reconcile native state before restart.
+            if (TProxyService.TProxyIsRunning() && !TProxyService.TProxyStopService()) {
+                throw IOException("El motor VPN no confirmó el cierre antes de reanudar.")
+            }
+            if (TProxyService.TProxyIsRunning()) {
+                throw IOException("El motor VPN continúa activo tras solicitar su cierre.")
+            }
+
             TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
             if (!TProxyService.TProxyStartService(configFile.absolutePath, tun.fd)) {
-                return false
+                throw IOException("El motor VPN no pudo iniciar durante la reanudación.")
             }
-            tunnelStarted = true
             verifyLocalSocks5Ready()
+
             val cleared = getSharedPreferences(VPN_STATE_PREFERENCES, MODE_PRIVATE)
                 .edit()
                 .putBoolean(PANIC_ISOLATION_KEY, false)
                 .commit()
             if (!cleared) {
-                TProxyService.TProxyStopService()
-                return false
+                throw IOException("No se pudo confirmar la salida del aislamiento de emergencia.")
             }
+
             panicIsolationActive = false
             tunnelStarted = true
             startRequested.set(true)
