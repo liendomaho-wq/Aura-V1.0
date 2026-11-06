@@ -662,8 +662,38 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
     return Scaffold(
       backgroundColor: AuraTokens.bg,
       resizeToAvoidBottomInset: true,
-      body: SafeArea(
-        child: Column(
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment(0, -0.72),
+                radius: 1.35,
+                colors: [
+                  Color(0xFF10294C),
+                  Color(0xFF071326),
+                  AuraTokens.bg,
+                ],
+                stops: [0, 0.48, 1],
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Opacity(
+                opacity: 0.035,
+                child: GridPaper(
+                  color: AuraTokens.accent,
+                  interval: 30,
+                  divisions: 1,
+                  subdivisions: 1,
+                ),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Column(
           children: [
             const SizedBox(height: 12),
             Row(
@@ -765,12 +795,12 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
               ],
             ),
             Container(
-              margin: const EdgeInsets.fromLTRB(14, 4, 14, 12),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              margin: const EdgeInsets.fromLTRB(14, 6, 14, 14),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(26),
                 border: Border.all(
-                  color: AuraTokens.accent.withValues(alpha: 0.20),
+                  color: AuraTokens.accent.withValues(alpha: 0.28),
                 ),
                 gradient: const LinearGradient(
                   begin: Alignment.topLeft,
@@ -784,15 +814,15 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                 boxShadow: [
                   BoxShadow(
                     color: AuraTokens.accent.withValues(alpha: 0.07),
-                    blurRadius: 26,
-                    spreadRadius: 1,
+                    blurRadius: 34,
+                    spreadRadius: 2,
                   ),
                 ],
               ),
               child: Row(
                 children: [
                   AuraAvatar(
-                    size: 112,
+                    size: 126,
                     mode: _isListening
                         ? AuraAvatarMode.listening
                         : _isRunning
@@ -1004,8 +1034,9 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
               onSubmitted: _dispatch,
               onVoice: _captureVoice,
             ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }
