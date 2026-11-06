@@ -41,9 +41,35 @@ class AuraApp extends StatelessWidget {
       title: 'Aura Mobile Defens',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
+        useMaterial3: true,
         brightness: Brightness.dark,
         scaffoldBackgroundColor: AuraTokens.bg,
         fontFamily: 'sans-serif',
+        colorScheme: const ColorScheme.dark(
+          primary: AuraTokens.accent,
+          secondary: AuraTokens.accentViolet,
+          surface: AuraTokens.surface,
+          error: AuraTokens.danger,
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: AuraTokens.bg,
+          foregroundColor: AuraTokens.textPrimary,
+          elevation: 0,
+          centerTitle: false,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: AuraTokens.surface,
+          hintStyle: const TextStyle(color: AuraTokens.textMuted),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.all(Radius.circular(AuraTokens.rXl)),
+            borderSide: BorderSide(color: AuraTokens.border),
+          ),
+          focusedBorder: const OutlineInputBorder(
+            borderRadius: BorderRadius.all(Radius.circular(AuraTokens.rXl)),
+            borderSide: BorderSide(color: AuraTokens.accent, width: 1.4),
+          ),
+        ),
       ),
       home: const SplashScreen(),
     );

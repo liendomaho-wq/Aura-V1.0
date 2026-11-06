@@ -233,13 +233,49 @@ class _SplashScreenState extends State<SplashScreen>
       body: Stack(
         children: [
           Positioned.fill(
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(0, -0.28),
+                  radius: 1.12,
+                  colors: [
+                    Color(0xFF10264A),
+                    Color(0xFF080F24),
+                    Color(0xFF030711),
+                  ],
+                  stops: [0, 0.52, 1],
+                ),
+              ),
+            ),
+          ),
+          Positioned.fill(
             child: Opacity(
-              opacity: 0.035,
+              opacity: 0.075,
               child: GridPaper(
                 color: AuraTokens.accent,
-                interval: 30,
+                interval: 28,
                 divisions: 1,
                 subdivisions: 1,
+              ),
+            ),
+          ),
+          Positioned(
+            top: -110,
+            right: -90,
+            child: IgnorePointer(
+              child: Container(
+                width: 260,
+                height: 260,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AuraTokens.accentViolet.withValues(alpha: 0.16),
+                      blurRadius: 100,
+                      spreadRadius: 30,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -263,12 +299,43 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                     const SizedBox(height: AuraTokens.s1),
                     const Text(
-                      'SOVEREIGN MOBILE DEFENSE',
+                      'INTELIGENCIA QUE PROTEGE',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AuraTokens.accent,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 2.2,
+                      ),
+                    ),
+                    const SizedBox(height: AuraTokens.s4),
+                    const Text(
+                      'Bienvenido a Aura',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AuraTokens.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    const SizedBox(height: AuraTokens.s1),
+                    const Text(
+                      'Tu inteligencia de ciberdefensa personal.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: AuraTokens.textMuted,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w400,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: AuraTokens.s3),
+                    const Text(
+                      'NÚCLEO DE DEFENSA DIGITAL',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AuraTokens.textMuted,
+                        fontSize: 9,
+                        letterSpacing: 1.4,
                       ),
                     ),
                     const SizedBox(height: AuraTokens.s8),

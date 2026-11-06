@@ -1,12 +1,10 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
-/// Visual states are driven by real application state, never by a decorative
-/// timer pretending that a security operation is running.
+/// Activity states for Aura's abstract, non-human identity mark.
 enum AuraAvatarMode { available, listening, analyzing, protecting, warning, alert }
 
-/// A lightweight animated identity for Aura. It is intentionally local:
-/// no remote image, network request, or additional package is required.
 class AuraAvatar extends StatefulWidget {
   const AuraAvatar({
     super.key,
@@ -16,8 +14,6 @@ class AuraAvatar extends StatefulWidget {
   });
 
   final double size;
-
-  /// Backwards-compatible shorthand used by older screens and tests.
   final bool isThinking;
   final AuraAvatarMode mode;
 
@@ -37,7 +33,7 @@ class _AuraAvatarState extends State<AuraAvatar>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2600),
+      duration: const Duration(milliseconds: 3200),
     )..repeat();
   }
 
@@ -58,165 +54,177 @@ class _AuraAvatarState extends State<AuraAvatar>
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      container: true,
-      excludeSemantics: true,
-      label: switch (widget.effectiveMode) {
-        AuraAvatarMode.available => 'Aura está disponible',
-        AuraAvatarMode.listening => 'Aura está escuchando',
-        AuraAvatarMode.analyzing => 'Aura está analizando',
-        AuraAvatarMode.protecting => 'Aura está protegiendo el dispositivo',
-        AuraAvatarMode.warning => 'Aura detectó señales que requieren atención',
-        AuraAvatarMode.alert => 'Aura detectó una alerta de seguridad',
-      },
-      image: true,
-      child: SizedBox.square(
-        dimension: widget.size,
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) => CustomPaint(
-            painter: _AuraAvatarPainter(
-              phase: _controller.value,
-              mode: widget.effectiveMode,
+  Widget build(BuildContext context) => Semantics(
+        container: true,
+        excludeSemantics: true,
+        label: switch (widget.effectiveMode) {
+          AuraAvatarMode.available => 'Aura está disponible',
+          AuraAvatarMode.listening => 'Aura está escuchando',
+          AuraAvatarMode.analyzing => 'Aura está analizando',
+          AuraAvatarMode.protecting => 'Aura está protegiendo el dispositivo',
+          AuraAvatarMode.warning => 'Aura detectó señales que requieren atención',
+          AuraAvatarMode.alert => 'Aura detectó una alerta de seguridad',
+        },
+        image: true,
+        child: SizedBox.square(
+          dimension: widget.size,
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) => CustomPaint(
+              painter: _AuraCorePainter(
+                phase: _controller.value,
+                mode: widget.effectiveMode,
+              ),
             ),
           ),
         ),
-      ),
-    );
-  }
+      );
 }
 
-class _AuraAvatarPainter extends CustomPainter {
-  const _AuraAvatarPainter({required this.phase, required this.mode});
+/// Aura's own geometric A-core: luminous rails, data nodes and circuit traces.
+/// It deliberately avoids human faces, shields, flowers and radar imagery.
+class _AuraCorePainter extends CustomPainter {
+  const _AuraCorePainter({required this.phase, required this.mode});
 
   final double phase;
   final AuraAvatarMode mode;
 
-  Color get _primaryColor => switch (mode) {
-        AuraAvatarMode.available => const Color(0xFF63E9FF),
-        AuraAvatarMode.listening => const Color(0xFF8B70FF),
-        AuraAvatarMode.analyzing => const Color(0xFF55DFFF),
-        AuraAvatarMode.protecting => const Color(0xFF4ADEA5),
-        AuraAvatarMode.warning => const Color(0xFFFFC857),
-        AuraAvatarMode.alert => const Color(0xFFFF647C),
+  Color get _primary => switch (mode) {
+        AuraAvatarMode.available => const Color(0xFF39D9FF),
+        AuraAvatarMode.listening => const Color(0xFFB36BFF),
+        AuraAvatarMode.analyzing => const Color(0xFF40BFFF),
+        AuraAvatarMode.protecting => const Color(0xFF39E6B0),
+        AuraAvatarMode.warning => const Color(0xFFFFC45E),
+        AuraAvatarMode.alert => const Color(0xFFFF557A),
       };
 
-  double get _motionMultiplier => switch (mode) {
-        AuraAvatarMode.available => 0.55,
-        AuraAvatarMode.listening => 0.9,
-        AuraAvatarMode.analyzing => 1.8,
-        AuraAvatarMode.protecting => 1.15,
-        AuraAvatarMode.warning => 0.85,
-        AuraAvatarMode.alert => 1.45,
-      };
+  Color get _secondary =>
+      mode == AuraAvatarMode.alert ? const Color(0xFFFF9BAE) : const Color(0xFF925BFF);
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.shortestSide * 0.34;
-    final pulseDepth = mode == AuraAvatarMode.alert ? 0.13 : 0.08;
-    final pulse = 0.92 + pulseDepth * math.sin(phase * math.pi * 2);
-    final rotation = phase * math.pi * 2;
-    final primary = _primaryColor;
+    final unit = size.shortestSide;
+    final radius = unit * 0.30;
+    final angle = phase * math.pi * 2;
+    final pulse = 0.97 + 0.03 * math.sin(angle);
+    final primary = _primary;
+    final secondary = _secondary;
 
     final glow = Paint()
       ..shader = RadialGradient(
         colors: [
-          primary.withValues(alpha: mode == AuraAvatarMode.alert ? 0.32 : 0.24),
-          const Color(0xFF6857FF).withValues(alpha: 0.12),
+          primary.withValues(alpha: 0.28),
+          secondary.withValues(alpha: 0.12),
           Colors.transparent,
         ],
-      ).createShader(Rect.fromCircle(center: center, radius: radius * 2.1));
-    canvas.drawCircle(center, radius * 2.1, glow);
+      ).createShader(Rect.fromCircle(center: center, radius: unit * 0.49));
+    canvas.drawCircle(center, unit * 0.49, glow);
 
-    final orb = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFF182D58), Color(0xFF07182B), Color(0xFF30205E)],
-      ).createShader(Rect.fromCircle(center: center, radius: radius));
-    canvas.drawCircle(center, radius * pulse, orb);
-
-    final ringPaint = Paint()
+    final trace = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2
-      ..color = primary.withValues(alpha: 0.62);
-    canvas.drawCircle(center, radius * (1.25 + 0.04 * math.sin(rotation)), ringPaint);
-
-    final orbitPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0
-      ..color = (mode == AuraAvatarMode.alert
-          ? const Color(0xFFFF9AA9)
-          : const Color(0xFF9A80FF)).withValues(alpha: 0.72);
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(rotation * _motionMultiplier);
-    canvas.drawOval(
-      Rect.fromCenter(center: Offset.zero, width: radius * 2.8, height: radius * 0.85),
-      orbitPaint,
+      ..strokeWidth = math.max(0.7, unit * 0.006)
+      ..color = primary.withValues(alpha: 0.24);
+    final outer = radius * 1.72;
+    canvas.drawCircle(center, outer, trace);
+    canvas.drawCircle(
+      center,
+      outer * 0.87,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(0.6, unit * 0.005)
+        ..color = secondary.withValues(alpha: 0.24),
     );
-    canvas.restore();
 
-    final nodePaint = Paint()
-      ..color = primary
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
-    final nodeAngle = rotation * _motionMultiplier;
-    final node = Offset(
-      center.dx + math.cos(nodeAngle) * radius * 1.4,
-      center.dy + math.sin(nodeAngle) * radius * 0.42,
-    );
-    canvas.drawCircle(node, size.shortestSide * 0.035, nodePaint);
-
-    // Give Aura a recognizable, expressive presence without relying on a
-    // remote image or a decorative human photo. Facial motion is tied to the
-    // same real activity mode and remains static when reduced motion is set.
-    final faceCenter = Offset(center.dx, center.dy + radius * 0.015);
-    final eyeGlow = Paint()
-      ..color = primary.withValues(alpha: 0.42)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
-    final eyePaint = Paint()
-      ..color = const Color(0xFFEAFBFF).withValues(alpha: 0.96);
-    final eyeCore = Paint()
-      ..color = primary.withValues(alpha: 0.98);
-    final blink = 0.82 + 0.18 * (0.5 + 0.5 * math.sin(rotation * 2.0));
-    for (final direction in const [-1.0, 1.0]) {
-      final eye = Offset(
-        faceCenter.dx + direction * radius * 0.31,
-        faceCenter.dy - radius * 0.07,
-      );
-      final eyeRect = Rect.fromCenter(
-        center: eye,
-        width: radius * 0.19,
-        height: radius * 0.30 * blink,
-      );
-      canvas.drawOval(eyeRect.inflate(radius * 0.08), eyeGlow);
-      canvas.drawOval(eyeRect, eyePaint);
+    for (var i = 0; i < 12; i++) {
+      final a = math.pi * 2 * i / 12 + angle * 0.035;
+      final start = Offset(center.dx + math.cos(a) * outer * 1.03,
+          center.dy + math.sin(a) * outer * 1.03);
+      final end = Offset(center.dx + math.cos(a) * outer * 1.22,
+          center.dy + math.sin(a) * outer * 1.22);
+      canvas.drawLine(start, end, trace);
       canvas.drawCircle(
-        Offset(eye.dx, eye.dy + radius * 0.015),
-        radius * 0.055,
-        eyeCore,
+        end,
+        unit * 0.012,
+        Paint()..color = primary.withValues(alpha: 0.72),
       );
     }
 
-    final mouthPaint = Paint()
+    final ring = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(1.4, radius * 0.035)
-      ..strokeCap = StrokeCap.round
-      ..color = primary.withValues(alpha: 0.92);
-    final mouth = Path()
-      ..moveTo(faceCenter.dx - radius * 0.22, faceCenter.dy + radius * 0.24)
-      ..quadraticBezierTo(
-        faceCenter.dx,
-        faceCenter.dy + radius * (mode == AuraAvatarMode.alert ? 0.19 : 0.38),
-        faceCenter.dx + radius * 0.22,
-        faceCenter.dy + radius * 0.24,
+      ..strokeCap = StrokeCap.round;
+    for (var i = 0; i < 3; i++) {
+      ring
+        ..strokeWidth = math.max(1, unit * (0.012 - i * 0.002))
+        ..color = (i.isEven ? primary : secondary)
+            .withValues(alpha: 0.72 - i * 0.14);
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius * (1.32 + i * 0.19)),
+        angle * (i.isEven ? 0.035 : -0.025) + i,
+        math.pi * 1.42,
+        false,
+        ring,
       );
-    canvas.drawPath(mouth, mouthPaint);
+    }
+
+    // Angular A monogram, built from luminous rails rather than a character.
+    final r = radius * pulse;
+    final left = Offset(center.dx - r * 0.72, center.dy + r * 0.62);
+    final peak = Offset(center.dx, center.dy - r * 0.92);
+    final right = Offset(center.dx + r * 0.72, center.dy + r * 0.62);
+    final mark = Path()
+      ..moveTo(left.dx, left.dy)
+      ..lineTo(peak.dx, peak.dy)
+      ..lineTo(right.dx, right.dy);
+
+    final halo = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = unit * 0.105
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..color = primary.withValues(alpha: 0.26)
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, unit * 0.05);
+    canvas.drawPath(mark, halo);
+
+    final rails = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = unit * 0.064
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..shader = LinearGradient(
+        begin: Alignment.bottomLeft,
+        end: Alignment.topRight,
+        colors: [primary, const Color(0xFFEAFBFF), secondary],
+      ).createShader(Rect.fromPoints(left, right));
+    canvas.drawPath(mark, rails);
+
+    final crossbar = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = unit * 0.052
+      ..strokeCap = StrokeCap.round
+      ..color = const Color(0xFFEAFBFF);
+    canvas.drawLine(
+      Offset(center.dx - r * 0.22, center.dy + r * 0.20),
+      Offset(center.dx + r * 0.22, center.dy + r * 0.20),
+      crossbar,
+    );
+
+    final dataAngle = angle * 0.22;
+    final dataPoint = Offset(
+      center.dx + math.cos(dataAngle) * outer * 1.12,
+      center.dy + math.sin(dataAngle) * outer * 1.12,
+    );
+    canvas.drawCircle(
+      dataPoint,
+      unit * 0.022,
+      Paint()
+        ..color = primary
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, unit * 0.025),
+    );
+    canvas.drawCircle(dataPoint, unit * 0.009, Paint()..color = Colors.white);
   }
 
   @override
-  bool shouldRepaint(covariant _AuraAvatarPainter oldDelegate) =>
+  bool shouldRepaint(covariant _AuraCorePainter oldDelegate) =>
       oldDelegate.phase != phase || oldDelegate.mode != mode;
 }

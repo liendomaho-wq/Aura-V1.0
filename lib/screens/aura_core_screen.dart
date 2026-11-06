@@ -711,7 +711,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                       ),
                       SizedBox(height: 2),
                       Text(
-                        'AGENTE LOCAL · ANDROID',
+                        'INTELIGENCIA LOCAL · ANDROID',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: AuraTokens.accent,
@@ -772,15 +772,22 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                 border: Border.all(
                   color: AuraTokens.accent.withValues(alpha: 0.20),
                 ),
-                gradient: LinearGradient(
+                gradient: const LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    AuraTokens.surface.withValues(alpha: 0.96),
-                    AuraTokens.surfaceAlt.withValues(alpha: 0.72),
-                    AuraTokens.accentViolet.withValues(alpha: 0.10),
+                    Color(0xF20B1B36),
+                    Color(0xE90B1530),
+                    Color(0xC9162050),
                   ],
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AuraTokens.accent.withValues(alpha: 0.07),
+                    blurRadius: 26,
+                    spreadRadius: 1,
+                  ),
+                ],
               ),
               child: Row(
                 children: [
