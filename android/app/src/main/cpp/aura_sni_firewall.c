@@ -8,6 +8,7 @@
 #define AURA_MAX_DOMAIN_LENGTH 253
 #define AURA_MAX_TLS_RECORD_LENGTH 18432
 #define AURA_MAX_CLIENT_HELLO_LENGTH 65535
+#define AURA_TLS_SNI_STREAM_LIMIT (AURA_MAX_CLIENT_HELLO_LENGTH + 5U * 5U)
 
 static char dynamic_sni_rules[AURA_MAX_DYNAMIC_SNI_RULES]
                              [AURA_MAX_DOMAIN_LENGTH + 1];
@@ -390,6 +391,62 @@ aura_inspect_tls_sni (const uint8_t *payload, uint32_t payload_len, char *sni,
     result = inspect_client_hello (hello, hello_length, sni, sni_capacity);
     free (hello);
     return result;
+}
+
+void
+aura_tls_sni_stream_init (AuraTlsSniStream *stream)
+{
+    if (stream)
+        memset (stream, 0, sizeof (*stream));
+}
+
+void
+aura_tls_sni_stream_dispose (AuraTlsSniStream *stream)
+{
+    if (!stream)
+        return;
+    free (stream->data);
+    memset (stream, 0, sizeof (*stream));
+}
+
+AuraTlsSniResult
+aura_tls_sni_stream_append (AuraTlsSniStream *stream, const uint8_t *payload,
+                            size_t payload_len, char *sni,
+                            size_t sni_capacity)
+{
+    size_t required;
+
+    if (!stream || (payload_len && !payload) ||
+        stream->length > AURA_TLS_SNI_STREAM_LIMIT ||
+        payload_len > AURA_TLS_SNI_STREAM_LIMIT - stream->length)
+        return AURA_TLS_SNI_MALFORMED;
+
+    required = stream->length + payload_len;
+    if (required > stream->capacity) {
+        size_t capacity = stream->capacity ? stream->capacity : 1024;
+        uint8_t *data;
+
+        while (capacity < required) {
+            if (capacity > AURA_TLS_SNI_STREAM_LIMIT / 2) {
+                capacity = AURA_TLS_SNI_STREAM_LIMIT;
+                break;
+            }
+            capacity *= 2;
+        }
+        if (capacity > AURA_TLS_SNI_STREAM_LIMIT)
+            capacity = AURA_TLS_SNI_STREAM_LIMIT;
+        data = realloc (stream->data, capacity);
+        if (!data)
+            return AURA_TLS_SNI_MALFORMED;
+        stream->data = data;
+        stream->capacity = capacity;
+    }
+
+    if (payload_len)
+        memcpy (stream->data + stream->length, payload, payload_len);
+    stream->length = required;
+    return aura_inspect_tls_sni (stream->data, (uint32_t)stream->length,
+                                 sni, sni_capacity);
 }
 
 bool

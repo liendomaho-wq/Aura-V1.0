@@ -33,8 +33,6 @@
 #ifdef __ANDROID__
 #include "aura_sni_firewall.h"
 
-#define AURA_TLS_INSPECTION_LIMIT (65535U + 5U * 5U)
-
 extern void hev_jni_report_dns_event (const char *domain, int action,
                                       uint32_t source_ipv4,
                                       uint16_t source_port);
@@ -72,42 +70,17 @@ report_observed_sni (HevSocks5SessionTCP *self, const char *sni)
 static int
 tls_inspection_append (HevSocks5SessionTCP *self, const struct pbuf *p)
 {
-    size_t required;
-    size_t capacity;
-    uint8_t *buffer;
-    AuraTlsSniResult result;
+    const struct pbuf *segment;
+    AuraTlsSniResult result = AURA_TLS_SNI_INCOMPLETE;
     char sni[254] = { 0 };
 
-    if (p->tot_len > AURA_TLS_INSPECTION_LIMIT - self->tls_inspection_length)
-        return -1;
-    required = self->tls_inspection_length + p->tot_len;
-    if (required > self->tls_inspection_capacity) {
-        capacity = self->tls_inspection_capacity
-                       ? self->tls_inspection_capacity
-                       : 1024;
-        while (capacity < required && capacity < AURA_TLS_INSPECTION_LIMIT)
-            capacity *= 2;
-        if (capacity > AURA_TLS_INSPECTION_LIMIT)
-            capacity = AURA_TLS_INSPECTION_LIMIT;
-        buffer = realloc (self->tls_inspection_buffer, capacity);
-        if (!buffer)
-            return -1;
-        self->tls_inspection_buffer = buffer;
-        self->tls_inspection_capacity = capacity;
+    for (segment = p; segment && result == AURA_TLS_SNI_INCOMPLETE;
+         segment = segment->next) {
+        result = aura_tls_sni_stream_append (&self->tls_inspection,
+                                             segment->payload, segment->len,
+                                             sni, sizeof (sni));
     }
-    if (pbuf_copy_partial (p,
-                           self->tls_inspection_buffer +
-                               self->tls_inspection_length,
-                           p->tot_len, 0) != p->tot_len)
-        return -1;
-    self->tls_inspection_length = required;
-
-    result = aura_inspect_tls_sni (self->tls_inspection_buffer,
-                                   (uint32_t)self->tls_inspection_length,
-                                   sni, sizeof (sni));
     if (result == AURA_TLS_SNI_INCOMPLETE) {
-        if (self->tls_inspection_length == AURA_TLS_INSPECTION_LIMIT)
-            return -1;
         return 0;
     }
     if (result == AURA_TLS_SNI_BLOCKED ||
@@ -130,10 +103,7 @@ abort_tcp_session (HevSocks5SessionTCP *self)
         pbuf_free (self->queue);
         self->queue = NULL;
     }
-    free (self->tls_inspection_buffer);
-    self->tls_inspection_buffer = NULL;
-    self->tls_inspection_length = 0;
-    self->tls_inspection_capacity = 0;
+    aura_tls_sni_stream_dispose (&self->tls_inspection);
     self->pcb = NULL;
 
     if (pcb) {
@@ -175,12 +145,12 @@ tcp_splice_f (HevSocks5SessionTCP *self)
 
     if (self->tls_inspection_required &&
         !self->tls_sni_checked_before_forwarding) {
-        if (aura_should_block_tls_sni (self->tls_inspection_buffer,
-                                       (uint32_t)self->tls_inspection_length)) {
+        if (aura_should_block_tls_sni (self->tls_inspection.data,
+                                       (uint32_t)self->tls_inspection.length)) {
             char sni[254] = { 0 };
             const AuraTlsSniResult result =
-                aura_inspect_tls_sni (self->tls_inspection_buffer,
-                                      (uint32_t)self->tls_inspection_length,
+                aura_inspect_tls_sni (self->tls_inspection.data,
+                                      (uint32_t)self->tls_inspection.length,
                                       sni, sizeof (sni));
             report_blocked_sni (self, result == AURA_TLS_SNI_BLOCKED
                                           ? sni
@@ -192,10 +162,7 @@ tcp_splice_f (HevSocks5SessionTCP *self)
             return -1;
         }
         self->tls_sni_checked_before_forwarding = 1;
-        free (self->tls_inspection_buffer);
-        self->tls_inspection_buffer = NULL;
-        self->tls_inspection_length = 0;
-        self->tls_inspection_capacity = 0;
+        aura_tls_sni_stream_dispose (&self->tls_inspection);
     }
 #endif
 
@@ -308,7 +275,7 @@ tcp_recv_handler (void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err)
                 LOG_W ("%p tcp SNI inspection rejected the connection", self);
                 pbuf_free (p);
                 abort_tcp_session (self);
-                hev_task_wakeup (self->data.task);
+                hev_socks5_session_terminate (HEV_SOCKS5_SESSION (self));
                 return ERR_ABRT;
             }
             tcp_recved (pcb, p->tot_len);
@@ -472,6 +439,7 @@ hev_socks5_session_tcp_construct (HevSocks5SessionTCP *self,
     self->tls_inspection_required =
         pcb->local_port == 443 || pcb->local_port == 853;
     self->tls_inspection_complete = !self->tls_inspection_required;
+    aura_tls_sni_stream_init (&self->tls_inspection);
 #endif
 
     return 0;
@@ -495,7 +463,7 @@ hev_socks5_session_tcp_destruct (HevObject *base)
     if (self->queue)
         pbuf_free (self->queue);
 #ifdef __ANDROID__
-    free (self->tls_inspection_buffer);
+    aura_tls_sni_stream_dispose (&self->tls_inspection);
 #endif
     hev_task_mutex_unlock (self->mutex);
 

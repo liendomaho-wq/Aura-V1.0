@@ -14,8 +14,7 @@
 #include <hev-socks5-client-tcp.h>
 
 #ifdef __ANDROID__
-#include <stddef.h>
-#include <stdint.h>
+#include "aura_sni_firewall.h"
 #endif
 
 #include "hev-socks5-session.h"
@@ -38,9 +37,7 @@ struct _HevSocks5SessionTCP
     HevTaskMutex *mutex;
     HevRingBuffer *buffer;
 #ifdef __ANDROID__
-    uint8_t *tls_inspection_buffer;
-    size_t tls_inspection_length;
-    size_t tls_inspection_capacity;
+    AuraTlsSniStream tls_inspection;
     size_t tls_preacknowledged;
     int tls_inspection_required;
     int tls_inspection_complete;

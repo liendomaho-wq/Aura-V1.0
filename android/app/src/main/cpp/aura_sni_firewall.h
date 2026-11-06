@@ -14,9 +14,22 @@ typedef enum
     AURA_TLS_SNI_ECH = 4
 } AuraTlsSniResult;
 
+typedef struct
+{
+    uint8_t *data;
+    size_t length;
+    size_t capacity;
+} AuraTlsSniStream;
+
 AuraTlsSniResult aura_inspect_tls_sni (const uint8_t *payload,
                                       uint32_t payload_len, char *sni,
                                       size_t sni_capacity);
+void aura_tls_sni_stream_init (AuraTlsSniStream *stream);
+void aura_tls_sni_stream_dispose (AuraTlsSniStream *stream);
+AuraTlsSniResult aura_tls_sni_stream_append (AuraTlsSniStream *stream,
+                                             const uint8_t *payload,
+                                             size_t payload_len, char *sni,
+                                             size_t sni_capacity);
 bool aura_should_block_tls_sni (const uint8_t *payload, uint32_t payload_len);
 bool aura_is_encrypted_dns_transport (uint8_t protocol, uint16_t port,
                                       bool known_doh_resolver);
