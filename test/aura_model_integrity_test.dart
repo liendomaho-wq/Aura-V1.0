@@ -9,10 +9,7 @@ import 'package:aura_mobile_defens/secure_vault.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class _TestSecureVault extends AuraSecureVault {
-  @override
-  Future<String> getOrCreateModelMasterKey() async => 'unused-by-base-asset';
-}
+class _TestSecureVault extends AuraSecureVault {}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
