@@ -38,6 +38,14 @@ def _inspect(library, packet):
     return result, output.value.decode("ascii")
 
 
+class _AuraTlsSniStream(ctypes.Structure):
+    _fields_ = [
+        ("data", ctypes.POINTER(ctypes.c_uint8)),
+        ("length", ctypes.c_size_t),
+        ("capacity", ctypes.c_size_t),
+    ]
+
+
 class AuraSniFirewallTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -58,6 +66,20 @@ class AuraSniFirewallTest(unittest.TestCase):
             ctypes.c_char_p, ctypes.c_size_t,
         ]
         cls.library.aura_inspect_tls_sni.restype = ctypes.c_int
+        cls.library.aura_tls_sni_stream_init.argtypes = [
+            ctypes.POINTER(_AuraTlsSniStream),
+        ]
+        cls.library.aura_tls_sni_stream_dispose.argtypes = [
+            ctypes.POINTER(_AuraTlsSniStream),
+        ]
+        cls.library.aura_tls_sni_stream_append.argtypes = [
+            ctypes.POINTER(_AuraTlsSniStream),
+            ctypes.POINTER(ctypes.c_uint8),
+            ctypes.c_size_t,
+            ctypes.c_char_p,
+            ctypes.c_size_t,
+        ]
+        cls.library.aura_tls_sni_stream_append.restype = ctypes.c_int
         cls.library.aura_add_dynamic_sni_rule.argtypes = [ctypes.c_char_p]
         cls.library.aura_add_dynamic_sni_rule.restype = ctypes.c_int
         cls.library.aura_set_dynamic_sni_allowlist.argtypes = [
@@ -106,6 +128,89 @@ class AuraSniFirewallTest(unittest.TestCase):
                 result, host = _inspect(self.library, _sni_client_hello(hostname))
                 self.assertEqual(result, 2)
                 self.assertEqual(host, hostname)
+
+    def test_fragmented_tcp_client_hello_is_reassembled_and_blocked(self):
+        self.assertEqual(
+            self.library.aura_add_dynamic_sni_rule(b"fragmented.blocked.example"),
+            1,
+        )
+        hello = _sni_client_hello("fragmented.blocked.example")
+        split_at = len(hello) // 2
+        stream = _AuraTlsSniStream()
+        self.library.aura_tls_sni_stream_init(ctypes.byref(stream))
+        try:
+            first = (ctypes.c_uint8 * split_at).from_buffer_copy(hello[:split_at])
+            second_payload = hello[split_at:]
+            second = (ctypes.c_uint8 * len(second_payload)).from_buffer_copy(
+                second_payload
+            )
+            hostname = ctypes.create_string_buffer(254)
+
+            first_result = self.library.aura_tls_sni_stream_append(
+                ctypes.byref(stream), first, len(first), hostname, len(hostname)
+            )
+            self.assertEqual(first_result, 0)
+            self.assertEqual(stream.length, split_at)
+
+            second_result = self.library.aura_tls_sni_stream_append(
+                ctypes.byref(stream), second, len(second), hostname, len(hostname)
+            )
+            self.assertEqual(second_result, 2)
+            self.assertEqual(hostname.value.decode("ascii"), "fragmented.blocked.example")
+        finally:
+            self.library.aura_tls_sni_stream_dispose(ctypes.byref(stream))
+
+    def test_complete_blocked_client_hello_returns_block_decision(self):
+        self.assertEqual(
+            self.library.aura_add_dynamic_sni_rule(b"single.blocked.example"),
+            1,
+        )
+        hello = _sni_client_hello("single.blocked.example")
+        payload = (ctypes.c_uint8 * len(hello)).from_buffer_copy(hello)
+        stream = _AuraTlsSniStream()
+        self.library.aura_tls_sni_stream_init(ctypes.byref(stream))
+        try:
+            hostname = ctypes.create_string_buffer(254)
+            result = self.library.aura_tls_sni_stream_append(
+                ctypes.byref(stream), payload, len(payload), hostname,
+                len(hostname),
+            )
+            self.assertEqual(result, 2)
+            self.assertEqual(hostname.value.decode("ascii"), "single.blocked.example")
+        finally:
+            self.library.aura_tls_sni_stream_dispose(ctypes.byref(stream))
+
+    def test_blocked_stream_is_wired_to_tcp_abort_and_block_event(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (
+            root
+            / "android/app/src/main/cpp/hev-socks5-tunnel/src/hev-socks5-session-tcp.c"
+        ).read_text(encoding="utf-8")
+        receive_handler = source.split("tcp_recv_handler (", 1)[1].split(
+            "tcp_sent_handler (", 1
+        )[0]
+        inspect_handler = source.split("tls_inspection_append (", 1)[1].split(
+            "abort_tcp_session (", 1
+        )[0]
+        abort_handler = source.split("abort_tcp_session (", 1)[1].split(
+            "#endif", 1
+        )[0]
+
+        self.assertIn("tls_inspection_append (self, p) < 0", receive_handler)
+        self.assertIn("report_blocked_sni (self, sni)", inspect_handler)
+        self.assertIn(
+            "result == AURA_TLS_SNI_BLOCKED ||\n        result == AURA_TLS_SNI_MALFORMED",
+            inspect_handler,
+        )
+        self.assertIn("aura_tls_sni_stream_append (&self->tls_inspection", inspect_handler)
+        self.assertIn("abort_tcp_session (self);", receive_handler)
+        self.assertIn(
+            "hev_socks5_session_terminate (HEV_SOCKS5_SESSION (self));",
+            receive_handler,
+        )
+        self.assertIn("return ERR_ABRT;", receive_handler)
+        self.assertIn("tcp_abort (pcb);", abort_handler)
+        self.assertIn("hev_jni_report_dns_event (sni, 3", source)
 
     def test_dynamic_rule_does_not_block_lookalike_suffix(self):
         self.assertEqual(
