@@ -132,6 +132,14 @@ if "hev_socks5_server_new" not in native_tunnel:
     sys.exit("FAIL: local SOCKS5 server is not wired into the Hev task system")
 if "hev_jni_protect_socket (fd)" not in native_socks:
     sys.exit("FAIL: native outbound sockets are not protected from VPN recursion")
+if "activeService?.protectAndBindSocket(socketFd)" not in text:
+    sys.exit("FAIL: native upstream sockets must use Aura's selected physical network")
+if "private fun protectAndBindSocket(socketFd: Int): Boolean" not in text:
+    sys.exit("FAIL: VPN socket protection/binding routine is missing")
+if "if (!protect(socketFd)) return false" not in text:
+    sys.exit("FAIL: VPN must protect upstream sockets before binding them")
+if "network.bindSocket(socketFd)" not in text:
+    sys.exit("FAIL: VPN upstream sockets are not pinned to the selected physical network")
 if "hev_jni_resolve_host (name" not in native_socks:
     sys.exit("FAIL: Android destination DNS must resolve on the underlying network")
 
