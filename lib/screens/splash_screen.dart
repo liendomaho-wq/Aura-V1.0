@@ -280,11 +280,17 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
           SafeArea(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(AuraTokens.s4),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+            child: LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AuraTokens.s4),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
                   children: [
                     const AuraAvatar(size: 148),
                     const SizedBox(height: AuraTokens.s8),
@@ -411,7 +417,9 @@ class _SplashScreenState extends State<SplashScreen>
                         ],
                       ),
                     ),
-                  ],
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
