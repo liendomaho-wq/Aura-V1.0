@@ -231,48 +231,49 @@ class _SplashScreenState extends State<SplashScreen>
     return Scaffold(
       backgroundColor: AuraTokens.bg,
       body: Stack(
+        fit: StackFit.expand,
         children: [
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment(0, -0.18),
+                radius: 1.18,
+                colors: [
+                  Color(0xFF183A70),
+                  Color(0xFF0A1730),
+                  Color(0xFF030711),
+                ],
+                stops: [0, 0.48, 1],
+              ),
+            ),
+          ),
           Positioned.fill(
-            child: DecoratedBox(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0, -0.28),
-                  radius: 1.12,
-                  colors: [
-                    Color(0xFF10264A),
-                    Color(0xFF080F24),
-                    Color(0xFF030711),
-                  ],
-                  stops: [0, 0.52, 1],
+            child: IgnorePointer(
+              child: Opacity(
+                opacity: 0.09,
+                child: GridPaper(
+                  color: AuraTokens.accent,
+                  interval: 26,
+                  divisions: 1,
+                  subdivisions: 1,
                 ),
               ),
             ),
           ),
-          Positioned.fill(
-            child: Opacity(
-              opacity: 0.075,
-              child: GridPaper(
-                color: AuraTokens.accent,
-                interval: 28,
-                divisions: 1,
-                subdivisions: 1,
-              ),
-            ),
-          ),
           Positioned(
-            top: -110,
-            right: -90,
+            top: -150,
+            right: -120,
             child: IgnorePointer(
               child: Container(
-                width: 260,
-                height: 260,
+                width: 360,
+                height: 360,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: AuraTokens.accentViolet.withValues(alpha: 0.16),
-                      blurRadius: 100,
-                      spreadRadius: 30,
+                      color: AuraTokens.accentViolet.withValues(alpha: 0.22),
+                      blurRadius: 130,
+                      spreadRadius: 35,
                     ),
                   ],
                 ),
@@ -281,147 +282,221 @@ class _SplashScreenState extends State<SplashScreen>
           ),
           SafeArea(
             child: LayoutBuilder(
-              builder: (context, constraints) => SingleChildScrollView(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: constraints.maxHeight,
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(AuraTokens.s4),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const AuraAvatar(size: 148),
-                    const SizedBox(height: AuraTokens.s8),
-                    const Text(
-                      'AURA',
-                      style: TextStyle(
-                        color: AuraTokens.textPrimary,
-                        fontSize: 38,
-                        fontWeight: FontWeight.w200,
-                        fontFamily: 'monospace',
-                      ),
+              builder: (context, constraints) {
+                final compact = constraints.maxHeight < 700;
+                final coreSize = (constraints.maxWidth * 0.72)
+                    .clamp(220.0, compact ? 258.0 : 310.0);
+                return SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
                     ),
-                    const SizedBox(height: AuraTokens.s1),
-                    const Text(
-                      'INTELIGENCIA QUE PROTEGE',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: AuraTokens.accent,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 2.2,
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        22,
+                        compact ? 10 : 22,
+                        22,
+                        compact ? 12 : 24,
                       ),
-                    ),
-                    const SizedBox(height: AuraTokens.s4),
-                    const Text(
-                      'Bienvenido a Aura',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: AuraTokens.textPrimary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    const SizedBox(height: AuraTokens.s1),
-                    const Text(
-                      'Tu inteligencia de ciberdefensa personal.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: AuraTokens.textMuted,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: AuraTokens.s3),
-                    const Text(
-                      'NÚCLEO DE DEFENSA DIGITAL',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: AuraTokens.textMuted,
-                        fontSize: 9,
-                        letterSpacing: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: AuraTokens.s8),
-                    SizedBox(
-                      width: 280,
                       child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          LinearProgressIndicator(
-                            value: _loadingProgress,
-                            minHeight: 2,
-                            backgroundColor: AuraTokens.surfaceAlt,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              _isAuthFailed
-                                  ? AuraTokens.danger
-                                  : AuraTokens.accent,
-                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: AuraTokens.success,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AuraTokens.success,
+                                      blurRadius: 9,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 9),
+                              const Text(
+                                'SISTEMA DE DEFENSA PERSONAL',
+                                style: TextStyle(
+                                  color: AuraTokens.textMuted,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 2.0,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: AuraTokens.s3),
-                          Text(
-                            _bootStatusText,
+                          SizedBox(height: compact ? 14 : 26),
+                          AuraAvatar(size: coreSize),
+                          SizedBox(height: compact ? 8 : 18),
+                          const Text(
+                            'A U R A',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: _isAuthFailed
-                                  ? AuraTokens.danger
-                                  : AuraTokens.accent,
-                              fontSize: 10,
-                              fontFamily: 'monospace',
+                              color: AuraTokens.textPrimary,
+                              fontSize: 42,
+                              height: 1.0,
+                              fontWeight: FontWeight.w200,
+                              letterSpacing: 7,
+                              fontFamily: 'sans-serif',
                             ),
                           ),
-                          if (_isAuthFailed && !_isAuthenticating) ...[
-                            const SizedBox(height: AuraTokens.s2),
-                            IconButton(
-                              tooltip: 'REINTENTAR AUTENTICACIÓN LOCAL',
-                              onPressed: _initializeSystem,
-                              icon: const Icon(
-                                Icons.refresh,
-                                color: AuraTokens.warning,
-                              ),
-                            ),
-                          ],
-                          if (_showLockDecision && !_isAuthenticating) ...[
-                            const SizedBox(height: AuraTokens.s3),
-                            _buildDecisionButton(
-                              label: 'CONFIGURAR BLOQUEO DEL TELÉFONO',
+                          const SizedBox(height: 10),
+                          const Text(
+                            'INTELIGENCIA QUE PROTEGE',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
                               color: AuraTokens.accent,
-                              onPressed: () => unawaited(
-                                AgentController.instance.openSecuritySettings(),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 2.8,
+                            ),
+                          ),
+                          SizedBox(height: compact ? 18 : 28),
+                          Container(
+                            width: double.infinity,
+                            constraints: const BoxConstraints(maxWidth: 390),
+                            padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xA6091730),
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(
+                                color: AuraTokens.accent.withValues(alpha: 0.22),
                               ),
-                            ),
-                            const SizedBox(height: AuraTokens.s2),
-                            _buildDecisionButton(
-                              label: 'REINTENTAR',
-                              color: AuraTokens.warning,
-                              onPressed: _initializeSystem,
-                            ),
-                            const SizedBox(height: AuraTokens.s2),
-                            _buildDecisionButton(
-                              label: 'CONTINUAR SIN BLOQUEO LOCAL (INSEGURO)',
-                              color: AuraTokens.danger,
-                              onPressed: _allowUnsecuredLocalAccess,
-                            ),
-                            const SizedBox(height: AuraTokens.s1),
-                            const Text(
-                              'ALTO RIESGO: CONFIGURA UN PIN PARA PROTEGER AURA.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: AuraTokens.danger,
-                                fontFamily: 'monospace',
-                                fontSize: 8,
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Color(0xCC10284A),
+                                  Color(0xA609142A),
+                                  Color(0xB10B1027),
+                                ],
                               ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AuraTokens.accentBlue.withValues(alpha: 0.12),
+                                  blurRadius: 32,
+                                  spreadRadius: 1,
+                                ),
+                              ],
                             ),
-                          ],
+                            child: Column(
+                              children: [
+                                const Text(
+                                  'TU CENTRO DE CIBERDEFENSA',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: AuraTokens.textPrimary,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 1.0,
+                                  ),
+                                ),
+                                const SizedBox(height: 7),
+                                const Text(
+                                  'Una inteligencia local para ayudarte a comprender, '
+                                  'supervisar y proteger tu entorno digital.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: AuraTokens.textMuted,
+                                    fontSize: 11,
+                                    height: 1.45,
+                                  ),
+                                ),
+                                const SizedBox(height: 18),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: LinearProgressIndicator(
+                                    value: _loadingProgress,
+                                    minHeight: 3,
+                                    backgroundColor: AuraTokens.surfaceAlt,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      _isAuthFailed
+                                          ? AuraTokens.danger
+                                          : AuraTokens.accent,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  _bootStatusText,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: _isAuthFailed
+                                        ? AuraTokens.danger
+                                        : AuraTokens.accent,
+                                    fontSize: 9,
+                                    height: 1.4,
+                                    fontFamily: 'monospace',
+                                    letterSpacing: 0.35,
+                                  ),
+                                ),
+                                if (_isAuthFailed && !_isAuthenticating) ...[
+                                  const SizedBox(height: 8),
+                                  IconButton(
+                                    tooltip: 'REINTENTAR AUTENTICACIÓN LOCAL',
+                                    onPressed: _initializeSystem,
+                                    icon: const Icon(
+                                      Icons.refresh_rounded,
+                                      color: AuraTokens.warning,
+                                    ),
+                                  ),
+                                ],
+                                if (_showLockDecision && !_isAuthenticating) ...[
+                                  const SizedBox(height: 14),
+                                  _buildDecisionButton(
+                                    label: 'CONFIGURAR BLOQUEO DEL TELÉFONO',
+                                    color: AuraTokens.accent,
+                                    onPressed: () => unawaited(
+                                      AgentController.instance.openSecuritySettings(),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _buildDecisionButton(
+                                    label: 'REINTENTAR',
+                                    color: AuraTokens.warning,
+                                    onPressed: _initializeSystem,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _buildDecisionButton(
+                                    label: 'CONTINUAR SIN BLOQUEO LOCAL (INSEGURO)',
+                                    color: AuraTokens.danger,
+                                    onPressed: _allowUnsecuredLocalAccess,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'ALTO RIESGO: CONFIGURA UN PIN PARA PROTEGER AURA.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: AuraTokens.danger,
+                                      fontFamily: 'monospace',
+                                      fontSize: 8,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: compact ? 14 : 22),
+                          const Text(
+                            'AURA QUANTUM  /  ANDROID',
+                            style: TextStyle(
+                              color: AuraTokens.textMuted,
+                              fontSize: 8,
+                              letterSpacing: 1.8,
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                      ],
-                    ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           ),
         ],
