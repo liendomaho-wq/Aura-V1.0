@@ -504,3 +504,36 @@ if "updateForegroundNotification()" not in start_tunnel.group(1):
     sys.exit("FAIL: foreground notification must refresh after startup verification and failure")
 
 print("PASS: VPN notification distinguishes startup from verified forwarding.")
+
+
+# Native tunnel state must be reconciled on every teardown/recovery path. A stale
+# Kotlin flag must never skip stopping a live native worker or leave the UI active
+# after a failed SOCKS5 readiness check.
+for required_cleanup_guard in (
+    "The native worker can outlive a stale Kotlin flag",
+    "if (TProxyService.TProxyIsRunning() && !TProxyService.TProxyStopService())",
+    "No se pudo reanudar el túnel; el forwarding permanece detenido.",
+    "tunnelStarted = false",
+):
+    if required_cleanup_guard not in text:
+        sys.exit(
+            "FAIL: VPN native-worker cleanup/recovery is missing "
+            + required_cleanup_guard
+        )
+
+resume_match = re.search(
+    r"private fun resumeTunnelForwarding\\(\\): Boolean \\{(.*?)\\n    \\}",
+    text,
+    re.DOTALL,
+)
+if not resume_match:
+    sys.exit("FAIL: could not locate VPN forwarding recovery")
+resume_body = resume_match.group(1)
+if "verifyLocalSocks5Ready()" not in resume_body:
+    sys.exit("FAIL: VPN resume must verify the local SOCKS5 service")
+if "finally" not in resume_body or "tunnelStarted = false" not in resume_body:
+    sys.exit("FAIL: failed VPN resume must clear the native forwarding state")
+if "updateForegroundNotification()" not in resume_body:
+    sys.exit("FAIL: failed VPN resume must refresh its foreground status")
+
+print("PASS: VPN teardown and resume reconcile native worker state after failures.")
