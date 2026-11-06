@@ -387,10 +387,18 @@ class AuraVpnService : VpnService() {
             updateForegroundNotification()
             true
         } catch (exception: Exception) {
-            if (TProxyService.TProxyIsRunning()) {
-                TProxyService.TProxyStopService()
+            try {
+                if (TProxyService.TProxyIsRunning()) {
+                    TProxyService.TProxyStopService()
+                }
+            } catch (stopException: Exception) {
+                Log.e("AuraVPN", "No se pudo detener el motor tras fallar la reanudación.", stopException)
+            } finally {
+                tunnelStarted = false
             }
             Log.e("AuraVPN", "No se pudo reanudar el forwarding del túnel.", exception)
+            reportState(false, "No se pudo reanudar el túnel; el forwarding permanece detenido.")
+            updateForegroundNotification()
             false
         }
     }
