@@ -15,6 +15,7 @@ workflows:
       vars:
         # applicationId real definido en android/app/build.gradle: com.ciberdefensa.aura
         AURA_BUILD_FORMAT: "apk"
+        AURA_REQUIRE_RELEASE_SIGNING: "false"
       flutter: stable
       java: 17
     triggering:
@@ -57,18 +58,23 @@ workflows:
         script: |
           set -euo pipefail
           cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
-          export AURA_REQUIRE_RELEASE_SIGNING=true
+          export AURA_REQUIRE_RELEASE_SIGNING=false
           bash tool/compile_aura.sh
       - name: Verify Android Release artifact signer
         script: |
           set -euo pipefail
           cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
-          apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk | tee /tmp/certs.txt
-          if grep -q "CN=Android Debug" /tmp/certs.txt; then
-            echo "ERROR: APK firmado con DEBUG. Abortando distribución."
-            exit 1
+          if [[ "${AURA_REQUIRE_RELEASE_SIGNING:-false}" == "true" ]]; then
+            apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk | tee /tmp/certs.txt
+            if grep -q "CN=Android Debug" /tmp/certs.txt; then
+              echo "ERROR: APK firmado con DEBUG. Abortando distribución."
+              exit 1
+            fi
+            bash tool/compile_aura.sh --verify-artifact
+          else
+            printf '\033[1;41m%s\033[0m\n' '⚠️ ADVERTENCIA: Generando APK de pruebas (DEBUG). NO DISTRIBUIR.'
+            echo "WARNING: Production signer verification skipped for the explicit DEBUG test build."
           fi
-          bash tool/compile_aura.sh --verify-artifact
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
       - build/app/outputs/bundle/release/*.aab

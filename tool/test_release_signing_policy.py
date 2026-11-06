@@ -50,6 +50,18 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
     def test_build_script_marks_debug_fallback_as_explicit_test_mode(self):
         self.assertIn("export AURA_ALLOW_DEBUG_SIGNING=true", self.build_script)
         self.assertIn('AURA_REQUIRE_RELEASE_SIGNING:-false', self.build_script)
+        self.assertIn(
+            "⚠️ ADVERTENCIA: Generando APK de pruebas (DEBUG). NO DISTRIBUIR.",
+            self.build_script,
+        )
+        self.assertRegex(
+            self.build_script,
+            re.compile(
+                r'AURA_REQUIRE_RELEASE_SIGNING:-false\}" != "true"[\s\S]*?'
+                r'USE_DEBUG_SIGNING=true[\s\S]*?'
+                r'unset AURA_KEYSTORE_PATH AURA_KEYSTORE_BASE64'
+            ),
+        )
 
     def test_release_workflow_forbids_debug_fallback(self):
         self.assertGreaterEqual(
@@ -57,7 +69,7 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
             2,
         )
 
-    def test_codemagic_requires_release_signing_and_rejects_debug_apk(self):
+    def test_codemagic_defaults_to_debug_testing_and_keeps_strict_verification(self):
         build_script = self.codemagic_workflow.split(
             "- name: Build Android Release artifact", 1
         )[1].split("- name: Verify Android Release artifact signer", 1)[0]
@@ -67,16 +79,24 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
         self.assertRegex(
             build_script,
             re.compile(
-                r"export AURA_REQUIRE_RELEASE_SIGNING=true\s+"
+                r"export AURA_REQUIRE_RELEASE_SIGNING=false\s+"
                 r"bash tool/compile_aura\.sh"
             ),
         )
+        self.assertIn('AURA_REQUIRE_RELEASE_SIGNING: "false"', self.codemagic_workflow)
         self.assertIn(
             "apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk",
             verify_script,
         )
         self.assertIn('grep -q "CN=Android Debug" /tmp/certs.txt', verify_script)
         self.assertIn("bash tool/compile_aura.sh --verify-artifact", verify_script)
+        self.assertRegex(
+            verify_script,
+            re.compile(
+                r'AURA_REQUIRE_RELEASE_SIGNING:-false\}" == "true"[\s\S]*?'
+                r"else[\s\S]*?Production signer verification skipped"
+            ),
+        )
 
     def test_artifact_verification_fails_closed_for_debug_or_missing_apksigner(self):
         self.assertRegex(

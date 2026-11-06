@@ -11,18 +11,16 @@ fail() {
     exit 1
 }
 
-# --- FASE 1: Detección de fallback y protección de rama principal ---
+# --- FASE 1: Selección estricta de producción o fallback de pruebas ---
 USE_DEBUG_SIGNING=false
-if [[ -z "${AURA_KEYSTORE_PATH:-}" && -z "${AURA_KEYSTORE_BASE64:-}" ]]; then
-    log "WARNING: Production signing variables missing. Falling back to DEBUG signing configuration."
-    log "WARNING: The resulting artifact is for TESTING ONLY. Configure AURA_KEYSTORE_* for release distribution."
+if [[ "${AURA_REQUIRE_RELEASE_SIGNING:-false}" != "true" ]]; then
+    printf '\n\033[1;41m%s\033[0m\n\n' '⚠️ ADVERTENCIA: Generando APK de pruebas (DEBUG). NO DISTRIBUIR.' >&2
     USE_DEBUG_SIGNING=true
-    # Debug signing is permitted only as an explicit testing fallback.
     export AURA_ALLOW_DEBUG_SIGNING=true
-
-    if [[ "${AURA_REQUIRE_RELEASE_SIGNING:-false}" == "true" ]]; then
-        fail "CRITICAL: AURA_REQUIRE_RELEASE_SIGNING=true is set but production signing variables are missing. Debug fallback is not allowed."
-    fi
+    unset AURA_KEYSTORE_PATH AURA_KEYSTORE_BASE64
+    unset AURA_STORE_PASSWORD AURA_KEY_ALIAS AURA_KEY_PASSWORD
+elif [[ -z "${AURA_KEYSTORE_PATH:-}" && -z "${AURA_KEYSTORE_BASE64:-}" ]]; then
+    fail "CRITICAL: AURA_REQUIRE_RELEASE_SIGNING=true is set but production signing variables are missing. Debug fallback is not allowed."
 fi
 
 mode="build"
