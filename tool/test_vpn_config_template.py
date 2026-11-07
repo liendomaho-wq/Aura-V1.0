@@ -38,6 +38,15 @@ if not re.search(
     sys.exit("FAIL: console must remain locked unless native authentication returns true")
 print("PASS: console remains locked when native authentication is not confirmed.")
 
+# Runtime-responsive text styles cannot be nested in a const Text constructor.
+if re.search(
+    r"const Text\(\s*'Hola, soy Aura\.'.*?fontSize:\s*compactLayout",
+    CONSOLE_SOURCE,
+    re.DOTALL,
+):
+    sys.exit("FAIL: responsive greeting font size cannot use a const Text constructor")
+print("PASS: compact console greeting keeps runtime-dependent styling outside const.")
+
 # Aura communicates with remote services only over authenticated HTTPS.
 application_tag = re.search(r"<application\b([^>]*)>", manifest, re.DOTALL)
 if not application_tag or not re.search(

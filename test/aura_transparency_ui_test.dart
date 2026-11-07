@@ -106,6 +106,8 @@ void main() {
 
     // Add verdict evidence only after authentication has completed. Startup may
     // rebind/reset session state, so seeding before this point is racy on CI.
+    const threatDescription =
+        'Índice 6 · min_normalized_levenshtein; 0,10 frente a google.com.';
     state.addExplanation(
       AuraVerdictExplanation(
         id: 'verdict-1',
@@ -121,8 +123,7 @@ void main() {
             featureName: 'min_normalized_levenshtein',
             label: 'Posible typosquatting',
             value: 0.1,
-            description:
-                'Índice 6 · min_normalized_levenshtein; 0,10 frente a google.com.',
+            description: threatDescription,
           ),
         ],
       ),
@@ -142,13 +143,17 @@ void main() {
     );
     await tester.pump();
     expect(threatCard, findsOneWidget);
-    await tester.tap(threatCard);
+    // Evidence belongs to the expanded content, not to the collapsed subtitle.
+    expect(find.text(threatDescription), findsNothing);
+    final threatHeader = find.byKey(
+      const ValueKey<String>('verdict-explanation-title-verdict-1'),
+    );
+    await tester.ensureVisible(threatHeader);
+    await tester.pump();
+    await tester.tap(threatHeader);
     await _pumpAuraFrames(tester);
 
-    expect(
-        find.text('Índice 6 · min_normalized_levenshtein; '
-            '0,10 frente a google.com.'),
-        findsOneWidget);
+    expect(find.text(threatDescription), findsOneWidget);
     expect(find.text('Modelo v3.0.0'), findsOneWidget);
     expect(find.text('Reportar falso positivo'), findsOneWidget);
     expect(
@@ -212,7 +217,14 @@ void main() {
     );
     await tester.pump();
     expect(find.text('¿Por qué se consideró seguro?'), findsOneWidget);
-    await tester.tap(safeCard);
+    final safeHeader = find.byKey(
+      ValueKey<String>(
+        'verdict-explanation-title-${safeExplanation.id}',
+      ),
+    );
+    await tester.ensureVisible(safeHeader);
+    await tester.pump();
+    await tester.tap(safeHeader);
     await _pumpAuraFrames(tester);
     expect(
       find.text('Posible typosquatting (señal auxiliar) · 0.10'),

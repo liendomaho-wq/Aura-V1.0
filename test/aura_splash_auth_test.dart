@@ -78,6 +78,12 @@ void main() {
     }
   }
 
+  Future<void> pumpCoreFrames(WidgetTester tester) async {
+    for (var frame = 0; frame < 12; frame++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
+
   testWidgets('strong biometric authentication advances past the splash', (
     tester,
   ) async {
@@ -131,6 +137,35 @@ void main() {
     expect(find.text('CONFIGURAR BLOQUEO DEL TELÉFONO'), findsOneWidget);
     expect(find.text('CONTINUAR SIN BLOQUEO LOCAL (INSEGURO)'), findsOneWidget);
     expect(find.byType(SingleChildScrollView), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('compact unsecured access reaches a core without layout errors', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await pumpSplash(
+      tester,
+      hasStrongBiometric: false,
+      deviceSecure: false,
+    );
+    await tester.pump();
+
+    final continueButton = find.text(
+      'CONTINUAR SIN BLOQUEO LOCAL (INSEGURO)',
+    );
+    await tester.ensureVisible(continueButton);
+    await tester.pump();
+    await tester.tap(continueButton);
+    await pumpBootToCore(tester);
+    await pumpCoreFrames(tester);
+
+    expect(find.byType(AuraCoreScreen), findsOneWidget);
+    expect(find.text('Hola, soy Aura.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
