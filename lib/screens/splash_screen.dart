@@ -313,8 +313,10 @@ class _SplashScreenState extends State<SplashScreen>
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 9,
                             children: [
                               Container(
                                 width: 6,
@@ -330,12 +332,13 @@ class _SplashScreenState extends State<SplashScreen>
                                   ],
                                 ),
                               ),
-                              const SizedBox(width: 9),
-                              Flexible(
-                                child: FittedBox(
+                              ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: constraints.maxWidth - 48,
+                                ),
+                                child: const FittedBox(
                                   fit: BoxFit.scaleDown,
-                                  alignment: Alignment.centerLeft,
-                                  child: const Text(
+                                  child: Text(
                                     'SISTEMA DE DEFENSA PERSONAL',
                                     style: TextStyle(
                                       color: AuraTokens.textMuted,
