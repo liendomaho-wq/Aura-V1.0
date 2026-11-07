@@ -330,7 +330,7 @@ class _SplashScreenState extends State<SplashScreen>
                               ),
                               const SizedBox(width: 9),
                               const Text(
-                                'INTELIGENCIA DE CIBERDEFENSA',
+                                'SISTEMA DE DEFENSA PERSONAL',
                                 style: TextStyle(
                                   color: AuraTokens.textMuted,
                                   fontSize: 9,
@@ -344,7 +344,7 @@ class _SplashScreenState extends State<SplashScreen>
                           AuraAvatar(size: coreSize),
                           SizedBox(height: compact ? 6 : 18),
                           const Text(
-                            'AURA QUANTUM',
+                            'A U R A',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: AuraTokens.textPrimary,
@@ -357,7 +357,7 @@ class _SplashScreenState extends State<SplashScreen>
                           ),
                           const SizedBox(height: 10),
                           const Text(
-                            'TU ALIADA EN EL MUNDO DIGITAL',
+                            'INTELIGENCIA QUE PROTEGE',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: AuraTokens.accent,
@@ -397,7 +397,7 @@ class _SplashScreenState extends State<SplashScreen>
                             child: Column(
                               children: [
                                 const Text(
-                                  'PROTECCIÓN INTELIGENTE PARA ANDROID',
+                                  'TU CENTRO DE CIBERDEFENSA',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: AuraTokens.textPrimary,
@@ -408,8 +408,8 @@ class _SplashScreenState extends State<SplashScreen>
                                 ),
                                 const SizedBox(height: 7),
                                 const Text(
-                                  'Aura analiza señales de riesgo, ayuda a revisar aplicaciones y conexiones, '
-                                  'y explica qué medidas puedes tomar para proteger tu privacidad.',
+                                  'Una inteligencia local para ayudarte a comprender, '
+                                  'supervisar y proteger tu entorno digital.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: AuraTokens.textMuted,
