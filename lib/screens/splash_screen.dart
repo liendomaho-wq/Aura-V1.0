@@ -493,7 +493,7 @@ class _SplashScreenState extends State<SplashScreen>
                           ),
                           SizedBox(height: compact ? 8 : 22),
                           const Text(
-                            'AURA QUANTUM  /  ANDROID',
+                            'AURA  /  ANDROID',
                             style: TextStyle(
                               color: AuraTokens.textMuted,
                               fontSize: 8,
