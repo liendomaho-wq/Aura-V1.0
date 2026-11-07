@@ -922,7 +922,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Hola, soy Aura.',
                           style: TextStyle(
                             color: AuraTokens.textPrimary,
