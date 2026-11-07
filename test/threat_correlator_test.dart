@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   const packageName = 'com.example.suspicious';
-  const baseTimestamp = 1794000000000;
+  final baseTimestamp = DateTime.now().millisecondsSinceEpoch;
 
   Map<String, dynamic> blockedEvent({
     required int timestamp,
