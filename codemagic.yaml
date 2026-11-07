@@ -24,8 +24,6 @@ workflows:
       branch_patterns:
         - pattern: 'main'
         - pattern: 'principal'
-        # Temporary pre-integration validation for the current audit branch.
-        - pattern: 'arena/*'
     scripts:
       - name: Resolve Codemagic keystore file variable (Optional)
         script: |
