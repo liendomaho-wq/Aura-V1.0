@@ -20,9 +20,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from sklearn.model_selection import train_test_split
-
-from sources import DEFAULT_SAFE_SOURCE, SOURCES, SourceDefinition, iter_source_domains
+if __package__:
+    from .grouped_splits import SPLIT_SEED, registrable_group, split_dataset, public_suffix_snapshot_sha256
+    from .sources import DEFAULT_SAFE_SOURCE, SOURCES, SourceDefinition, iter_source_domains
+else:  # Direct execution: python tool/dataset/build_dataset.py
+    from grouped_splits import SPLIT_SEED, registrable_group, split_dataset, public_suffix_snapshot_sha256
+    from sources import DEFAULT_SAFE_SOURCE, SOURCES, SourceDefinition, iter_source_domains
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "data"
@@ -30,7 +33,6 @@ RAW_DIR = DATA_DIR / "raw"
 OUTPUT_CSV = DATA_DIR / "aura_dataset.csv"
 SPLIT_DIR = DATA_DIR / "splits"
 MANIFEST_PATH = DATA_DIR / "dataset_manifest.json"
-SPLIT_SEED = 42
 NORMALIZATION_VERSION = "aura-domain-idna2003-v1"
 CSV_FIELDS = ["domain", "label", "source", "license", "retrieved_at"]
 STATIC_ALLOWLIST = {
@@ -224,11 +226,17 @@ def main() -> int:
             if domain is None:
                 invalid_rows[source.name] += 1
                 continue
+            try:
+                registrable_group(domain)
+            except ValueError:
+                invalid_rows[source.name] += 1
+                continue
             if label == 1 and is_allowlisted(domain):
                 allowlist_threat_domains.add(domain)
                 continue
+            new_for_source = domain not in valid_for_source
             if label == 0 and source.name in {DEFAULT_SAFE_SOURCE, "tranco"}:
-                if domain not in valid_for_source and safe_kept >= args.max_safe_domains:
+                if new_for_source and safe_kept >= args.max_safe_domains:
                     continue
             valid_for_source.add(domain)
             observations[domain].append(
@@ -240,7 +248,7 @@ def main() -> int:
                     "retrieved_at": retrieved_at,
                 }
             )
-            if label == 0 and source.name in {DEFAULT_SAFE_SOURCE, "tranco"}:
+            if label == 0 and source.name in {DEFAULT_SAFE_SOURCE, "tranco"} and new_for_source:
                 safe_kept += 1
 
         source_domain_counts[source.name] = len(valid_for_source)
@@ -286,23 +294,11 @@ def main() -> int:
             "The selected real sources produced fewer than two classes after validation and exclusions."
         )
 
-    labels = [int(row["label"]) for row in final_rows]
-    train_rows, remainder = train_test_split(
-        final_rows,
-        train_size=0.70,
-        random_state=SPLIT_SEED,
-        stratify=labels,
-    )
-    remainder_labels = [int(row["label"]) for row in remainder]
-    val_rows, test_rows = train_test_split(
-        remainder,
-        test_size=0.50,
-        random_state=SPLIT_SEED,
-        stratify=remainder_labels,
-    )
-    train_rows = sorted(train_rows, key=lambda row: str(row["domain"]))
-    val_rows = sorted(val_rows, key=lambda row: str(row["domain"]))
-    test_rows = sorted(test_rows, key=lambda row: str(row["domain"]))
+    try:
+        splits = split_dataset(final_rows)
+    except ValueError as error:
+        raise DatasetBuildError(f"Cannot build a safe grouped holdout: {error}") from error
+    train_rows, val_rows, test_rows = (splits[name] for name in ("train", "val", "test"))
 
     write_csv(OUTPUT_CSV, final_rows)
     write_csv(SPLIT_DIR / "train.csv", train_rows)
@@ -320,7 +316,16 @@ def main() -> int:
         "label_map": {"0": "safe", "1": "threat"},
         "normalization_version": NORMALIZATION_VERSION,
         "idn_policy": "Unicode labels are encoded to lowercase IDNA2003 A-labels (xn-- punycode).",
-        "split": {"ratios": {"train": 0.70, "val": 0.15, "test": 0.15}, "seed": SPLIT_SEED},
+        "split": {
+            "method": "hash-icann-registrable-domain-v1",
+            "ratios": {"train": 0.70, "val": 0.15, "test": 0.15},
+            "max_absolute_class_ratio_deviation": 0.05,
+            "minimum_rows_per_class_per_split": 500,
+            "seed": SPLIT_SEED,
+            "public_suffix_list": "tldextract 5.3.0 bundled snapshot, ICANN rules only",
+            "public_suffix_snapshot_sha256": public_suffix_snapshot_sha256(),
+            "unknown_suffix_policy": "group by final two labels",
+        },
         "selection": {
             "max_safe_domains": args.max_safe_domains,
             "safe_source": DEFAULT_SAFE_SOURCE,

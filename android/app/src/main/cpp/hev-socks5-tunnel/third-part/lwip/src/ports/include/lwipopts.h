@@ -236,7 +236,11 @@ void *hev_calloc (size_t nmemb, size_t size);
  * this option does not affect outgoing packet sizes, which can be controlled
  * via IP_FRAG.
  */
-#define IP_REASSEMBLY                   1
+/* The TUN policy inspects individual packets before lwIP. Reassembly here
+ * would let fragmented datagrams reach transport without a full policy check.
+ * Drop IPv4 fragments instead; outgoing fragmentation is configured separately.
+ * This can interrupt applications that rely on fragmented IP traffic. */
+#define IP_REASSEMBLY                   0
 
 /**
  * IP_FRAG==1: Fragment outgoing IP packets if their size exceeds MTU. Note
@@ -281,6 +285,9 @@ void *hev_calloc (size_t nmemb, size_t size);
  * LWIP_IPV6==1: Enable IPv6 module.
  */
 #define LWIP_IPV6                       1
+/* Match IPv4's fail-closed ingress policy. IPv6 atomic fragments (offset zero,
+ * M=0) are handled as complete packets by lwIP and still reach the parser. */
+#define LWIP_IPV6_REASS                 0
 
 #ifdef __LP64__
 #define IPV6_FRAG_COPYHEADER            1

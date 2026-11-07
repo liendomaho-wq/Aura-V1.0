@@ -2,6 +2,7 @@ import 'package:aura_mobile_defens/agent/agent_controller.dart';
 import 'package:aura_mobile_defens/agent/agent_event.dart';
 import 'package:aura_mobile_defens/providers/aura_state_provider.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -117,6 +118,105 @@ void main() {
     );
   });
 
+  test('la confirmación escrita dentro de la primera orden no autoriza la VPN', () async {
+    const channel = MethodChannel('com.ciberdefensa.aura/shield');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    FlutterSecureStorage.setMockInitialValues(<String, String>{});
+    var starts = 0;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'startShield') starts++;
+      return true;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+    final controller = AgentController.instance;
+    await controller.run('texto neutral'); // Clears any earlier pending action.
+    final start = controller.history.length;
+    await controller.run('CONFIRMO activar las defensas');
+    expect(starts, 0);
+    expect(
+      controller.history.skip(start).any(
+        (event) => event.data?['error'] == 'user_confirmation_required',
+      ),
+      isTrue,
+    );
+
+    await controller.run('CONFIRMO');
+    expect(starts, 1);
+    await controller.run('CONFIRMO');
+    expect(starts, 1); // The authorization is one-shot.
+  });
+
+  test('una orden negada no queda pendiente de autorización', () async {
+    const channel = MethodChannel('com.ciberdefensa.aura/shield');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    var starts = 0;
+    messenger.setMockMethodCallHandler(channel, (_) async {
+      starts++;
+      return true;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+    final controller = AgentController.instance;
+    final start = controller.history.length;
+    await controller.run('no quiero activar las defensas');
+    expect(
+      controller.history.skip(start).any(
+        (event) => event.data?['error'] == 'user_denied_operation',
+      ),
+      isTrue,
+    );
+    await controller.run('CONFIRMO');
+    expect(starts, 0);
+    expect(controller.history.last.data?['error'], 'no_pending_confirmation');
+  });
+
+  test('una negativa prevalece incluso con confirmación de UI', () async {
+    const channel = MethodChannel('com.ciberdefensa.aura/shield');
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    var starts = 0;
+    messenger.setMockMethodCallHandler(channel, (_) async {
+      starts++;
+      return true;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+    final controller = AgentController.instance;
+    await controller.run('no quiero activar las defensas', confirmedByUser: true);
+    expect(starts, 0);
+    expect(controller.history.last.data?['error'], 'user_denied_operation');
+  });
+
+  test('una orden excesiva invalida la confirmación previa', () async {
+    final controller = AgentController.instance;
+    await controller.run('activar las defensas');
+    await controller.run(List<String>.filled(2049, 'x').join());
+    await controller.run('CONFIRMO');
+    expect(controller.history.last.data?['error'], 'no_pending_confirmation');
+  });
+
+  test('un identificador que contiene no no se interpreta como negativa', () async {
+    final controller = AgentController.instance;
+    final start = controller.history.length;
+    await controller.run('bloquea no.example');
+    expect(
+      controller.history.skip(start).any(
+        (event) => event.data?['error'] == 'user_confirmation_required',
+      ),
+      isTrue,
+    );
+    await controller.run('texto neutral');
+  });
+
+  test('una instrucción nueva invalida la autorización pendiente', () async {
+    final controller = AgentController.instance;
+    await controller.run('activar las defensas');
+    await controller.run('texto neutral');
+    await controller.run('CONFIRMO');
+    expect(controller.history.last.data?['error'], 'no_pending_confirmation');
+  });
+
   test('missing native authentication channel fails closed', () async {
     const channel = MethodChannel('com.aura.cyberdefense/biometrics');
     final messenger =
@@ -153,7 +253,7 @@ void main() {
         'DESACTIVAR DEFENSAS · BLOQUEAR <dominio> · REVISAR APP <paquete> · '
         'AISLAMIENTO DE EMERGENCIA · REANUDAR LA RED · ACTUALIZAR '
         'DEFENSAS · AUDITAR DISPOSITIVO · ESCANEAR APLICACIONES · ANALIZAR DOMINIO <host> · ESTADO · PURGA CRIPTOGRÁFICA. '
-        'REVISAR APP solo abre Ajustes de Android; no aísla automáticamente otras apps. Para confirmar cambios de VPN, bloqueos, revisión de apps o purga, inicia una segunda orden con CONFIRMO.';
+        'REVISAR APP solo abre Ajustes de Android; no aísla automáticamente otras apps. Para confirmar cambios de VPN, bloqueos, revisión de apps o purga, responde únicamente CONFIRMO a la solicitud pendiente.';
     final controller = AgentController.instance;
     final previousLength = controller.history.length;
 

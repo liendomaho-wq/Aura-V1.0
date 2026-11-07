@@ -13,6 +13,11 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+if __package__:
+    from .grouped_splits import registrable_group
+else:
+    from grouped_splits import registrable_group
+
 ROOT = Path(__file__).resolve().parents[2]
 SPLIT_DIR = ROOT / "data" / "splits"
 POPULAR_PATH = ROOT / "tool" / "domain_lists" / "majestic_top_5000_20261018.txt"
@@ -33,10 +38,37 @@ def read_rows(path: Path) -> list[dict[str, str]]:
         if reader.fieldnames != FIELDS:
             raise ValueError(f"Unexpected CSV schema in {path}: {reader.fieldnames}")
         rows = list(reader)
+    seen = set()
     for row in rows:
-        if not row["domain"] or "." not in row["domain"] or row["label"] not in {"0", "1"}:
-            raise ValueError(f"Invalid dataset row in {path}: {row}")
+        try:
+            row["domain"] = row["domain"].strip().lower().rstrip(".").encode("idna").decode("ascii")
+            registrable_group(row["domain"])
+        except (AttributeError, UnicodeError, ValueError) as error:
+            raise ValueError(f"Invalid dataset domain in {path}") from error
+        if row["label"] not in {"0", "1"}:
+            raise ValueError(f"Invalid dataset label in {path}")
+        if row["domain"] in seen:
+            raise ValueError(f"Duplicate dataset domain in {path}")
+        seen.add(row["domain"])
     return rows
+
+
+def groups_for(rows: list[dict[str, str]]) -> set[str]:
+    return {registrable_group(row["domain"]) for row in rows}
+
+
+def require_disjoint_groups(train, validation, test):
+    groups = [groups_for(rows) for rows in (train, validation, test)]
+    if groups[0] & groups[1] or groups[0] & groups[2] or groups[1] & groups[2]:
+        raise ValueError("Canonical train, validation and test groups must be disjoint")
+    return groups
+
+
+def variant_group_is_allowed(domain: str, protected_groups: set[str]) -> bool:
+    try:
+        return registrable_group(domain) not in protected_groups
+    except ValueError:
+        return False
 
 
 def generate_variant(domain: str, seed: int) -> str | None:
@@ -100,6 +132,7 @@ def main() -> int:
     train = read_rows(SPLIT_DIR / "train.csv")
     validation = read_rows(SPLIT_DIR / "val.csv")
     test = read_rows(SPLIT_DIR / "test.csv")
+    train_groups, validation_groups, test_groups = require_disjoint_groups(train, validation, test)
     popular = tuple(POPULAR_PATH.read_text(encoding="ascii").splitlines())
     if len(popular) != 5000 or len(set(popular)) != 5000:
         raise ValueError(f"{POPULAR_PATH} must contain exactly 5000 unique domains")
@@ -126,11 +159,17 @@ def main() -> int:
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     train_adversarial = list(train)
     train_generated: set[str] = set()
+    train_generated_groups: set[str] = set()
+    heldout_groups = validation_groups | test_groups
     for index, base in enumerate(train_bases):
         for attempt in range(16):
             variant = generate_variant(base, index * 16 + attempt)
-            if variant and variant not in existing_domains and variant not in train_generated:
+            if (
+                variant and variant not in existing_domains and variant not in train_generated
+                and variant_group_is_allowed(variant, heldout_groups)
+            ):
                 train_generated.add(variant)
+                train_generated_groups.add(registrable_group(variant))
                 train_adversarial.append({
                     "domain": variant,
                     "label": "1",
@@ -142,6 +181,7 @@ def main() -> int:
 
     test_adversarial: list[dict[str, str]] = []
     test_generated: set[str] = set()
+    protected_train_groups = train_groups | validation_groups | train_generated_groups
     for index, base in enumerate(test_bases):
         variant = None
         for attempt in range(32):
@@ -151,6 +191,7 @@ def main() -> int:
                 and candidate not in existing_domains
                 and candidate not in train_generated
                 and candidate not in test_generated
+                and variant_group_is_allowed(candidate, protected_train_groups)
             ):
                 variant = candidate
                 break
@@ -197,7 +238,9 @@ def main() -> int:
         "limitations": [
             "Generated domains are synthetic lexical examples and are not asserted to be registered or live.",
             "Real-world held-out metrics are computed separately from data/splits/test.csv.",
-            "Train and adversarial-test base domains are selected from disjoint canonical splits.",
+            "Train, validation and real-test base domains have disjoint ICANN registrable groups.",
+            "Synthetic train variants cannot share held-out groups; synthetic test variants cannot share train or validation groups.",
+            "Group disjointness does not prove temporal, source, or lexical independence.",
         ],
         "counts": counts,
         "sha256": {

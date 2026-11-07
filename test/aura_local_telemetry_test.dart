@@ -1,10 +1,31 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:aura_mobile_defens/services/aura_local_telemetry.dart';
 import 'package:aura_mobile_defens/secure_vault.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class _PausedTelemetryVault extends AuraSecureVault {
+  final started = Completer<void>();
+  final resume = Completer<void>();
+
+  @override
+  Future<T> withDomainTelemetryKey<T>(
+    FutureOr<T> Function(Uint8List keyBytes) action,
+  ) async {
+    started.complete();
+    await resume.future;
+    final keyBytes = Uint8List.fromList(List<int>.filled(32, 7));
+    try {
+      return await action(keyBytes);
+    } finally {
+      keyBytes.fillRange(0, keyBytes.length, 0);
+    }
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -121,4 +142,105 @@ void main() {
     expect(events.single['domain_hash'], matches(RegExp(r'^[0-9a-f]{64}$')));
     expect(storedJson, isNot(contains('legacy-private.example')));
   });
+
+  test('la migración elimina ambos campos de dominio heredados', () async {
+    await AuraLocalTelemetry.setEnabled(true);
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setStringList('aura_local_telemetry_events', <String>[
+      jsonEncode(<String, Object>{
+        'timestamp': 1800000000000,
+        'requested_domain': 'private-one.example',
+        'domain': 'private-two.example',
+        'action': 'BLOCKED',
+      }),
+    ]);
+
+    final event = (await AuraLocalTelemetry.loadEvents()).single;
+    final stored = preferences
+        .getStringList('aura_local_telemetry_events')!
+        .single;
+    expect(event.containsKey('requested_domain'), isFalse);
+    expect(event.containsKey('domain'), isFalse);
+    expect(event['domain_hash'], matches(RegExp(r'^[0-9a-f]{64}$')));
+    expect(stored, isNot(contains('private-one.example')));
+    expect(stored, isNot(contains('private-two.example')));
+  });
+
+  for (final recordType in <String>['red', 'resultado de dominio']) {
+    for (final resetType in <String>['revocación', 'borrado']) {
+      test(
+        'un evento de $recordType anterior a $resetType no reaparece',
+        () async {
+          final vault = _PausedTelemetryVault();
+          addTearDown(() {
+            if (!vault.resume.isCompleted) vault.resume.complete();
+          });
+          AuraLocalTelemetry.configure(
+            endpointConfigured: false,
+            secureVault: vault,
+          );
+          await AuraLocalTelemetry.setEnabled(true);
+
+          final pending = recordType == 'red'
+              ? AuraLocalTelemetry.recordNetworkEvent(<String, Object>{
+                  'requested_domain': 'private.example',
+                  'action': 'BLOCKED',
+                })
+              : AuraLocalTelemetry.recordDomainOutcome(
+                  domain: 'private.example',
+                  securityScore: 50,
+                  prediction: 'suspicious',
+                  action: 'BLOCKED',
+                );
+          await vault.started.future;
+          if (resetType == 'revocación') {
+            await AuraLocalTelemetry.setEnabled(false);
+            await AuraLocalTelemetry.setEnabled(true);
+          } else {
+            await AuraLocalTelemetry.clearEvents();
+          }
+          vault.resume.complete();
+          expect(await pending, isFalse);
+          expect(await AuraLocalTelemetry.loadEvents(), isEmpty);
+        },
+      );
+    }
+  }
+
+  test(
+    'la revocación espera la migración y no restaura la cola borrada',
+    () async {
+      final vault = _PausedTelemetryVault();
+      addTearDown(() {
+        if (!vault.resume.isCompleted) vault.resume.complete();
+      });
+      AuraLocalTelemetry.configure(
+        endpointConfigured: false,
+        secureVault: vault,
+      );
+      await AuraLocalTelemetry.setEnabled(true);
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setStringList('aura_local_telemetry_events', <String>[
+        jsonEncode(<String, Object>{
+          'requested_domain': 'legacy-private.example',
+          'timestamp': 1800000000000,
+        }),
+      ]);
+
+      final migration = AuraLocalTelemetry.loadEvents();
+      await vault.started.future;
+      var revoked = false;
+      final revocation = AuraLocalTelemetry.setEnabled(false).then((result) {
+        revoked = true;
+        return result;
+      });
+      await Future<void>.delayed(Duration.zero);
+      expect(revoked, isFalse);
+      vault.resume.complete();
+      await migration;
+      expect(await revocation, isFalse);
+      expect(await AuraLocalTelemetry.isEnabled(), isFalse);
+      expect(preferences.getStringList('aura_local_telemetry_events'), isNull);
+    },
+  );
 }

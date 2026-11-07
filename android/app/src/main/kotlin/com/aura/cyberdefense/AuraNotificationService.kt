@@ -109,7 +109,7 @@ class AuraNotificationService : Service() {
         @JvmStatic
         fun triggerDgaAlert(context: Context, domain: String) {
             if (domain.length > 253 || !validDomain.matches(domain)) {
-                Log.e("AuraFirewall", "Rejected an invalid blocked TLS host.")
+                Log.e("AuraFirewall", "Rejected an invalid DNS alert domain.")
                 return
             }
 
@@ -119,18 +119,21 @@ class AuraNotificationService : Service() {
                 if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
                     Log.w(
                         "AuraFirewall",
-                        "Blocked TLS host notification suppressed because notifications are disabled.",
+                        "DNS heuristic alert suppressed because notifications are disabled.",
                     )
                     return
                 }
 
                 val notification = NotificationCompat.Builder(appContext, ALERT_CHANNEL_ID)
-                    .setContentTitle("Aura: conexión cifrada bloqueada")
-                    .setContentText("Tráfico TLS a $domain detenido por el cortafuegos.")
+                    .setContentTitle("Aura: alerta de DNS")
+                    .setContentText("Una consulta coincide con una heurística de dominio sospechoso.")
                     .setStyle(
-                        NotificationCompat.BigTextStyle()
-                            .bigText("Aura detuvo un intento de evasión cifrada hacia $domain."),
+                        NotificationCompat.BigTextStyle().bigText(
+                            "Aura intentará aplicar una respuesta DNS local restrictiva. " +
+                                "La señal puede ser un falso positivo; revisa los detalles en la aplicación.",
+                        ),
                     )
+                    .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
                     .setSmallIcon(android.R.drawable.ic_lock_lock)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
                     .setCategory(NotificationCompat.CATEGORY_STATUS)
@@ -143,11 +146,11 @@ class AuraNotificationService : Service() {
                     notification,
                 )
             } catch (_: SecurityException) {
-                Log.e("AuraFirewall", "Could not post blocked-host alert.")
+                Log.e("AuraFirewall", "Could not post DNS heuristic alert.")
             } catch (_: IllegalArgumentException) {
-                Log.e("AuraFirewall", "Could not construct blocked-host alert.")
+                Log.e("AuraFirewall", "Could not construct DNS heuristic alert.")
             } catch (_: IllegalStateException) {
-                Log.e("AuraFirewall", "Could not initialize blocked-host alert.")
+                Log.e("AuraFirewall", "Could not initialize DNS heuristic alert.")
             }
         }
 

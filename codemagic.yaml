@@ -53,24 +53,49 @@ workflows:
           cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
           python3 tool/test_vpn_config_template.py
           python3 tool/test_aura_sni_firewall.py
+          python3 tool/test_mapped_dns.py
+          python3 tool/test_tun_packet_filter.py
+          python3 tool/test_lwip_fragment_policy.py
+          python3 tool/test_verify_packaged_model.py
           python3 tool/test_release_signing_policy.py
+          python3 tool/test_release_signing_runtime.py
+          python3 tool/test_verify_aab.py
           flutter test --reporter expanded
+      - name: Test AI model and dataset safeguards
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          python3 --version
+          VENV_DIR="$(mktemp -d "${TMPDIR:-/tmp}/aura-model-tests.XXXXXX")"
+          trap 'rm -rf "$VENV_DIR"' EXIT
+          python3 -m venv "$VENV_DIR"
+          "$VENV_DIR/bin/python" -m pip install -r tool/requirements-train.txt
+          "$VENV_DIR/bin/python" -m pytest -q \
+            tool/test_aura_brain.py tool/test_adversarial.py \
+            tool/test_adversarial_split_builder.py tool/test_grouped_splits.py
+      - name: Test VPN request correlation on Android JVM
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}/android"
+          # Gradle configures the release variant even for this debug unit test.
+          # This fallback applies only to the test command, not to publication.
+          AURA_ALLOW_DEBUG_SIGNING=true ./gradlew :app:testDebugUnitTest \
+            --tests com.ciberdefensa.aura.VpnStartRequestGateTest \
+            --tests com.ciberdefensa.aura.VpnLifecycleGateTest
       - name: Build Android Release artifact
         script: |
           set -euo pipefail
           cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
-          export AURA_REQUIRE_RELEASE_SIGNING=false
+          # The workflow defaults to test signing; an explicit production
+          # setting must be honored consistently by build and verification.
           bash tool/compile_aura.sh
       - name: Verify Android Release artifact signer
         script: |
           set -euo pipefail
           cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
           if [[ "${AURA_REQUIRE_RELEASE_SIGNING:-false}" == "true" ]]; then
-            apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk | tee /tmp/certs.txt
-            if grep -q "CN=Android Debug" /tmp/certs.txt; then
-              echo "ERROR: APK firmado con DEBUG. Abortando distribución."
-              exit 1
-            fi
+            # compile_aura.sh locates apksigner, verifies the APK and compares
+            # its single signer to the configured keystore certificate.
             bash tool/compile_aura.sh --verify-artifact
           else
             printf '\033[1;41m%s\033[0m\n' '⚠️ ADVERTENCIA: Generando APK de pruebas (DEBUG). NO DISTRIBUIR.'

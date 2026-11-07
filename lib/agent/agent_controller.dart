@@ -171,8 +171,14 @@ class AgentController {
     r'^\s*(?:s[ií][, ]+)?confirmo[.! ]*$',
     caseSensitive: false,
   );
+  // Exclude dot-separated hosts and package names before looking for negative
+  // words, so e.g. no.example is not itself treated as a refusal.
+  static final RegExp _dotSeparatedIdentifier = RegExp(
+    r'\b[a-z0-9_-]+(?:\.[a-z0-9_-]+)+\b',
+    caseSensitive: false,
+  );
   static final RegExp _explicitDenial = RegExp(
-    r'\b(?:no\s+(?:confirmo|autorizo)|(?:confirmo|autorizo)\s+no|cancelo|rechazo|deniego|anulo)\b',
+    r'\b(?:no|nunca|jam[aá]s|cancelar|cancelo|rechazo|rechazar|deniego|anulo|anular)\b',
     caseSensitive: false,
   );
 
@@ -385,6 +391,9 @@ class AgentController {
     final text = instruction.trim();
     if (text.isEmpty) return;
     if (text.length > 2048) {
+      // A rejected new instruction must not leave an earlier action armed.
+      _pendingConfirmationInstruction = null;
+      _pendingConfirmationCreatedAt = null;
       _emit(
         AgentEvent(
           kind: AgentEventKind.warning,
@@ -411,6 +420,7 @@ class AgentController {
     }
 
     var effectiveInstruction = text;
+    var confirmedPendingOperation = false;
     if (_confirmationOnly.hasMatch(text)) {
       final pending = _pendingConfirmationInstruction;
       final createdAt = _pendingConfirmationCreatedAt;
@@ -429,20 +439,10 @@ class AgentController {
         );
         return;
       }
-      effectiveInstruction = 'CONFIRMO $pending';
-      if (effectiveInstruction.length > 2048) {
-        _emit(
-          AgentEvent(
-            kind: AgentEventKind.warning,
-            message:
-                'La orden pendiente supera el límite interno al preparar la confirmación. Emite una orden más corta.',
-            data: const <String, dynamic>{
-              'error': 'confirmation_replay_too_long',
-            },
-          ),
-        );
-        return;
-      }
+      // Only this exact, one-shot confirmation authorizes the stored request.
+      // Do not trust a confirmation keyword embedded in the instruction itself.
+      effectiveInstruction = pending;
+      confirmedPendingOperation = true;
     } else {
       // Any new instruction other than the exact confirmation phrase
       // invalidates the previous one-shot authorization request.
@@ -455,7 +455,7 @@ class AgentController {
     try {
       await _runInstruction(
         effectiveInstruction,
-        confirmedByUser: confirmedByUser,
+        confirmedByUser: confirmedByUser || confirmedPendingOperation,
         cancellationToken: token,
       );
     } finally {
@@ -497,10 +497,13 @@ class AgentController {
         AuraIntentKind.toggleDefenses,
       };
       final requiresConfirmation = confirmationKinds.contains(intent.kind);
-      final hasConfirmation =
-          confirmedByUser || intent.entities['confirmed_by_user'] == true;
-      if (requiresConfirmation && !hasConfirmation) {
-        if (_explicitDenial.hasMatch(text)) {
+      final hasConfirmation = confirmedByUser;
+      if (requiresConfirmation) {
+        final instructionWithoutIdentifiers = text.replaceAll(
+          _dotSeparatedIdentifier,
+          ' ',
+        );
+        if (_explicitDenial.hasMatch(instructionWithoutIdentifiers)) {
           _pendingConfirmationInstruction = null;
           _pendingConfirmationCreatedAt = null;
           _emit(
@@ -517,6 +520,8 @@ class AgentController {
           );
           return;
         }
+      }
+      if (requiresConfirmation && !hasConfirmation) {
         _pendingConfirmationInstruction = text;
         _pendingConfirmationCreatedAt = DateTime.now();
         _emit(
@@ -665,7 +670,7 @@ class AgentController {
             'DESACTIVAR DEFENSAS · BLOQUEAR <dominio> · REVISAR APP <paquete> · '
             'AISLAMIENTO DE EMERGENCIA · REANUDAR LA RED · ACTUALIZAR '
             'DEFENSAS · AUDITAR DISPOSITIVO · ESCANEAR APLICACIONES · ANALIZAR DOMINIO <host> · ESTADO · PURGA CRIPTOGRÁFICA. '
-            'REVISAR APP solo abre Ajustes de Android; no aísla automáticamente otras apps. Para confirmar cambios de VPN, bloqueos, revisión de apps o purga, inicia una segunda orden con CONFIRMO.';
+            'REVISAR APP solo abre Ajustes de Android; no aísla automáticamente otras apps. Para confirmar cambios de VPN, bloqueos, revisión de apps o purga, responde únicamente CONFIRMO a la solicitud pendiente.';
         _emit(intent.toEvent());
         _emit(
           AgentEvent(
@@ -681,8 +686,10 @@ class AgentController {
       _emit(intent.toEvent());
       final toolArguments = <String, dynamic>{
         ...intent.entities,
-        if (confirmedByUser) 'confirmed_by_user': true,
-      };
+      }..remove('confirmed_by_user');
+      if (requiresConfirmation && hasConfirmation) {
+        toolArguments['confirmed_by_user'] = true;
+      }
       final argumentNames = toolArguments.keys.toList(growable: false);
       // A durable encrypted start record is a prerequisite for dispatching
       // any tool. If SecureVault cannot persist it, no side effect is started.

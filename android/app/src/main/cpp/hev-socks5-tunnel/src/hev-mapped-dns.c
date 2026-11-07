@@ -382,6 +382,8 @@ hev_mapped_dns_handle (HevMappedDNS *self, void *req, int qlen, void *res,
         uint16_t type;
         uint16_t class;
         char name[DNS_MAX_NAME + 1];
+        int dga_alert;
+        int blocked;
     } DNSQuestion;
     const uint8_t *rb = req;
     uint8_t *sb = res;
@@ -389,7 +391,7 @@ hev_mapped_dns_handle (HevMappedDNS *self, void *req, int qlen, void *res,
     uint16_t qd;
     uint16_t query_flags;
     uint16_t answer_count = 0;
-    int rcode = 0;
+    int has_blocked_question = 0;
     int off;
     int i;
 
@@ -415,61 +417,64 @@ hev_mapped_dns_handle (HevMappedDNS *self, void *req, int qlen, void *res,
         return -1;
     memcpy (sb, rb, off);
     for (i = 0; i < qd; i++) {
-        const int dga_alert = questions[i].class == 1 &&
+        questions[i].dga_alert = questions[i].class == 1 &&
             domain_is_suspicious (questions[i].name);
-        const int blocked = questions[i].class == 1 &&
-            (hev_mapped_dns_is_blocked (questions[i].name) || dga_alert);
-        uint16_t answer_type = questions[i].type;
-        int answer_len;
+        questions[i].blocked = questions[i].class == 1 &&
+            (hev_mapped_dns_is_blocked (questions[i].name) ||
+             questions[i].dga_alert);
+        if (questions[i].blocked)
+            has_blocked_question = 1;
+    }
+
+    /* A DNS response has one RCODE for the entire message. If any question
+     * is blocked, return NXDOMAIN with no answers, including for mixed-query
+     * messages. Never resolve a blocked name to a device's loopback services. */
+    if (has_blocked_question) {
+#ifdef __ANDROID__
+        for (i = 0; i < qd; i++) {
+            if (questions[i].blocked)
+                hev_jni_report_dns_event (questions[i].name,
+                                          questions[i].dga_alert ?
+                                              DNS_EVENT_DGA_ALERT : DNS_EVENT_BLOCKED,
+                                          source_ipv4, source_port);
+        }
+#endif
+        write_u16 (sb + 2, (uint16_t)(0x8080 | (query_flags & 0x7910) | 3));
+        write_u16 (sb + 6, 0);
+        write_u16 (sb + 8, 0);
+        write_u16 (sb + 10, 0);
+        return off;
+    }
+
+    for (i = 0; i < qd; i++) {
         uint32_t mapped_ip;
         int idx;
 
 #ifdef __ANDROID__
-        hev_jni_report_dns_event (questions[i].name,
-                                  dga_alert ? DNS_EVENT_DGA_ALERT :
-                                      blocked ? DNS_EVENT_BLOCKED :
-                                                DNS_EVENT_ALLOWED,
+        hev_jni_report_dns_event (questions[i].name, DNS_EVENT_ALLOWED,
                                   source_ipv4, source_port);
 #endif
 
-        if (questions[i].class != 1)
+        if (questions[i].class != 1 || questions[i].type != 1)
             continue;
-        if (blocked && answer_type != 1 && answer_type != 28) {
-            rcode = 3;
+        idx = hev_mapped_dns_find (self, questions[i].name);
+        if (idx < 0)
             continue;
-        }
-        if (!blocked && answer_type != 1)
-            continue;
+        mapped_ip = (uint32_t)(self->net | idx);
 
-        if (blocked) {
-            mapped_ip = 0x7f000001;
-            answer_len = answer_type == 1 ? 4 : 16;
-        } else {
-            idx = hev_mapped_dns_find (self, questions[i].name);
-            if (idx < 0)
-                continue;
-            mapped_ip = (uint32_t)(self->net | idx);
-            answer_len = 4;
-        }
-
-        if (off + 12 + answer_len > slen || questions[i].name_offset >= 0x4000)
+        if (off + 16 > slen || questions[i].name_offset >= 0x4000)
             return -1;
         write_u16 (sb + off, (uint16_t)(0xc000 | questions[i].name_offset));
-        write_u16 (sb + off + 2, answer_type);
+        write_u16 (sb + off + 2, 1);
         write_u16 (sb + off + 4, 1);
-        write_u32 (sb + off + 6, blocked ? 60 : 1);
-        write_u16 (sb + off + 10, (uint16_t)answer_len);
-        if (answer_type == 1) {
-            write_u32 (sb + off + 12, mapped_ip);
-        } else {
-            memset (sb + off + 12, 0, 16);
-            sb[off + 27] = 1;
-        }
-        off += 12 + answer_len;
+        write_u32 (sb + off + 6, 1);
+        write_u16 (sb + off + 10, 4);
+        write_u32 (sb + off + 12, mapped_ip);
+        off += 16;
         answer_count++;
     }
 
-    write_u16 (sb + 2, (uint16_t)(0x8080 | (query_flags & 0x7910) | rcode));
+    write_u16 (sb + 2, (uint16_t)(0x8080 | (query_flags & 0x7910)));
     write_u16 (sb + 6, answer_count);
     write_u16 (sb + 8, 0);
     write_u16 (sb + 10, 0);

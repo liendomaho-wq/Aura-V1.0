@@ -10,6 +10,8 @@ import android.net.VpnService
 import android.net.Uri
 import android.os.Build
 import android.os.Debug
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
 import android.speech.RecognizerIntent
@@ -32,6 +34,7 @@ import com.aura.cyberdefense.AuraCryptoSecure
 import com.aura.cyberdefense.AuraNotificationService
 import java.util.concurrent.Executors
 import java.util.Locale
+import java.util.UUID
 
 object AuraAntiTampering {
     fun inspect(context: Context): Map<String, Any> {
@@ -136,7 +139,10 @@ class MainActivity: FlutterFragmentActivity() {
     private val blocklistExecutor = Executors.newSingleThreadExecutor()
     private val MAX_BLOCKLIST_QUERY_DOMAINS = 10_000
     private var pendingShieldResult: MethodChannel.Result? = null
-        private var pendingVoiceResult: MethodChannel.Result? = null
+    private val shieldStartGate = VpnStartRequestGate()
+    private val shieldStartHandler = Handler(Looper.getMainLooper())
+    private var shieldStartTimeout: Runnable? = null
+    private var pendingVoiceResult: MethodChannel.Result? = null
     private var pendingCredentialResult: MethodChannel.Result? = null
     private var pendingNotificationResult: MethodChannel.Result? = null
     private var pendingNotificationPayload: Pair<String, String>? = null
@@ -152,8 +158,15 @@ class MainActivity: FlutterFragmentActivity() {
             val started = intent?.getBooleanExtra("started", false) ?: false
             val message = intent?.getStringExtra("message") ?: "Sin respuesta del servicio VPN."
             val revoked = intent?.getBooleanExtra("revoked", false) ?: false
-            pendingShieldResult?.success(started)
-            pendingShieldResult = null
+            val requestId = intent?.getStringExtra(AuraVpnService.EXTRA_START_REQUEST_ID)
+            if (shieldStartGate.matchesServiceResponse(requestId)) {
+                // A successful broadcast can arrive after shutdown or revocation.
+                // Verify the current worker/interface state before confirming it.
+                val status = AuraVpnService.shieldStatus()
+                val confirmed = started && status["status_verified"] == true &&
+                    status["forwarding_active"] == true
+                completePendingShieldStart(confirmed)
+            }
             if (revoked) {
                 AuraNetworkStream.emitVpnRevokedEvent(message)
             }
@@ -923,6 +936,8 @@ class MainActivity: FlutterFragmentActivity() {
                 }
 
                 "stopShield" -> {
+                    // Ignore a late consent or start response after an explicit stop.
+                    completePendingShieldStart(false)
                     val intent = Intent(this, AuraVpnService::class.java)
                     val stopAccepted = stopService(intent)
                     stopService(Intent(this, AuraNotificationService::class.java))
@@ -948,11 +963,13 @@ class MainActivity: FlutterFragmentActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         when (requestCode) {
             VPN_PERMISSION_REQUEST -> {
-                if (resultCode == RESULT_OK) {
-                    startVpnService()
-                } else {
-                    pendingShieldResult?.success(false)
-                    pendingShieldResult = null
+                if (shieldStartGate.consumeConsentResult() && pendingShieldResult != null) {
+                    clearShieldStartTimeout()
+                    if (resultCode == RESULT_OK) {
+                        startVpnService()
+                    } else {
+                        completePendingShieldStart(false)
+                    }
                 }
             }
 
@@ -1048,24 +1065,68 @@ class MainActivity: FlutterFragmentActivity() {
         }
     }
 
+    private fun clearShieldStartTimeout() {
+        shieldStartTimeout?.let { shieldStartHandler.removeCallbacks(it) }
+        shieldStartTimeout = null
+    }
+
+    private fun takePendingShieldResult(): MethodChannel.Result? {
+        clearShieldStartTimeout()
+        shieldStartGate.finish()
+        val result = pendingShieldResult
+        pendingShieldResult = null
+        return result
+    }
+
+    private fun completePendingShieldStart(started: Boolean) {
+        takePendingShieldResult()?.success(started)
+    }
+
     private fun requestShieldStart(result: MethodChannel.Result) {
-        if (pendingShieldResult != null) {
+        if (!shieldStartGate.begin()) {
             result.error("VPN_BUSY", "Ya hay una solicitud VPN pendiente.", null)
             return
         }
 
         pendingShieldResult = result
-        val consentIntent = VpnService.prepare(this)
-        if (consentIntent != null) {
-            startActivityForResult(consentIntent, VPN_PERMISSION_REQUEST)
-        } else {
-            startVpnService()
+        try {
+            val consentIntent = VpnService.prepare(this)
+            if (consentIntent != null) {
+                check(shieldStartGate.beginConsent())
+                val consentTimeout = Runnable {
+                    if (shieldStartGate.matchesConsent()) {
+                        // Leave the dialog marked outstanding: a late result must
+                        // be consumed, not attributed to a new request.
+                        takePendingShieldResult()?.error(
+                            "VPN_CONSENT_TIMEOUT",
+                            "El consentimiento VPN no se recibió a tiempo; cierre el diálogo antes de reintentar.",
+                            null,
+                        )
+                    }
+                }
+                shieldStartTimeout = consentTimeout
+                shieldStartHandler.postDelayed(consentTimeout, 30_000L)
+                startActivityForResult(consentIntent, VPN_PERMISSION_REQUEST)
+            } else {
+                startVpnService()
+            }
+        } catch (exception: Exception) {
+            shieldStartGate.abandonConsent()
+            completePendingShieldStart(false)
+            android.util.Log.e("AuraVPN", "No se pudo solicitar el consentimiento VPN.", exception)
         }
     }
 
     private fun startVpnService() {
+        if (pendingShieldResult == null) return
+        val requestId = UUID.randomUUID().toString()
+        if (!shieldStartGate.beginServiceRequest(requestId)) {
+            completePendingShieldStart(false)
+            return
+        }
         try {
             val intent = Intent(this, AuraVpnService::class.java)
+                .putExtra(AuraVpnService.EXTRA_START_REQUEST_ID, requestId)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent)
             } else {
@@ -1077,11 +1138,23 @@ class MainActivity: FlutterFragmentActivity() {
             } else {
                 startService(notificationIntent)
             }
+            val timeout = Runnable {
+                if (shieldStartGate.matchesServiceResponse(requestId)) {
+                    // A timeout is not proof that the service stopped. Ask the
+                    // caller to inspect status rather than reporting a false stop.
+                    takePendingShieldResult()?.error(
+                        "VPN_START_TIMEOUT",
+                        "El servicio no confirmó el arranque; compruebe su estado.",
+                        null,
+                    )
+                }
+            }
+            shieldStartTimeout = timeout
+            shieldStartHandler.postDelayed(timeout, 30_000L)
         } catch (exception: Exception) {
             stopService(Intent(this, AuraVpnService::class.java))
             stopService(Intent(this, AuraNotificationService::class.java))
-            pendingShieldResult?.success(false)
-            pendingShieldResult = null
+            completePendingShieldStart(false)
             android.util.Log.e("AuraVPN", "No se pudo iniciar AuraVpnService.", exception)
         }
     }
@@ -1161,11 +1234,12 @@ class MainActivity: FlutterFragmentActivity() {
     private fun registerVpnReceiver() {
         if (vpnReceiverRegistered) return
         val filter = IntentFilter(AuraVpnService.ACTION_STATE)
+        val permission = "$packageName.permission.VPN_STATE"
         if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(vpnStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(vpnStateReceiver, filter, permission, null, Context.RECEIVER_NOT_EXPORTED)
         } else {
             @Suppress("DEPRECATION")
-            registerReceiver(vpnStateReceiver, filter)
+            registerReceiver(vpnStateReceiver, filter, permission, null)
         }
         vpnReceiverRegistered = true
     }
@@ -1177,8 +1251,7 @@ class MainActivity: FlutterFragmentActivity() {
             unregisterReceiver(vpnStateReceiver)
             vpnReceiverRegistered = false
         }
-        pendingShieldResult?.success(false)
-        pendingShieldResult = null
+        completePendingShieldStart(false)
         pendingVoiceResult?.error("ACTIVITY_DESTROYED", "Activity cerrada.", null)
         pendingVoiceResult = null
         pendingNotificationResult?.success(false)

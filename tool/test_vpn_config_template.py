@@ -47,6 +47,135 @@ if re.search(
     sys.exit("FAIL: responsive greeting font size cannot use a const Text constructor")
 print("PASS: compact console greeting keeps runtime-dependent styling outside const.")
 
+# DNS heuristics are not proof that a TLS connection was blocked. The DNS
+# counters must also exclude SNI and transport events sharing the same queue.
+network_stream = Path(
+    "android/app/src/main/kotlin/com/ciberdefensa/aura/AuraNetworkStream.kt"
+).read_text(encoding="utf-8")
+notifications = Path(
+    "android/app/src/main/kotlin/com/aura/cyberdefense/AuraNotificationService.kt"
+).read_text(encoding="utf-8")
+dga_match = re.search(
+    r"fun triggerDgaAlert\(context: Context, domain: String\) \{(.*?)\n        private fun createNotificationChannels",
+    notifications,
+    re.DOTALL,
+)
+if not dga_match:
+    sys.exit("FAIL: could not locate DNS heuristic notification")
+dga_alert = dga_match.group(1)
+if any(claim in dga_alert for claim in (
+    "conexión cifrada bloqueada", "Tráfico TLS", "evasión cifrada", "$domain"
+)):
+    sys.exit("FAIL: DNS heuristic notification must not expose domains or claim TLS blocking")
+if "falso positivo" not in dga_alert or "intentará aplicar" not in dga_alert:
+    sys.exit("FAIL: DNS heuristic notification must explain uncertainty")
+if "isDnsQuery = actionCode in 0..2" not in network_stream or (
+    "if (pending.isDnsQuery) AuraVpnService.recordDnsAuditEvent(event)" not in network_stream
+):
+    sys.exit("FAIL: DNS notification counters must exclude SNI and transport events")
+if "lastDnsDomain" in text or "coincidencias de bloqueo" not in text:
+    sys.exit("FAIL: VPN notification must not expose domain names or claim delivery")
+print("PASS: DNS notifications distinguish heuristic matches from verified TLS blocking.")
+
+# A stale Kotlin flag alone must not certify a live native VPN worker.
+shield_status = re.search(
+    r"fun shieldStatus\(\): Map<String, Boolean> \{(.*?)\n        \}",
+    text,
+    re.DOTALL,
+)
+if not shield_status or any(
+    required not in shield_status.group(1)
+    for required in (
+        "TProxyService.TProxyIsRunning()",
+        "fileDescriptor?.valid()",
+        '"status_verified" to (nativeRunning != null && !service.serviceShuttingDown)',
+        "nativeRunning == true",
+        "!service.serviceShuttingDown",
+    )
+):
+    sys.exit("FAIL: VPN status must verify both the interface and native worker")
+if any(
+    required not in CONSOLE_SOURCE
+    for required in (
+        "invokeMapMethod<String, dynamic>('getShieldStatus')",
+        "status['status_verified'] != true",
+        "Timer.periodic(const Duration(seconds: 5)",
+        "'DEFENSA: SIN FLUJO'",
+        "'DEFENSA: ?'",
+    )
+):
+    sys.exit("FAIL: VPN UI must refresh verified status and distinguish unknown forwarding")
+print("PASS: VPN status requires a live native worker and is refreshed in the console.")
+
+# Static integration guards complement the executable Kotlin gate tests; they
+# cannot simulate Android broadcast ordering, permissions or service lifecycle.
+receiver_match = re.search(
+    r"private val vpnStateReceiver = object : BroadcastReceiver\(\) \{(.*?)\n    override fun configureFlutterEngine",
+    anti_tampering,
+    re.DOTALL,
+)
+if not receiver_match or any(
+    required not in receiver_match.group(1)
+    for required in (
+        "getStringExtra(AuraVpnService.EXTRA_START_REQUEST_ID)",
+        "shieldStartGate.matchesServiceResponse(requestId)",
+        'val status = AuraVpnService.shieldStatus()',
+        'status["status_verified"] == true',
+        'status["forwarding_active"] == true',
+        "completePendingShieldStart(confirmed)",
+    )
+):
+    sys.exit("FAIL: VPN start replies must match their request and current forwarding state")
+if any(
+    required not in anti_tampering
+    for required in (
+        "UUID.randomUUID().toString()",
+        "shieldStartGate.consumeConsentResult()",
+        "shieldStartGate.matchesConsent()",
+        "shieldStartHandler.postDelayed(consentTimeout, 30_000L)",
+        '"VPN_CONSENT_TIMEOUT"',
+        "shieldStartGate.beginServiceRequest(requestId)",
+        ".putExtra(AuraVpnService.EXTRA_START_REQUEST_ID, requestId)",
+        "shieldStartHandler.postDelayed(timeout, 30_000L)",
+        '"VPN_START_TIMEOUT"',
+    )
+):
+    sys.exit("FAIL: VPN start request correlation, consent or timeout is missing")
+if any(
+    required not in text
+    for required in (
+        "intent?.getStringExtra(EXTRA_START_REQUEST_ID)",
+        "worker.execute { startTunnel(requestId) }",
+        "requestId = requestId",
+        "stateIntent.putExtra(EXTRA_START_REQUEST_ID, requestId)",
+    )
+):
+    sys.exit("FAIL: VPN service must return the matching start request ID")
+if any(part not in manifest for part in (
+    'android:name="${applicationId}.permission.VPN_STATE"',
+    'android:protectionLevel="signature"',
+)) or any(part not in anti_tampering for part in (
+    'val permission = "$packageName.permission.VPN_STATE"',
+    'registerReceiver(vpnStateReceiver, filter, permission, null, Context.RECEIVER_NOT_EXPORTED)',
+    'registerReceiver(vpnStateReceiver, filter, permission, null)',
+)) or 'sendBroadcast(stateIntent, "$packageName.permission.VPN_STATE")' not in text:
+    sys.exit("FAIL: VPN state broadcasts must require the app's signature permission")
+print("PASS: VPN start broadcasts are correlated, permission-protected and timeout remains unconfirmed.")
+
+# stopService only acknowledges the request; tool results must not immediately
+# assert the native worker and TUN have fully stopped.
+agent_tools = Path("lib/agent/aura_tools.dart").read_text(encoding="utf-8")
+if any(
+    guard not in agent_tools
+    for guard in (
+        "if (!activate && confirmed)",
+        "'request_accepted': true",
+        "'error': 'shutdown_unconfirmed'",
+    )
+):
+    sys.exit("FAIL: accepted VPN stop requests must not be reported as confirmed shutdowns")
+print("PASS: an accepted VPN stop request is not presented as confirmed teardown.")
+
 # Aura communicates with remote services only over authenticated HTTPS.
 application_tag = re.search(r"<application\b([^>]*)>", manifest, re.DOTALL)
 if not application_tag or not re.search(
@@ -57,7 +186,7 @@ if not application_tag or not re.search(
 
 # A remote threat-feed outage must not prevent Android from establishing the VPN.
 start_match = re.search(
-    r"private fun startTunnel\(\) \{(.*?)\n    @Synchronized",
+    r"private fun startTunnel\(requestId: String\?\) \{(.*?)\n    @Synchronized",
     text,
     re.DOTALL,
 )
@@ -274,11 +403,10 @@ if not recovery:
     sys.exit("FAIL: VPN network handover recovery routine is missing")
 recovery_body = recovery.group(1)
 for required_recovery_step in (
-    "TProxyService.TProxyStopService()",
-    "TProxyService.TProxyStartService(",
+    "restartNativeWorker(",
     "verifyLocalSocks5Ready()",
-    "TProxyService.TProxySetBlockedIps(blockedIpSnapshot())",
     "AuraBlocklistService.knownEncryptedDnsEndpoints()",
+    "lifecycleGate.runIfOpen",
     "tunnelStarted = true",
 ):
     if required_recovery_step not in recovery_body:
@@ -469,7 +597,7 @@ if "updateForegroundNotification()" not in fail_closed.group(1):
     sys.exit("FAIL: degraded network state must be reflected in the VPN notification")
 
 native_stop = re.search(
-    r"private fun stopNativeWorker\(\): Boolean \{(.*?)\n    \}",
+    r"private fun stopNativeWorkerUnchecked\(\): Boolean \{(.*?)\n    \}",
     text,
     re.DOTALL,
 )
@@ -488,8 +616,24 @@ on_destroy = re.search(
     text,
     re.DOTALL,
 )
-if not on_destroy or "stopNativeWorker()" not in on_destroy.group(1):
-    sys.exit("FAIL: VPN destruction must always reconcile native worker state")
+if not on_destroy or any(part not in on_destroy.group(1) for part in (
+    "lifecycleGate.beginClosing()", "lifecycleGate.close", "stopNativeWorkerUnchecked()",
+)):
+    sys.exit("FAIL: VPN destruction must close the lifecycle gate and reconcile native worker state")
+if '"status_verified" to lastShutdownConfirmed' not in text:
+    sys.exit("FAIL: an unconfirmed native teardown must not be reported as verified")
+if 'lifecycleGate.runIfOpen { stopNativeWorkerUnchecked() }' not in text:
+    sys.exit("FAIL: stale callbacks must not stop a newer service's native worker")
+restart = re.search(
+    r"private fun restartNativeWorker\(.*?(?=\n    private fun verifyIntegrityOrStop)",
+    text,
+    re.DOTALL,
+)
+if not restart or any(part not in restart.group(0) for part in (
+    "lifecycleGate.runIfOpen", "stopNativeWorkerUnchecked()", "TProxyService.TProxyStartService(",
+    "TProxyService.TProxySetBlockedIps(blockedIpSnapshot())",
+)):
+    sys.exit("FAIL: VPN restart must reconcile and start JNI inside the lifecycle gate")
 if "if (tunnelStarted)" in on_destroy.group(1):
     sys.exit("FAIL: a stale Kotlin flag must not skip native worker cleanup")
 
@@ -557,18 +701,29 @@ ingress_body = ingress.group(0)
 if "packet_is_encrypted_dns (buf" not in ingress_body:
     sys.exit("FAIL: encrypted-DNS classifier is not called from TUN ingress")
 if not re.search(
-    r"if \(packet_is_encrypted_dns \(buf,.*?\)\) \{.*?pbuf_free \(buf\);\s*continue;",
+    r"if \(dns_classification != AURA_DNS_NO_MATCH\) \{.*?pbuf_free \(buf\);\s*continue;",
     ingress_body,
     re.DOTALL,
 ):
-    sys.exit("FAIL: encrypted-DNS packets are not discarded in the TUN ingress path")
+    sys.exit("FAIL: classified or uninspectable packets must be discarded in TUN ingress")
+if not re.search(
+    r"if \(dns_classification == AURA_DNS_MATCH\)\s*hev_jni_report_encrypted_dns_event",
+    ingress_body,
+):
+    sys.exit("FAIL: uninspectable packets must not be falsely reported as DNS matches")
+lwip_options = Path(
+    "android/app/src/main/cpp/hev-socks5-tunnel/third-part/lwip/src/ports/include/lwipopts.h"
+).read_text(encoding="utf-8")
+for option in ("IP_REASSEMBLY", "LWIP_IPV6_REASS"):
+    if not re.search(rf"^#define\s+{option}\s+0\s*$", lwip_options, re.MULTILINE):
+        sys.exit(f"FAIL: {option} must be disabled until reassembled packets can be inspected")
 
-print("PASS: TUN ingress drops recognized DoT, DoQ and known-resolver UDP/443 traffic.")
+print("PASS: TUN ingress drops recognized encrypted DNS and uninspectable extension chains.")
 
 if "Iniciando motor de red local; verificando interfaz y forwarding." not in text:
     sys.exit("FAIL: foreground notification must not claim protection before the tunnel is verified")
 start_tunnel = re.search(
-    r"private fun startTunnel\(\) \{(.*?)\n    @Synchronized",
+    r"private fun startTunnel\(requestId: String\?\) \{(.*?)\n    @Synchronized",
     text,
     re.DOTALL,
 )
@@ -586,8 +741,8 @@ print("PASS: VPN notification distinguishes startup from verified forwarding.")
 # Kotlin flag must never skip stopping a live native worker or leave the UI active
 # after a failed SOCKS5 readiness check.
 for required_cleanup_guard in (
-    "The native worker can outlive a stale Kotlin flag",
-    "if (TProxyService.TProxyIsRunning() && !TProxyService.TProxyStopService())",
+    "Reconcile native state and restart as one lifecycle operation.",
+    "restartNativeWorker(configFile.absolutePath, tun)",
     "No se pudo reanudar el túnel; el forwarding permanece detenido.",
     "tunnelStarted = false",
 ):

@@ -23,6 +23,8 @@ private data class PendingDnsEvent(
     val destinationPort: Int? = null,
     val transportProtocol: String? = null,
     val publicDnsResolver: Boolean = false,
+    // SNI and transport events share this queue but are not DNS queries.
+    val isDnsQuery: Boolean = false,
     val generation: Long,
 )
 
@@ -98,6 +100,7 @@ object AuraNetworkStream : EventChannel.StreamHandler {
                     action = action,
                     sourceAddress = sourceAddress,
                     sourcePort = sourcePort,
+                    isDnsQuery = actionCode in 0..2,
                     generation = eventGeneration,
                 ),
             )
@@ -242,7 +245,7 @@ object AuraNetworkStream : EventChannel.StreamHandler {
                 if (pending.generation != eventGeneration) {
                     false
                 } else {
-                    AuraVpnService.recordDnsAuditEvent(event)
+                    if (pending.isDnsQuery) AuraVpnService.recordDnsAuditEvent(event)
                     if (pendingEvents.size == MAX_PENDING_EVENTS) pendingEvents.removeFirst()
                     pendingEvents.addLast(QueuedPlatformEvent(eventGeneration, event))
                     scheduleDrainLocked()

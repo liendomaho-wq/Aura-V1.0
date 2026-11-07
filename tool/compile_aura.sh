@@ -138,36 +138,40 @@ verify_release_signer() {
         done
     fi
 
-    if [[ "$extension" == "apk" && -z "$apksigner_binary" && "$mode" == "verify-artifact" ]]; then
+    if [[ "$extension" == "apk" && -z "$apksigner_binary" && "$USE_DEBUG_SIGNING" == "false" ]]; then
         fail "apksigner is required to verify the APK artifact certificate."
+    fi
+    if [[ "$extension" == "aab" && "$USE_DEBUG_SIGNING" == "false" ]]; then
+        command -v java >/dev/null 2>&1 || fail "Java 17 is required to verify the AAB signature."
+        # Java's JarFile validates the digest and signature of every payload
+        # entry; VerifyAab also rejects unsigned/duplicate/multi-signer entries.
+        java "$project_root/tool/VerifyAab.java" "$artifact" "$signing_fingerprint" ||
+            fail "AAB signature verification failed."
+        log "AAB signed entries match the configured upload certificate."
+        return
     fi
 
     if [[ "$extension" == "apk" && -n "$apksigner_binary" ]]; then
         if ! certificate_output="$("$apksigner_binary" verify --print-certs "$artifact" 2>/dev/null)"; then
             fail "apksigner rejected the release APK."
         fi
+        local signer_count
+        signer_count="$(printf '%s\n' "$certificate_output" | awk 'tolower($0) ~ /certificate sha-256 digest:/ {count++} END {print count+0}')"
+        [[ "$signer_count" == "1" ]] || fail "APK must have exactly one verified signer."
         certificate_fingerprint="$(printf '%s\n' "$certificate_output" | awk -F': ' 'tolower($0) ~ /certificate sha-256 digest:/ {print $2; exit}' | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
         certificate_subject="$(printf '%s\n' "$certificate_output" | awk -F': ' 'tolower($0) ~ /certificate dn:/ {print $2; exit}')"
         [[ "$certificate_fingerprint" =~ ^[[:xdigit:]]{64}$ ]] ||
             fail "apksigner did not return a valid SHA-256 certificate fingerprint."
+        if [[ "$USE_DEBUG_SIGNING" == "false" && "$certificate_fingerprint" != "$signing_fingerprint" ]]; then
+            fail "APK signer does not match the configured production certificate."
+        fi
         log "APK signer verification used apksigner."
     elif [[ "$USE_DEBUG_SIGNING" == "true" ]]; then
         log "WARNING: keytool signature validation skipped in DEBUG fallback mode."
         certificate_fingerprint="DEBUG_FALLBACK"
         certificate_subject="Android Debug (fallback)"
     else
-        if [[ "$extension" == "apk" ]]; then
-            log "apksigner unavailable; using keytool keystore-certificate fallback (does not inspect APK bytes)."
-        else
-            log "AAB signer verification uses the configured keytool certificate."
-        fi
-        certificate_fingerprint="$(keytool_certificate_info)"
-        certificate_subject="$(keytool -list -v \
-            -keystore "$AURA_KEYSTORE_PATH" \
-            -alias "$AURA_KEY_ALIAS" \
-            -storepass:env AURA_STORE_PASSWORD \
-            -keypass:env AURA_KEY_PASSWORD 2>/dev/null |
-            awk -F': ' '/^[[:space:]]*Owner:/ {print $2; exit}')"
+        fail "Unsupported artifact type for production signature verification."
     fi
 
     if grep -Fqi 'Android Debug' <<< "$certificate_subject"; then
@@ -276,6 +280,10 @@ with open(sys.argv[2], "wb") as key_file:
     key_file.write(der)
 PY
 openssl pkey -pubin -inform DER -in "$key_file" -noout
+# The configured model verification key must validate the packaged model too;
+# otherwise a successful APK build would silently fall back at first launch.
+python3 "$project_root/tool/verify_packaged_model.py" --public-key-der "$key_file" ||
+    fail "The configured model public key does not verify the packaged model."
 rm -f "$key_file"
 
 log "Selecting JDK 17 and mapping the installed Android SDK/NDK."
@@ -352,4 +360,8 @@ else
 fi
 [[ -f "$release_artifact" ]] || fail "Release artifact was not created."
 verify_release_signer "$release_artifact"
-log "Release artifact signature verified."
+if [[ "$USE_DEBUG_SIGNING" == "true" ]]; then
+    log "Test artifact built; production signing was not verified."
+else
+    log "Production artifact signature verified against the configured certificate."
+fi

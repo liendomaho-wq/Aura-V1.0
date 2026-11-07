@@ -231,7 +231,7 @@ void main() {
     // an existing warning or critical security state.
   });
 
-  test('toggle_defenses detiene el VPN sin alterar la postura auditada', () async {
+  test('toggle_defenses no afirma que el VPN se detuvo solo por aceptar la solicitud', () async {
     final calls = <String>[];
     messenger.setMockMethodCallHandler(shieldChannel, (call) async {
       calls.add(call.method);
@@ -255,14 +255,16 @@ void main() {
     );
 
     expect(calls, <String>['stopShield']);
-    expect(result.summary, 'DEFENSA DESACTIVADA — túnel detenido');
+    expect(result.summary, contains('el cierre aún no está confirmado'));
     expect(result.data, <String, dynamic>{
-      'ok': true,
+      'ok': false,
+      'request_accepted': true,
+      'error': 'shutdown_unconfirmed',
       'tool': 'toggle_defenses',
-      'vpn_active': false,
+      'security_level': 'warning',
     });
-    // Stopping the tunnel reports its state; posture remains owned by
-    // audit_device and existing critical alerts are never downgraded.
+    expect(result.data.containsKey('vpn_active'), isFalse);
+    // An accepted request must not overwrite the independently observed state.
   });
 
   test('toggle_defenses refuses to change VPN state without user confirmation',
@@ -519,6 +521,25 @@ void main() {
     expect(result.data['error'], 'operation_failed');
     expect(result.data['tool'], 'toggle_defenses');
     expect(result.data['code'], 'vpn_unavailable');
+  });
+
+  test('el timeout VPN no se presenta como detención confirmada', () async {
+    messenger.setMockMethodCallHandler(shieldChannel, (_) async {
+      throw PlatformException(code: 'VPN_START_TIMEOUT');
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(
+        name: 'toggle_defenses',
+        arguments: <String, dynamic>{'activate': true, 'confirmed_by_user': true},
+      ),
+    );
+
+    expect(result.data['ok'], isFalse);
+    expect(result.data['code'], 'VPN_START_TIMEOUT');
+    expect(result.summary, contains('no confirmó el arranque'));
+    expect(result.summary, contains('Comprueba su estado'));
+    expect(result.data.containsKey('vpn_active'), isFalse);
   });
 
   test('unexpected native scan errors return a failed result without leaking details', () async {

@@ -34,6 +34,8 @@ from train_max_aura_brain import (  # noqa: E402
     is_probable_typosquatting,
     levenshtein_distance_to_top_domains,
     predict_serialized_model,
+    validate_split_integrity,
+    read_split,
 )
 
 ASSET_MODEL_PATH = ROOT / "assets/model/aura_brain_model.json"
@@ -55,6 +57,45 @@ def is_threat(model_data: dict, domain: str) -> bool:
     if not isinstance(threshold, (int, float)) or not math.isfinite(threshold):
         threshold = 0.5
     return predict_serialized_model(model_data, domain) >= threshold
+
+
+def test_split_reader_normalizes_trailing_dot_case_and_idna(tmp_path):
+    path = tmp_path / "split.csv"
+    path.write_text(
+        "domain,label,source,license,retrieved_at\nTÄST.Example.,0,source,license,date\n",
+        encoding="utf-8",
+    )
+    assert read_split(path) == [("xn--tst-qla.example", 0)]
+
+
+def test_split_integrity_allows_only_safe_test_bases_in_adversarial_set():
+    train = [("train.example", 1)]
+    val = [("validation.example", 0)]
+    test = [("test.example", 0), ("threat.example", 1)]
+    adversarial = [("test.example", 0), ("synthetic.example", 1)]
+    validate_split_integrity(train, val, test, adversarial)
+
+
+@pytest.mark.parametrize(
+    "train,val,test,adversarial",
+    [
+        ([("same.example", 0)], [("SAME.EXAMPLE.", 0)], [], []),
+        ([("same.example", 0)], [], [("same.example", 1)], []),
+        ([], [("same.example", 0)], [("same.example", 0)], []),
+        ([("same.example", 0)], [], [], [("same.example", 1)]),
+        ([], [("same.example", 0)], [], [("same.example", 0)]),
+        ([], [], [("same.example", 1)], [("same.example", 1)]),
+        ([], [], [("same.example", 0)], [("same.example", 1)]),
+        ([("same.example", 0), ("same.example", 0)], [], [], []),
+        ([("täst.example", 0)], [], [("xn--tst-qla.example", 0)], []),
+        ([("a.family.co.uk", 0)], [], [("b.family.co.uk", 1)], []),
+        ([("a.hosting.github.io", 0)], [], [], [("b.hosting.github.io", 1)]),
+        ([], [("a.family.example", 0)], [], [("b.family.example", 1)]),
+    ],
+)
+def test_split_integrity_rejects_duplicates_and_leakage(train, val, test, adversarial):
+    with pytest.raises(ValueError):
+        validate_split_integrity(train, val, test, adversarial)
 
 
 def test_known_dga_is_classified_as_threat(model):
@@ -274,7 +315,7 @@ def test_enhanced_features_return_zeros_for_empty_domains():
 
 def _candidate_metrics(
     *,
-    evaluation_mode: str = "stratified-test-split",
+    evaluation_mode: str = "grouped-test-split",
     test_fpr: float = 0.08,
     test_recall: float = 0.65,
     adversarial_fpr: float = 0.15,
@@ -282,6 +323,7 @@ def _candidate_metrics(
 ) -> dict:
     return {
         "evaluation_mode": evaluation_mode,
+        "test_class_counts": {"safe": 500, "threat": 500},
         "test_metrics": {
             "false_positive_rate": test_fpr,
             "recall": test_recall,
@@ -317,7 +359,7 @@ def test_quality_gate_accepts_candidate_at_documented_boundaries():
 def test_quality_gate_accepts_mobile_holdout_mode():
     assert candidate_quality_gate_failures(
         _candidate_metrics(
-            evaluation_mode="stratified-test-split-serialized-mobile-model"
+            evaluation_mode="grouped-test-split-serialized-mobile-model"
         )
     ) == []
 
@@ -326,7 +368,14 @@ def test_quality_gate_rejects_seed_only_metrics():
     failures = candidate_quality_gate_failures(
         _candidate_metrics(evaluation_mode="seed-only-not-a-holdout")
     )
-    assert any("stratified held-out test split" in failure for failure in failures)
+    assert any("grouped held-out test split" in failure for failure in failures)
+
+
+def test_quality_gate_rejects_legacy_row_level_holdout():
+    failures = candidate_quality_gate_failures(
+        _candidate_metrics(evaluation_mode="stratified-test-split")
+    )
+    assert any("grouped held-out test split" in failure for failure in failures)
 
 
 def test_quality_gate_rejects_excess_false_positives_and_low_recall():
@@ -344,8 +393,15 @@ def test_quality_gate_rejects_excess_false_positives_and_low_recall():
     assert any("adversarial recall" in failure for failure in failures)
 
 
+def test_quality_gate_rejects_inadequate_real_holdout_counts():
+    metrics = _candidate_metrics()
+    metrics["test_class_counts"] = {"safe": 499, "threat": 500}
+    assert any("held-out test must contain at least 500" in failure
+               for failure in candidate_quality_gate_failures(metrics))
+
+
 def test_quality_gate_rejects_missing_adversarial_class():
     metrics = _candidate_metrics()
     metrics["adversarial_test_class_counts"] = {"safe": 500, "threat": 0}
     failures = candidate_quality_gate_failures(metrics)
-    assert any("both safe and threat samples" in failure for failure in failures)
+    assert any("at least 500 samples per class" in failure for failure in failures)

@@ -512,23 +512,38 @@ class AuraIntentParser {
   };
 
   static String? _extractHost(String text) {
+    final candidates = <String>{};
     for (final match in _ipv4Pattern.allMatches(text)) {
       final value = match.group(0)!;
       final octets = value.split('.');
-      if (octets.every((octet) {
+      if (!octets.every((octet) {
         final number = int.tryParse(octet);
         return number != null && number >= 0 && number <= 255;
       })) {
-        return value;
+        // A malformed address alongside a valid host is still ambiguous.
+        return null;
       }
+      candidates.add(value);
     }
-    return _hostPattern.firstMatch(text)?.group(0)?.toLowerCase();
+    for (final match in _hostPattern.allMatches(text)) {
+      candidates.add(match.group(0)!.toLowerCase());
+    }
+    // Never silently choose a target when the request contains more than one.
+    // Repeated mentions of the same normalized host remain unambiguous.
+    return candidates.length == 1 ? candidates.single : null;
   }
 
   static String? _extractPackageName(String text) {
-    final labeledPackage = _packageLabelPattern.firstMatch(text)?.group(1);
-    if (labeledPackage != null) return labeledPackage;
-    return _androidPackagePattern.firstMatch(text)?.group(0);
+    final candidates = <String>{};
+    for (final match in _packageLabelPattern.allMatches(text)) {
+      candidates.add(match.group(1)!);
+    }
+    for (final match in _androidPackagePattern.allMatches(text)) {
+      // Do not extract a suffix such as com.example from foo.com.example.
+      if (match.start > 0 && text[match.start - 1] == '.') continue;
+      candidates.add(match.group(0)!);
+    }
+    return candidates.length == 1 ? candidates.single : null;
   }
 
   static void _remember(AuraIntent intent) {

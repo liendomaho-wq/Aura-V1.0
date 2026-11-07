@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class AuraVpnService : VpnService() {
     companion object {
         const val ACTION_STATE = "com.ciberdefensa.aura.VPN_STATE"
+        const val EXTRA_START_REQUEST_ID = "com.ciberdefensa.aura.VPN_START_REQUEST_ID"
         private const val LOCAL_SOCKS5_HOST = "127.0.0.1"
         private const val LOCAL_SOCKS5_PORT = 18763
         private const val THREAT_FEED_URL =
@@ -50,10 +51,9 @@ class AuraVpnService : VpnService() {
         private const val MAX_THREAT_FEED_BYTES = 4 * 1024 * 1024
         private val dnsMetricsLock = Any()
         @Volatile private var activeService: AuraVpnService? = null
+        @Volatile private var lastShutdownConfirmed = true
         private var auditedDnsRequests = 0L
         private var blockedDnsRequests = 0L
-        private var lastDnsDomain = ""
-        private var lastDnsAction = ""
         /**
          * Returns the currently loaded IP block rules, not a history of packets blocked.
          * An empty result means no active VPN service currently exposes its rule set.
@@ -84,12 +84,30 @@ class AuraVpnService : VpnService() {
                 "vpn_interface_active" to false,
                 "forwarding_active" to false,
                 "isolation_active" to false,
+                // A failed native stop or TUN close is not proof of shutdown.
+                "status_verified" to lastShutdownConfirmed,
             )
+            val interfaceActive = service.vpnInterface?.fileDescriptor?.valid() == true
+            val nativeRunning = try {
+                TProxyService.TProxyIsRunning()
+            } catch (error: Exception) {
+                Log.e("AuraVPN", "No se pudo verificar el motor VPN nativo.", error)
+                null
+            } catch (error: LinkageError) {
+                Log.e("AuraVPN", "El motor VPN nativo no está disponible.", error)
+                null
+            }
+            if (service.tunnelStarted && (!interfaceActive || nativeRunning != true)) {
+                service.scheduleNotificationUpdate()
+            }
             return mapOf(
                 "service_active" to true,
-                "vpn_interface_active" to (service.vpnInterface != null),
-                "forwarding_active" to service.tunnelStarted,
+                "vpn_interface_active" to interfaceActive,
+                "forwarding_active" to (service.tunnelStarted && interfaceActive &&
+                    nativeRunning == true && !service.panicIsolationActive &&
+                    !service.serviceShuttingDown),
                 "isolation_active" to service.panicIsolationActive,
+                "status_verified" to (nativeRunning != null && !service.serviceShuttingDown),
             )
         }
 
@@ -98,21 +116,17 @@ class AuraVpnService : VpnService() {
             synchronized(dnsMetricsLock) {
                 auditedDnsRequests = 0
                 blockedDnsRequests = 0
-                lastDnsDomain = ""
-                lastDnsAction = ""
                 activeService?.scheduleNotificationUpdate()
             }
         }
 
         fun recordDnsAuditEvent(event: Map<String, Any>) {
             val action = event["action"] as? String ?: return
-            val domain = event["requested_domain"] as? String ?: return
+            if (event["requested_domain"] !is String) return
             val service: AuraVpnService?
             synchronized(dnsMetricsLock) {
                 auditedDnsRequests++
                 if (action == "BLOCKED" || action == "DGA_ALERT") blockedDnsRequests++
-                lastDnsDomain = domain
-                lastDnsAction = action
                 service = activeService
             }
             service?.scheduleNotificationUpdate()
@@ -146,6 +160,7 @@ class AuraVpnService : VpnService() {
     private val blockedIps: MutableSet<String> =
         Collections.synchronizedSet(HashSet())
     private val startRequested = AtomicBoolean(false)
+    private val lifecycleGate = VpnLifecycleGate()
     private val notificationHandler = Handler(Looper.getMainLooper())
     private var notificationUpdatePending = false
     @Volatile private var vpnInterface: ParcelFileDescriptor? = null
@@ -170,11 +185,22 @@ class AuraVpnService : VpnService() {
         flags: Int,
         startId: Int,
     ): Int {
+        val requestId = intent?.getStringExtra(EXTRA_START_REQUEST_ID)
         ensureNotificationChannel()
         val notification = createNotification()
         startForeground(NOTIFICATION_ID, notification)
-        if (!verifyIntegrityOrStop()) return Service.START_NOT_STICKY
-        if (integrityMonitor.isShutdown) return Service.START_NOT_STICKY
+        if (!verifyIntegrityOrStop()) {
+            if (requestId != null) {
+                reportState(false, "La comprobación de integridad falló.", requestId = requestId)
+            }
+            return Service.START_NOT_STICKY
+        }
+        if (integrityMonitor.isShutdown) {
+            if (requestId != null) {
+                reportState(false, "El servicio VPN está cerrándose.", requestId = requestId)
+            }
+            return Service.START_NOT_STICKY
+        }
         if (!integrityCheckScheduled) {
             integrityCheckScheduled = true
             integrityMonitor.scheduleWithFixedDelay(
@@ -188,37 +214,76 @@ class AuraVpnService : VpnService() {
             if (vpnInterface == null && startRequested.compareAndSet(false, true)) {
                 worker.execute { establishPanicIsolationInterface() }
             }
-            reportState(false, "Aislamiento de emergencia activo; forwarding detenido.")
+            reportState(
+                false,
+                "Aislamiento de emergencia activo; forwarding detenido.",
+                requestId = requestId,
+            )
             return Service.START_STICKY
         }
         if (tunnelStarted) {
-            reportState(true, "El túnel VPN ya estaba activo.")
+            if (shieldStatus()["forwarding_active"] == true) {
+                reportState(true, "El túnel VPN ya estaba activo.", requestId = requestId)
+            } else {
+                reportState(
+                    false,
+                    "El estado del motor VPN no está confirmado. Revise la protección.",
+                    requestId = requestId,
+                )
+            }
         } else if (startRequested.compareAndSet(false, true)) {
-            worker.execute { startTunnel() }
+            try {
+                worker.execute { startTunnel(requestId) }
+            } catch (error: java.util.concurrent.RejectedExecutionException) {
+                startRequested.set(false)
+                reportState(false, "El servicio VPN está cerrándose.", requestId = requestId)
+            }
+        } else if (requestId != null) {
+            // A previous start (possibly an Android service restart) is still
+            // running. Do not attribute that operation's broadcast to this one.
+            reportState(false, "Ya hay un arranque VPN en curso.", requestId = requestId)
         }
         return Service.START_STICKY
     }
 
     override fun onDestroy() {
         serviceShuttingDown = true
+        lifecycleGate.beginClosing()
         unregisterUnderlyingNetworkCallback()
         feedRefresh.shutdownNow()
         integrityMonitor.shutdownNow()
         worker.shutdownNow()
-        // Always reconcile JNI, even when the Kotlin flag is stale or the native
-        // thread already exited but still needs to be joined.
-        stopNativeWorker()
-        tunnelStarted = false
-        if (activeService === this) activeService = null
+        // Serialize destruction with TUN establishment and native lifecycle
+        // calls; stale work cannot start or stop a later service's worker.
+        val shutdownConfirmed = lifecycleGate.close {
+            val nativeStopped = stopNativeWorkerUnchecked()
+            tunnelStarted = false
+            val interfaceClosed = try {
+                vpnInterface?.close()
+                true
+            } catch (exception: Exception) {
+                Log.e("AuraVPN", "No se pudo cerrar la interfaz VPN.", exception)
+                false
+            }
+            vpnInterface = null
+            nativeStopped && interfaceClosed
+        }
+        if (activeService === this) {
+            lastShutdownConfirmed = shutdownConfirmed
+            activeService = null
+        }
         notificationHandler.removeCallbacksAndMessages(null)
-        vpnInterface?.close()
-        vpnInterface = null
         underlyingNetwork = null
         stopService(android.content.Intent(this, AuraNotificationService::class.java))
         super.onDestroy()
     }
 
     override fun onRevoke() {
+        // Revocation can arrive while a worker is still starting. Refuse new
+        // native work immediately; teardown is only confirmed in onDestroy.
+        serviceShuttingDown = true
+        lifecycleGate.beginClosing()
+        tunnelStarted = false
         val message =
             "[CRIT] TÚNEL REVOCADO POR ANDROID O POR EL OPERADOR — " +
                 "LAS DEFENSAS ESTÁN INACTIVAS. " +
@@ -238,7 +303,11 @@ class AuraVpnService : VpnService() {
      * the JNI result and the observable worker state. A false result is never
      * presented to the user as confirmed forwarding shutdown.
      */
-    private fun stopNativeWorker(): Boolean {
+    private fun stopNativeWorker(): Boolean =
+        lifecycleGate.runIfOpen { stopNativeWorkerUnchecked() } ?: false
+
+    // Only call inside lifecycleGate, including its close action.
+    private fun stopNativeWorkerUnchecked(): Boolean {
         return try {
             val stopAccepted = TProxyService.TProxyStopService()
             val workerStopped = !TProxyService.TProxyIsRunning()
@@ -251,8 +320,22 @@ class AuraVpnService : VpnService() {
         } catch (exception: Exception) {
             Log.e("AuraVPN", "No se pudo cerrar el worker VPN nativo.", exception)
             false
+        } catch (error: LinkageError) {
+            Log.e("AuraVPN", "No se pudo verificar el motor VPN nativo.", error)
+            false
         }
     }
+
+    private fun restartNativeWorker(configPath: String, tun: ParcelFileDescriptor): Boolean =
+        lifecycleGate.runIfOpen {
+            if (vpnInterface !== tun || !tun.fileDescriptor.valid() || !stopNativeWorkerUnchecked()) {
+                false
+            } else {
+                tunnelStarted = false
+                TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
+                TProxyService.TProxyStartService(configPath, tun.fd)
+            }
+        } ?: false
 
     private fun verifyIntegrityOrStop(): Boolean {
         val report = try {
@@ -278,7 +361,7 @@ class AuraVpnService : VpnService() {
         return false
     }
 
-    private fun startTunnel() {
+    private fun startTunnel(requestId: String?) {
         var established: ParcelFileDescriptor? = null
         try {
             underlyingNetwork = findUnderlyingNetwork()
@@ -286,8 +369,13 @@ class AuraVpnService : VpnService() {
 
             // El túnel no debe depender de que un feed remoto esté disponible al arrancar.
             // La lista se carga en segundo plano y se aplica cuando el motor ya está activo.
-            established = createVpnBuilder().establish()
-                ?: throw IOException("Android no estableció la interfaz VPN.")
+            val tun = lifecycleGate.runIfOpen {
+                val descriptor = createVpnBuilder().establish()
+                    ?: throw IOException("Android no estableció la interfaz VPN.")
+                vpnInterface = descriptor
+                descriptor
+            } ?: throw IOException("El servicio VPN está cerrándose.")
+            established = tun
 
             val configFile = File(filesDir, "aura-hev-socks5.yml")
             configFile.writeText(
@@ -313,24 +401,36 @@ class AuraVpnService : VpnService() {
                 """.trimIndent(),
             )
 
-            vpnInterface = established
-            TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
-            if (!TProxyService.TProxyStartService(configFile.absolutePath, established.fd)) {
-                throw IOException("El motor tun2socks no pudo iniciar.")
-            }
-            tunnelStarted = true
+            val started = lifecycleGate.runIfOpen {
+                if (vpnInterface !== tun || !tun.fileDescriptor.valid()) {
+                    false
+                } else {
+                    TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
+                    TProxyService.TProxyStartService(configFile.absolutePath, tun.fd)
+                }
+            } ?: false
+            if (!started) throw IOException("El motor tun2socks no pudo iniciar.")
             verifyLocalSocks5Ready()
             for (endpoint in AuraBlocklistService.knownEncryptedDnsEndpoints()) {
-                if (!TProxyService.TProxyAddDynamicSniRule(endpoint)) {
-                    throw IOException(
-                        "El firewall SNI no confirmó el bloqueo de $endpoint.",
-                    )
+                val applied = lifecycleGate.runIfOpen {
+                    TProxyService.TProxyAddDynamicSniRule(endpoint)
+                } ?: false
+                if (!applied) {
+                    throw IOException("El firewall SNI no confirmó el bloqueo de $endpoint.")
                 }
             }
+            val ready = lifecycleGate.runIfOpen {
+                if (!TProxyService.TProxyIsRunning()) false else {
+                    tunnelStarted = true
+                    true
+                }
+            } ?: false
+            if (!ready) throw IOException("El motor VPN se detuvo durante el arranque.")
             scheduleFeedRefresh()
             reportState(
                 true,
                 "Túnel VPN iniciado; las fuentes de reputación IP se están actualizando.",
+                requestId = requestId,
             )
             updateForegroundNotification()
             Log.i("AuraVPN", "Hev tun2socks conectado al proxy SOCKS5.")
@@ -338,8 +438,16 @@ class AuraVpnService : VpnService() {
             Log.e("AuraVPN", "No se pudo iniciar el escudo VPN.", e)
             val stopConfirmed = stopNativeWorker()
             tunnelStarted = false
-            established?.close()
-            vpnInterface = null
+            lifecycleGate.runIfOpen {
+                try {
+                    established?.close()
+                    if (vpnInterface === established) vpnInterface = null
+                } catch (closeError: Exception) {
+                    // Keep the descriptor for the destruction path to retry.
+                    Log.e("AuraVPN", "No se pudo cerrar la interfaz tras fallar el arranque.", closeError)
+                }
+                true
+            }
             underlyingNetwork = null
             startRequested.set(false)
             val failureMessage = e.message ?: "No se pudo iniciar el túnel."
@@ -350,6 +458,7 @@ class AuraVpnService : VpnService() {
                 } else {
                     "$failureMessage El cierre del motor nativo no está confirmado."
                 },
+                requestId = requestId,
             )
             updateForegroundNotification()
             stopSelf()
@@ -367,7 +476,7 @@ class AuraVpnService : VpnService() {
                 .putBoolean(PANIC_ISOLATION_KEY, true)
                 .commit()
             if (!persisted) return false
-            if (!TProxyService.TProxyStopService()) {
+            if (!stopNativeWorker()) {
                 getSharedPreferences(VPN_STATE_PREFERENCES, MODE_PRIVATE)
                     .edit()
                     .putBoolean(PANIC_ISOLATION_KEY, false)
@@ -403,31 +512,26 @@ class AuraVpnService : VpnService() {
                 throw IOException("No existe la configuración del túnel para reanudarlo.")
             }
 
-            // The native worker can outlive a stale Kotlin flag; reconcile native state before restart.
-            if (TProxyService.TProxyIsRunning() && !TProxyService.TProxyStopService()) {
-                throw IOException("El motor VPN no confirmó el cierre antes de reanudar.")
-            }
-            if (TProxyService.TProxyIsRunning()) {
-                throw IOException("El motor VPN continúa activo tras solicitar su cierre.")
-            }
-
-            TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
-            if (!TProxyService.TProxyStartService(configFile.absolutePath, tun.fd)) {
+            // Reconcile native state and restart as one lifecycle operation.
+            if (!restartNativeWorker(configFile.absolutePath, tun)) {
                 throw IOException("El motor VPN no pudo iniciar durante la reanudación.")
             }
             verifyLocalSocks5Ready()
 
-            val cleared = getSharedPreferences(VPN_STATE_PREFERENCES, MODE_PRIVATE)
-                .edit()
-                .putBoolean(PANIC_ISOLATION_KEY, false)
-                .commit()
-            if (!cleared) {
+            val resumed = lifecycleGate.runIfOpen {
+                val cleared = TProxyService.TProxyIsRunning() &&
+                    getSharedPreferences(VPN_STATE_PREFERENCES, MODE_PRIVATE)
+                        .edit().putBoolean(PANIC_ISOLATION_KEY, false).commit()
+                if (cleared) {
+                    panicIsolationActive = false
+                    tunnelStarted = true
+                    startRequested.set(true)
+                }
+                cleared
+            } ?: false
+            if (!resumed) {
                 throw IOException("No se pudo confirmar la salida del aislamiento de emergencia.")
             }
-
-            panicIsolationActive = false
-            tunnelStarted = true
-            startRequested.set(true)
             scheduleFeedRefresh()
             reportState(true, "Forwarding del túnel VPN restablecido.")
             updateForegroundNotification()
@@ -458,15 +562,25 @@ class AuraVpnService : VpnService() {
     private fun establishPanicIsolationInterface() {
         var established: ParcelFileDescriptor? = null
         try {
-            established = createVpnBuilder().establish()
-                ?: throw IOException("Android no restableció la interfaz VPN aislada.")
-            vpnInterface = established
+            established = lifecycleGate.runIfOpen {
+                val descriptor = createVpnBuilder().establish()
+                    ?: throw IOException("Android no restableció la interfaz VPN aislada.")
+                vpnInterface = descriptor
+                descriptor
+            } ?: throw IOException("El servicio VPN está cerrándose.")
             reportState(false, "Aislamiento de emergencia activo; tráfico en descarte.")
             updateForegroundNotification()
         } catch (exception: Exception) {
             Log.e("AuraVPN", "No se pudo restablecer la interfaz aislada.", exception)
-            established?.close()
-            vpnInterface = null
+            lifecycleGate.runIfOpen {
+                try {
+                    established?.close()
+                    if (vpnInterface === established) vpnInterface = null
+                } catch (closeError: Exception) {
+                    Log.e("AuraVPN", "No se pudo cerrar la interfaz aislada.", closeError)
+                }
+                true
+            }
             startRequested.set(false)
             reportState(false, exception.message ?: "Falló el aislamiento de red.")
         }
@@ -594,25 +708,25 @@ class AuraVpnService : VpnService() {
         }
 
         try {
-            if (TProxyService.TProxyIsRunning() && !TProxyService.TProxyStopService()) {
-                throw IOException("El motor VPN no confirmó el cierre para cambiar de red.")
-            }
-            tunnelStarted = false
-            TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
-            if (!TProxyService.TProxyStartService(
-                    File(filesDir, "aura-hev-socks5.yml").absolutePath,
-                    tun.fd,
-                )
-            ) {
+            if (!restartNativeWorker(File(filesDir, "aura-hev-socks5.yml").absolutePath, tun)) {
                 throw IOException("El motor VPN no pudo reiniciarse en la nueva red.")
             }
             verifyLocalSocks5Ready()
             for (endpoint in AuraBlocklistService.knownEncryptedDnsEndpoints()) {
-                if (!TProxyService.TProxyAddDynamicSniRule(endpoint)) {
+                val applied = lifecycleGate.runIfOpen {
+                    TProxyService.TProxyAddDynamicSniRule(endpoint)
+                } ?: false
+                if (!applied) {
                     throw IOException("No se pudo restaurar una regla SNI tras cambiar de red.")
                 }
             }
-            tunnelStarted = true
+            val ready = lifecycleGate.runIfOpen {
+                if (!TProxyService.TProxyIsRunning()) false else {
+                    tunnelStarted = true
+                    true
+                }
+            } ?: false
+            if (!ready) throw IOException("El motor VPN se detuvo durante la recuperación.")
             reportState(
                 true,
                 "Red física cambiada; motor VPN reiniciado y proxy SOCKS5 verificado.",
@@ -717,6 +831,9 @@ class AuraVpnService : VpnService() {
                     if (response[0].toInt() != 5 || response[1].toInt() != 0) {
                         throw IOException("El proxy SOCKS5 local rechazó la negociación.")
                     }
+                }
+                if (!TProxyService.TProxyIsRunning()) {
+                    throw IOException("El proxy respondió, pero el motor VPN ya no está activo.")
                 }
                 return
             } catch (exception: Exception) {
@@ -825,10 +942,13 @@ class AuraVpnService : VpnService() {
         try {
             val updated = downloadThreatFeed()
             replaceBlockedIps(updated)
-            if (tunnelStarted && TProxyService.TProxyIsRunning()) {
-                TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
+            lifecycleGate.runIfOpen {
+                if (tunnelStarted && TProxyService.TProxyIsRunning()) {
+                    TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
+                }
+                true
             }
-            if (tunnelStarted) {
+            if (shieldStatus()["forwarding_active"] == true) {
                 reportState(true, "Túnel activo; feed de reputación IP actualizado.")
             }
         } catch (e: Exception) {
@@ -837,7 +957,7 @@ class AuraVpnService : VpnService() {
                 "No se pudo actualizar el feed; se conserva la lista IP verificada anterior.",
                 e,
             )
-            if (tunnelStarted && blockedIpSnapshot().isEmpty()) {
+            if (shieldStatus()["forwarding_active"] == true && blockedIpSnapshot().isEmpty()) {
                 reportState(
                     true,
                     "Túnel activo con cobertura reducida: feed de reputación IP no disponible.",
@@ -850,14 +970,15 @@ class AuraVpnService : VpnService() {
         started: Boolean,
         message: String,
         revoked: Boolean = false,
+        requestId: String? = null,
     ) {
-        sendBroadcast(
-            android.content.Intent(ACTION_STATE)
-                .setPackage(packageName)
-                .putExtra("started", started)
-                .putExtra("message", message)
-                .putExtra("revoked", revoked),
-        )
+        val stateIntent = android.content.Intent(ACTION_STATE)
+            .setPackage(packageName)
+            .putExtra("started", started)
+            .putExtra("message", message)
+            .putExtra("revoked", revoked)
+        if (requestId != null) stateIntent.putExtra(EXTRA_START_REQUEST_ID, requestId)
+        sendBroadcast(stateIntent, "$packageName.permission.VPN_STATE")
     }
 
     private fun scheduleNotificationUpdate() {
@@ -873,14 +994,25 @@ class AuraVpnService : VpnService() {
     }
 
     private fun currentDnsSummary(): String = synchronized(dnsMetricsLock) {
+        val nativeRunning = try {
+            TProxyService.TProxyIsRunning()
+        } catch (_: Exception) {
+            false
+        } catch (_: LinkageError) {
+            false
+        }
         if (panicIsolationActive) {
             "AISLAMIENTO ACTIVO · forwarding detenido"
+        } else if (!tunnelStarted || !nativeRunning ||
+            vpnInterface?.fileDescriptor?.valid() != true
+        ) {
+            "Motor VPN sin forwarding confirmado"
         } else if (auditedDnsRequests == 0L) {
             "Túnel activo · esperando eventos DNS"
         } else {
-            val domain = lastDnsDomain.take(52)
-            "DNS $auditedDnsRequests · bloqueados $blockedDnsRequests · " +
-                "$domain $lastDnsAction"
+            // The native event is emitted before the response is sent, so this
+            // is a rule match count, not proof of delivery or traffic blocking.
+            "DNS $auditedDnsRequests · coincidencias de bloqueo $blockedDnsRequests"
         }
     }
 

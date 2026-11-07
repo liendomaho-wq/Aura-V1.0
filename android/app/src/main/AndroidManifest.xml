@@ -10,6 +10,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
 
+    <!-- Protect in-app VPN status broadcasts on Android versions without
+         RECEIVER_NOT_EXPORTED. Only apps signed with the same key can send or
+         receive these messages. -->
+    <permission
+        android:name="${applicationId}.permission.VPN_STATE"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="${applicationId}.permission.VPN_STATE" />
+
     <application
         android:label="Aura"
         android:name="${applicationName}"
