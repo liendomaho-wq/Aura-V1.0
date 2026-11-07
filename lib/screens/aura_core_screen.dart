@@ -1443,6 +1443,9 @@ class _ExplanationCardState extends State<_ExplanationCard> {
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton(
+              key: ValueKey<String>(
+                'verdict-explanation-sha256-${explanation.id}',
+              ),
               onPressed: _showFullDigest,
               style: TextButton.styleFrom(
                 foregroundColor: AuraTokens.accent,
