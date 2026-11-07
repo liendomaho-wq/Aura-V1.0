@@ -672,8 +672,13 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
           borderRadius: BorderRadius.circular(18),
           onTap: quickActionsEnabled ? onTap : null,
           child: Container(
-            constraints: BoxConstraints(minHeight: compactLayout ? 66 : 88),
-            padding: EdgeInsets.symmetric(horizontal: 8, vertical: compactLayout ? 6 : 10),
+            constraints: BoxConstraints(
+              minHeight: compactLayout ? 66 : 88,
+            ),
+            padding: EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: compactLayout ? 6 : 10,
+            ),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: color.withValues(alpha: 0.30)),
@@ -863,8 +868,16 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
               ],
             ),
             Container(
-              margin: EdgeInsets.fromLTRB(14, compactLayout ? 2 : 6, 14, compactLayout ? 6 : 14),
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: compactLayout ? 8 : 15),
+              margin: EdgeInsets.fromLTRB(
+                14,
+                compactLayout ? 2 : 6,
+                14,
+                compactLayout ? 6 : 14,
+              ),
+              padding: EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: compactLayout ? 8 : 15,
+              ),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(26),
                 border: Border.all(
@@ -973,7 +986,9 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                     title: 'VPN Aura',
                     subtitle: vpnActive ? 'Conectada' : 'Desconectada',
                     onTap: _toggleShield,
-                    color: vpnActive ? AuraTokens.success : AuraTokens.accentViolet,
+                    color: vpnActive
+                        ? AuraTokens.success
+                        : AuraTokens.accentViolet,
                   ),
                   const SizedBox(width: 8),
                   featureTile(

@@ -188,7 +188,9 @@ class _SplashScreenState extends State<SplashScreen>
           side: BorderSide(color: color),
           padding: EdgeInsets.symmetric(
             horizontal: AuraTokens.s2,
-            vertical: MediaQuery.sizeOf(context).height < 700 ? 6 : AuraTokens.s3,
+            vertical: MediaQuery.sizeOf(context).height < 700
+                ? 6
+                : AuraTokens.s3,
           ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AuraTokens.rSm),
@@ -370,7 +372,12 @@ class _SplashScreenState extends State<SplashScreen>
                           Container(
                             width: double.infinity,
                             constraints: const BoxConstraints(maxWidth: 390),
-                            padding: EdgeInsets.fromLTRB(18, compact ? 6 : 16, 18, compact ? 6 : 16),
+                            padding: EdgeInsets.fromLTRB(
+                              18,
+                              compact ? 6 : 16,
+                              18,
+                              compact ? 6 : 16,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xA6091730),
                               borderRadius: BorderRadius.circular(22),

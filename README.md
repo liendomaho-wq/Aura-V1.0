@@ -159,6 +159,11 @@ Manifest observado incluye, entre otros: `INTERNET`, `ACCESS_NETWORK_STATE`, `QU
 - Telemetría local opt-in. El modo remoto exige endpoint HTTPS y consentimiento; los dominios se representan con HMAC-SHA-256 con clave protegida. Son identificadores seudónimos, no anonimización irreversible.
 - Mantener secretos fuera del repositorio, logs, APK y README. Las claves públicas pueden estar versionadas; keystores, contraseñas y claves privadas nunca.
 
+Documentos de entrega:
+
+- [Política de privacidad basada en el comportamiento del código](docs/PRIVACY.md).
+- [Guía de release, firma y validación en dispositivo](docs/RELEASE_AND_DEVICE_VALIDATION.md).
+
 ## 7. Build, versiones y CI/CD
 
 Configuración observada en `pubspec.yaml`:

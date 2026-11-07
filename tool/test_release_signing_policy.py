@@ -117,6 +117,27 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
         self.assertIn("def missingVariables =", task)
         self.assertIn("throw new GradleException", task)
 
+    def test_codemagic_validates_pull_requests(self):
+        events = self.codemagic_workflow.split("events:", 1)[1].split(
+            "branch_patterns:", 1
+        )[0]
+        self.assertIn("- pull_request", events)
+
+    def test_release_and_privacy_guides_preserve_honest_limits(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        privacy = (ROOT / "docs/PRIVACY.md").read_text(encoding="utf-8")
+        release = (ROOT / "docs/RELEASE_AND_DEVICE_VALIDATION.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("docs/PRIVACY.md", readme)
+        self.assertIn("docs/RELEASE_AND_DEVICE_VALIDATION.md", readme)
+        self.assertIn("500 eventos", privacy)
+        self.assertIn("HMAC-SHA-256", privacy)
+        self.assertIn("no demuestra que el reconocimiento permanezca", privacy)
+        self.assertIn("AURA_REQUIRE_RELEASE_SIGNING=true", release)
+        self.assertIn("NO PROBADO", release)
+        self.assertIn("DEBUG de prueba", release)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
