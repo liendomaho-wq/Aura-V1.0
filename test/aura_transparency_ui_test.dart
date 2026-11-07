@@ -164,7 +164,11 @@ void main() {
     final digestButton = find.byKey(
       const ValueKey<String>('verdict-explanation-sha256-verdict-1'),
     );
-    await tester.ensureVisible(digestButton);
+    await tester.dragUntilVisible(
+      digestButton,
+      eventList,
+      const Offset(0, -240),
+    );
     await tester.pump();
     await tester.tap(digestButton);
     await _pumpAuraFrames(tester);
@@ -183,7 +187,11 @@ void main() {
     expect(reportButton, findsOneWidget);
     // Target the actual button rather than its label so the gesture lands
     // inside the control's hit region on different CI viewport sizes.
-    await tester.ensureVisible(reportButton);
+    await tester.dragUntilVisible(
+      reportButton,
+      eventList,
+      const Offset(0, -240),
+    );
     await tester.pump();
     await tester.tap(reportButton);
     await _pumpAuraFrames(tester);
