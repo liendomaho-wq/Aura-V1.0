@@ -659,6 +659,73 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
           child: Text(label),
         );
 
+    Widget featureTile({
+      required IconData icon,
+      required String title,
+      required String subtitle,
+      required String command,
+      Color color = AuraTokens.accent,
+    }) {
+      return Expanded(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: quickActionsEnabled ? () => _dispatch(command) : null,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 88),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: color.withValues(alpha: 0.30)),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  color.withValues(alpha: 0.15),
+                  const Color(0xE9081530),
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.08),
+                  blurRadius: 18,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: color, size: 24),
+                const SizedBox(height: 6),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AuraTokens.textPrimary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AuraTokens.textMuted,
+                    fontSize: 8,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AuraTokens.bg,
       resizeToAvoidBottomInset: true,
@@ -730,7 +797,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'AURA',
+                        'AURA QUANTUM',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: AuraTokens.textPrimary,
@@ -741,7 +808,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                       ),
                       SizedBox(height: 2),
                       Text(
-                        'INTELIGENCIA LOCAL · ANDROID',
+                        'QUANTUM CYBER DEFENSE',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: AuraTokens.accent,
@@ -822,7 +889,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
               child: Row(
                 children: [
                   AuraAvatar(
-                    size: 126,
+                    size: 138,
                     mode: _isListening
                         ? AuraAvatarMode.listening
                         : _isRunning
@@ -885,6 +952,64 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                         ),
                       ],
                     ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+              child: Row(
+                children: [
+                  featureTile(
+                    icon: Icons.manage_search_rounded,
+                    title: 'Analizar',
+                    subtitle: 'Dispositivo',
+                    command: 'analiza mi dispositivo',
+                  ),
+                  const SizedBox(width: 8),
+                  featureTile(
+                    icon: Icons.wifi_rounded,
+                    title: 'VPN Aura',
+                    subtitle: vpnActive ? 'Conectada' : 'Desconectada',
+                    command: vpnActive ? 'desactivar defensas' : 'activar defensas',
+                    color: vpnActive ? AuraTokens.success : AuraTokens.accentViolet,
+                  ),
+                  const SizedBox(width: 8),
+                  featureTile(
+                    icon: Icons.lock_outline_rounded,
+                    title: 'Privacidad',
+                    subtitle: 'Revisar',
+                    command: 'revisa mi privacidad',
+                    color: AuraTokens.accentViolet,
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+              child: Row(
+                children: [
+                  featureTile(
+                    icon: Icons.auto_awesome_rounded,
+                    title: 'Aura AI',
+                    subtitle: 'Asistente',
+                    command: 'ayuda',
+                    color: AuraTokens.accentViolet,
+                  ),
+                  const SizedBox(width: 8),
+                  featureTile(
+                    icon: Icons.query_stats_rounded,
+                    title: 'Informes',
+                    subtitle: 'Actividad',
+                    command: 'estado',
+                  ),
+                  const SizedBox(width: 8),
+                  featureTile(
+                    icon: Icons.fact_check_outlined,
+                    title: 'Auditoría',
+                    subtitle: 'Cobertura',
+                    command: 'auditoría',
+                    color: AuraTokens.success,
                   ),
                 ],
               ),
