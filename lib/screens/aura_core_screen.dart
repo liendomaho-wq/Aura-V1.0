@@ -536,7 +536,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                       child: Padding(
                         padding: EdgeInsets.only(bottom: 6),
                         child: Text(
-                          'TELEMETRÍA LOCAL',
+                          'TELEMETRIA LOCAL',
                           style: TextStyle(
                             color: _terminalCyan,
                             fontFamily: 'monospace',
@@ -638,6 +638,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AuraStateProvider>();
+    final compactLayout = MediaQuery.sizeOf(context).height < 700;
     final vpnActive = state.isVpnActive;
     final quickActionsEnabled = !_isRunning && _isAuthenticated;
 
@@ -671,8 +672,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
           borderRadius: BorderRadius.circular(18),
           onTap: quickActionsEnabled ? onTap : null,
           child: Container(
-            constraints: const BoxConstraints(minHeight: 88),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            constraints: BoxConstraints(minHeight: compactLayout ? 66 : 88),
+            padding: EdgeInsets.symmetric(horizontal: 8, vertical: compactLayout ? 6 : 10),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: color.withValues(alpha: 0.30)),
@@ -695,8 +696,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, color: color, size: 24),
-                const SizedBox(height: 6),
+                Icon(icon, color: color, size: compactLayout ? 19 : 24),
+                SizedBox(height: compactLayout ? 3 : 6),
                 Text(
                   title,
                   textAlign: TextAlign.center,
@@ -762,15 +763,15 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
           SafeArea(
             child: Column(
           children: [
-            const SizedBox(height: 12),
+            SizedBox(height: compactLayout ? 2 : 12),
             Row(
               children: [
                 IconButton(
                   tooltip: 'Privacidad y telemetría opcional',
                   onPressed: _showTelemetrySettings,
-                  constraints: const BoxConstraints.tightFor(
+                  constraints: BoxConstraints.tightFor(
                     width: 48,
-                    height: 48,
+                    height: compactLayout ? 40 : 48,
                   ),
                   icon: const Icon(Icons.tune, color: AuraTokens.accent),
                 ),
@@ -862,8 +863,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
               ],
             ),
             Container(
-              margin: const EdgeInsets.fromLTRB(14, 6, 14, 14),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+              margin: EdgeInsets.fromLTRB(14, compactLayout ? 2 : 6, 14, compactLayout ? 6 : 14),
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: compactLayout ? 8 : 15),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(26),
                 border: Border.all(
@@ -889,7 +890,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
               child: Row(
                 children: [
                   AuraAvatar(
-                    size: 138,
+                    size: compactLayout ? 88 : 138,
                     mode: _isListening
                         ? AuraAvatarMode.listening
                         : _isRunning
@@ -912,11 +913,11 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                           'Hola, soy Aura.',
                           style: TextStyle(
                             color: AuraTokens.textPrimary,
-                            fontSize: 22,
+                            fontSize: compactLayout ? 18 : 22,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        SizedBox(height: compactLayout ? 2 : 4),
                         Text(
                           _isRunning
                               ? 'Estoy ejecutando tu solicitud…'
@@ -934,7 +935,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                             fontWeight: FontWeight.w500,
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        SizedBox(height: compactLayout ? 3 : 8),
                         Text(
                           '${state.blockedEvents} bloqueos confirmados en esta sesión',
                           style: const TextStyle(
@@ -1074,7 +1075,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                   ),
                 ),
               ),
-            const SizedBox(height: 16),
+            SizedBox(height: compactLayout ? 4 : 16),
             Expanded(
               child: _isAuthenticated
                   ? StreamBuilder<AgentEvent>(
@@ -1132,7 +1133,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                   : const SizedBox.expand(),
             ),
             SizedBox(
-              height: 44,
+              height: compactLayout ? 38 : 44,
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
