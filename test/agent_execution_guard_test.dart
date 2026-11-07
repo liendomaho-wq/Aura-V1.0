@@ -90,6 +90,10 @@ void main() {
         AuraToolExecutionPolicy.timeoutFor('scan_apps'),
         const Duration(seconds: 30),
       );
+      expect(
+        AuraToolExecutionPolicy.timeoutFor('toggle_defenses'),
+        const Duration(seconds: 80),
+      );
     });
   });
 

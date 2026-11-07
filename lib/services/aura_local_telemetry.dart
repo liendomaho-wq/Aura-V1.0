@@ -20,12 +20,16 @@ class AuraLocalTelemetry {
   static bool? _endpointConfigured;
   static Future<bool>? _endpointCheck;
   static Future<void> _writeTail = Future<void>.value();
+  // Invalidate events captured before a consent or storage reset, even if
+  // asynchronous hashing completes after the user enables telemetry again.
+  static int _recordingGeneration = 0;
   static AuraSecureVault _secureVault = AuraSecureVault();
 
   static void configure({
     required bool endpointConfigured,
     AuraSecureVault? secureVault,
   }) {
+    if (_endpointConfigured != endpointConfigured) _recordingGeneration++;
     _endpointConfigured = endpointConfigured;
     _endpointCheck = Future<bool>.value(endpointConfigured);
     if (secureVault != null) _secureVault = secureVault;
@@ -45,16 +49,22 @@ class AuraLocalTelemetry {
         'No se pudo guardar el consentimiento de telemetría local.',
       );
     }
+    _recordingGeneration++;
     if (!enabled && !await preferences.remove(_eventsKey)) {
       throw StateError('No se pudo borrar la cola de telemetría local.');
     }
     return enabled;
   });
 
-  static Future<List<Map<String, dynamic>>> loadEvents() async {
+  // Loading may migrate and rewrite legacy events. Serialize it with consent
+  // changes and appends so revocation cannot be undone by a stale migration.
+  static Future<List<Map<String, dynamic>>>
+  loadEvents() => _serializeWrites(() async {
     final preferences = await SharedPreferences.getInstance();
     if (!(preferences.getBool(_enabledKey) ?? false)) {
-      await preferences.remove(_eventsKey);
+      if (!await preferences.remove(_eventsKey)) {
+        throw StateError('No se pudo borrar la cola de telemetría local.');
+      }
       return const <Map<String, dynamic>>[];
     }
     final encodedEvents = preferences.getStringList(_eventsKey) ?? const [];
@@ -70,12 +80,21 @@ class AuraLocalTelemetry {
       final event = decoded.map<String, Object?>(
         (key, value) => MapEntry(key.toString(), value),
       );
-      final legacyDomain =
-          event.remove('requested_domain') ?? event.remove('domain');
-      if (legacyDomain is String) {
+      final hadLegacyDomain =
+          event.containsKey('requested_domain') || event.containsKey('domain');
+      // Remove both fields even when the first one is present. A legacy record
+      // can contain both, and short-circuiting would leave one in plaintext.
+      final requestedDomain = event.remove('requested_domain');
+      final domain = event.remove('domain');
+      final legacyDomain = requestedDomain is String
+          ? requestedDomain
+          : domain is String
+          ? domain
+          : null;
+      if (legacyDomain != null) {
         event['domain_hash'] = await _hashDomain(legacyDomain);
-        containsLegacyDomains = true;
       }
+      containsLegacyDomains = containsLegacyDomains || hadLegacyDomain;
       events.add(event);
     }
     if (containsLegacyDomains) {
@@ -89,14 +108,18 @@ class AuraLocalTelemetry {
       }
     }
     return List<Map<String, dynamic>>.unmodifiable(events);
-  }
+  });
 
   static Future<void> clearEvents() => _serializeWrites(() async {
+    _recordingGeneration++;
     final preferences = await SharedPreferences.getInstance();
-    await preferences.remove(_eventsKey);
+    if (!await preferences.remove(_eventsKey)) {
+      throw StateError('No se pudo borrar la cola de telemetría local.');
+    }
   });
 
   static Future<bool> recordNetworkEvent(Map<String, Object> event) async {
+    final generation = _recordingGeneration;
     if (!await _shouldRecordLocally() || !await isEnabled()) return false;
     final action = event['action'];
     final item = <String, Object?>{
@@ -106,7 +129,7 @@ class AuraLocalTelemetry {
       if (event['requested_domain'] case final String domain)
         'domain_hash': await _hashDomain(domain),
     };
-    return _append(item);
+    return _append(item, generation);
   }
 
   static Future<bool> recordDomainOutcome({
@@ -115,6 +138,7 @@ class AuraLocalTelemetry {
     required String source,
     String? modelVersion,
   }) async {
+    final generation = _recordingGeneration;
     if (!await _shouldRecordLocally() || !await isEnabled()) return false;
     return _append(<String, Object?>{
       'type': outcome == 'blocked' ? 'dominio_bloqueado' : 'escaneo',
@@ -123,7 +147,7 @@ class AuraLocalTelemetry {
       'outcome': outcome,
       'source': source,
       if (modelVersion != null) 'model_version': modelVersion,
-    });
+    }, generation);
   }
 
   static Future<bool> _shouldRecordLocally() async {
@@ -147,10 +171,15 @@ class AuraLocalTelemetry {
     return configured;
   }
 
-  static Future<bool> _append(Map<String, Object?> event) =>
+  static Future<bool> _append(Map<String, Object?> event, int generation) =>
       _serializeWrites(() async {
-        if (!await _shouldRecordLocally() || !await isEnabled()) return false;
+        if (generation != _recordingGeneration ||
+            !await _shouldRecordLocally() ||
+            !await isEnabled()) {
+          return false;
+        }
         final preferences = await SharedPreferences.getInstance();
+        if (generation != _recordingGeneration) return false;
         final events = List<String>.of(
           preferences.getStringList(_eventsKey) ?? const <String>[],
         );

@@ -86,6 +86,25 @@ void main() {
     },
   );
 
+  test('dominios o direcciones múltiples no se eligen silenciosamente', () async {
+    for (final text in <String>[
+      'bloquea first.example y second.example',
+      'analiza el dominio first.example y second.example',
+      'bloquea first.example 192.0.2.1',
+      'bloquea first.example 999.999.999.999',
+      'bloquea first.example@second.example',
+    ]) {
+      final intent = await AuraIntentParser.parse(text);
+      expect(intent.kind, AuraIntentKind.unknown, reason: text);
+      expect(intent.entities.containsKey('domain'), isFalse, reason: text);
+    }
+    final repeated = await AuraIntentParser.parse(
+      'analiza el dominio example.com example.com',
+    );
+    expect(repeated.name, 'analyze_domain');
+    expect(repeated.entities['domain'], 'example.com');
+  });
+
   test('una confirmación solo se reconoce al principio de la orden', () async {
     final intent = await AuraIntentParser.parse(
       'analiza el dominio example.com y luego CONFIRMO purga criptográfica',
@@ -209,6 +228,22 @@ void main() {
     expect(confirmation.name, 'isolate_app');
     expect(confirmation.entities['package_name'], 'com.example.test');
     expect(confirmation.entities['confirmed_by_user'], isTrue);
+  });
+
+  test('varios paquetes no seleccionan silenciosamente el primero', () async {
+    final ambiguous = await AuraIntentParser.parse(
+      'revisar app com.first.app y com.second.app',
+    );
+    expect(ambiguous.name, 'isolate_app');
+    expect(ambiguous.entities['package_name'], isNull);
+
+    final repeated = await AuraIntentParser.parse(
+      'revisar app com.first.app com.first.app',
+    );
+    expect(repeated.entities['package_name'], 'com.first.app');
+
+    final labeled = await AuraIntentParser.parse('revisar app foo.com.example');
+    expect(labeled.entities['package_name'], 'foo.com.example');
   });
 
   test('revisar app abre el flujo de revisión de Android', () async {

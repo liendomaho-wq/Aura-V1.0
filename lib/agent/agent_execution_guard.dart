@@ -74,6 +74,9 @@ abstract final class AuraToolExecutionPolicy {
   static Duration timeoutFor(String tool) => switch (tool) {
         'update_defenses' => const Duration(seconds: 100),
         'analyze_domain' => const Duration(seconds: 45),
+        // Native consent and service confirmation each have a 30 s deadline.
+        // Extra time accommodates channel delivery; timeout still means unknown.
+        'toggle_defenses' => const Duration(seconds: 80),
         'scan_apps' || 'audit_device' => const Duration(seconds: 30),
         'cryptographic_purge' => const Duration(seconds: 30),
         _ => const Duration(seconds: 20),

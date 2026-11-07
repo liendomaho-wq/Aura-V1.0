@@ -82,6 +82,23 @@ Cuando el usuario activa la VPN, Android crea un túnel local para procesar trá
 - no garantiza cobertura de todo DoH, QUIC, IPv6 o tráfico fuera del túnel;
 - no convierte una detección heurística en prueba concluyente de malware.
 
+El DNS local también aplica una heurística de nombres largos y diversos: una
+coincidencia puede causar una respuesta NXDOMAIN incluso para un dominio legítimo.
+Los dominios bloqueados por esa heurística o por una regla explícita reciben
+NXDOMAIN sin direcciones de loopback. Si una consulta contiene varias preguntas
+y alguna coincide, se deniega la consulta completa. Esto solo afecta a las
+consultas que realmente pasan por el DNS local; no demuestra que se hayan
+bloqueado todas las conexiones posibles hacia ese destino.
+
+Por precaución, la pila del túnel está configurada para descartar datagramas
+IPv4 e IPv6 que requieran reensamblaje, porque la inspección ocurre antes de que
+lwIP pueda reensamblarlos. Los fragmentos atómicos IPv6 se tratan como paquetes
+completos. La inspección también descarta cadenas de extensiones IPv6 que superen
+su límite de ocho cabeceras o 296 bytes de desplazamiento; no los registra como
+coincidencias DNS. Estas medidas pueden interrumpir aplicaciones o redes que
+utilicen ese tráfico, y requieren pruebas de compatibilidad en el dispositivo.
+No garantizan cobertura completa de DoH, QUIC ni ECH.
+
 Las fugas, cambios de red y el comportamiento de cada fabricante deben comprobarse en dispositivos físicos antes de una distribución.
 
 ## 8. Almacenamiento y protección

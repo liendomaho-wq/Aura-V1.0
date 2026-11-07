@@ -35,7 +35,11 @@ class AuraCoreScreen extends StatefulWidget {
   State<AuraCoreScreen> createState() => _AuraCoreScreenState();
 }
 
-class _AuraCoreScreenState extends State<AuraCoreScreen> {
+class _AuraCoreScreenState extends State<AuraCoreScreen>
+    with WidgetsBindingObserver {
+  static const MethodChannel _shieldChannel = MethodChannel(
+    'com.ciberdefensa.aura/shield',
+  );
   static const MethodChannel _voiceChannel = MethodChannel(
     'com.ciberdefensa.aura/voice',
   );
@@ -54,6 +58,10 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
   bool _isListening = false;
   bool _isRunning = false;
   bool _isShieldBusy = false;
+  bool _shieldStatusKnown = false;
+  bool _shieldServiceActive = false;
+  int _shieldStatusGeneration = 0;
+  Timer? _shieldStatusTimer;
   bool _isAuthenticated = false;
   bool _showCoverageAudit = false;
   bool _telemetryEndpointConfigured = false;
@@ -68,6 +76,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _authenticateConsole();
     });
@@ -85,6 +94,10 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
       controller.initGreeting();
       _startNetworkAuditor();
       setState(() => _isAuthenticated = true);
+      unawaited(_refreshShieldStatus());
+      _shieldStatusTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+        unawaited(_refreshShieldStatus());
+      });
       return;
     }
 
@@ -94,6 +107,60 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
     );
     if (!mounted) return;
     setState(() => _isAuthenticated = false);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isAuthenticated) {
+      unawaited(_refreshShieldStatus());
+    }
+  }
+
+  Future<void> _refreshShieldStatus() async {
+    if (!mounted || !_isAuthenticated || _isShieldBusy) return;
+    final generation = ++_shieldStatusGeneration;
+    try {
+      final status = await _shieldChannel
+          .invokeMapMethod<String, dynamic>('getShieldStatus')
+          .timeout(const Duration(seconds: 3));
+      if (status == null ||
+          status['status_verified'] != true ||
+          status['service_active'] is! bool ||
+          status['vpn_interface_active'] is! bool ||
+          status['forwarding_active'] is! bool ||
+          status['isolation_active'] is! bool) {
+        throw const FormatException('Estado VPN no verificable.');
+      }
+      final active = status['forwarding_active'] == true;
+      if (active &&
+          (status['service_active'] != true ||
+              status['vpn_interface_active'] != true ||
+              status['isolation_active'] == true)) {
+        throw const FormatException('Estado VPN contradictorio.');
+      }
+      if (!mounted || generation != _shieldStatusGeneration || _isShieldBusy) {
+        return;
+      }
+      final serviceActive = status['service_active'] == true;
+      context.read<AuraStateProvider>().setVpnActive(active);
+      if (!_shieldStatusKnown || _shieldServiceActive != serviceActive) {
+        setState(() {
+          _shieldStatusKnown = true;
+          _shieldServiceActive = serviceActive;
+        });
+      }
+    } on Object {
+      if (!mounted || generation != _shieldStatusGeneration || _isShieldBusy) {
+        return;
+      }
+      context.read<AuraStateProvider>().setVpnActive(false);
+      if (_shieldStatusKnown || _shieldServiceActive) {
+        setState(() {
+          _shieldStatusKnown = false;
+          _shieldServiceActive = false;
+        });
+      }
+    }
   }
 
   Future<void> _refreshAccessibilityServices() async {
@@ -149,6 +216,9 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
 
   @override
   void dispose() {
+    _shieldStatusGeneration++;
+    _shieldStatusTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     _inputController.dispose();
     unawaited(_disposeNetworkAuditor());
@@ -166,7 +236,17 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
       (event) {
         state.addTelemetryEvent(event.toJson());
         if (event.action == NetworkAuditAction.vpnRevoked) {
+          _shieldStatusGeneration++;
           state.setVpnActive(false);
+          // Revocation is not proof that the service and JNI worker finished
+          // shutting down. Require a fresh, verified status before toggling.
+          if (mounted && (_shieldStatusKnown || _shieldServiceActive)) {
+            setState(() {
+              _shieldStatusKnown = false;
+              _shieldServiceActive = false;
+            });
+          }
+          unawaited(_refreshShieldStatus());
           state.setSecurityLevel(AuraSecurityLevel.critical);
           AgentController.instance.reportError(event.requestedDomain);
         }
@@ -273,12 +353,13 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
           : latestExplanation.decisionThreshold.toStringAsFixed(2);
       _coverageAutotestStatus =
           'Diagnóstico local completado. Túnel VPN: '
-          '${state.isVpnActive ? 'activo' : 'inactivo'}. '
-          'Eventos de sesión: ${state.blockedEvents} bloqueos, '
+          '${!_shieldStatusKnown ? 'estado no confirmado' : state.isVpnActive ? 'activo' : _shieldServiceActive ? 'sin forwarding' : 'inactivo'}. '
+          'Eventos de sesión: ${state.blockedEvents} señales de bloqueo, '
           '${state.dgaAlertEvents} alertas DGA, '
           '${state.encryptedDnsBlocks} bloqueos de DNS cifrado y '
           '${state.quicBlocked} paquetes QUIC descartados. '
-          'Inspección TLS/SNI: no integrada en el flujo de paquetes del túnel. '
+          'TLS/SNI: integrado en sesiones TCP del túnel; cobertura limitada y '
+          'no validada por este diagnóstico. '
           'UMBRAL DE DECISIÓN: $threshold. No se generó tráfico de prueba.';
     });
   }
@@ -410,18 +491,21 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
   }
 
   Future<void> _toggleShield() async {
-    if (_isShieldBusy || !_isAuthenticated) return;
-    final state = context.read<AuraStateProvider>();
-    final wasActive = state.isVpnActive;
+    if (_isShieldBusy || !_isAuthenticated || !_shieldStatusKnown) return;
+    final serviceWasActive = _shieldServiceActive;
+    _shieldStatusGeneration++;
     setState(() => _isShieldBusy = true);
     try {
       await AgentController.instance.run(
-        wasActive ? 'desactivar defensas' : 'activar defensas',
+        serviceWasActive ? 'desactivar defensas' : 'activar defensas',
         // This callback is reached only after the user taps the visible toggle.
         confirmedByUser: true,
       );
     } finally {
-      if (mounted) setState(() => _isShieldBusy = false);
+      if (mounted) {
+        setState(() => _isShieldBusy = false);
+        unawaited(_refreshShieldStatus());
+      }
     }
   }
 
@@ -828,7 +912,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                 ),
                 TextButton(
                   key: const ValueKey<String>('vpn-toggle'),
-                  onPressed: _isAuthenticated && !_isShieldBusy
+                  onPressed: _isAuthenticated && !_isShieldBusy && _shieldStatusKnown
                       ? _toggleShield
                       : null,
                   style: TextButton.styleFrom(
@@ -854,7 +938,13 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : Text(
-                          vpnActive ? 'DEFENSA: ON' : 'DEFENSA: OFF',
+                          !_shieldStatusKnown
+                              ? 'DEFENSA: ?'
+                              : vpnActive
+                              ? 'DEFENSA: ON'
+                              : _shieldServiceActive
+                              ? 'DEFENSA: SIN FLUJO'
+                              : 'DEFENSA: OFF',
                           style: TextStyle(
                             color: vpnActive
                                 ? AuraTokens.success
@@ -950,7 +1040,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                         ),
                         SizedBox(height: compactLayout ? 3 : 8),
                         Text(
-                          '${state.blockedEvents} bloqueos confirmados en esta sesión',
+                          '${state.blockedEvents} señales de bloqueo en esta sesión',
                           style: const TextStyle(
                             color: AuraTokens.textMuted,
                             fontSize: 10,
@@ -958,7 +1048,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          'VPN local opcional · ${state.isVpnActive ? 'activa' : 'inactiva'}',
+                          'VPN local opcional · ${!_shieldStatusKnown ? 'estado no confirmado' : state.isVpnActive ? 'activa' : _shieldServiceActive ? 'sin forwarding' : 'inactiva'}',
                           style: const TextStyle(
                             color: AuraTokens.textMuted,
                             fontSize: 10,
@@ -984,7 +1074,13 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                   featureTile(
                     icon: Icons.wifi_rounded,
                     title: 'VPN Aura',
-                    subtitle: vpnActive ? 'Conectada' : 'Desconectada',
+                    subtitle: !_shieldStatusKnown
+                        ? 'Sin confirmar'
+                        : vpnActive
+                        ? 'Conectada'
+                        : _shieldServiceActive
+                        ? 'Sin flujo'
+                        : 'Desconectada',
                     onTap: _toggleShield,
                     color: vpnActive
                         ? AuraTokens.success
@@ -1158,8 +1254,12 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                   quickAction('ESTADO', () => _dispatch('estado')),
                   const SizedBox(width: 8),
                   quickAction(
-                    vpnActive ? 'DETENER VPN' : 'ACTIVAR VPN',
-                    _isShieldBusy ? null : _toggleShield,
+                    !_shieldStatusKnown
+                        ? 'VPN SIN CONFIRMAR'
+                        : _shieldServiceActive
+                        ? 'DETENER VPN'
+                        : 'ACTIVAR VPN',
+                    _isShieldBusy || !_shieldStatusKnown ? null : _toggleShield,
                   ),
                   const SizedBox(width: 8),
                   quickAction(
@@ -1595,9 +1695,9 @@ class _CoverageAuditCard extends StatelessWidget {
           ),
           const SizedBox(height: AuraTokens.s2),
           const Text(
-            'Inspección TLS/SNI: parser y reglas disponibles, pero todavía '
-            'no están conectados al flujo de paquetes del túnel. Aura no '
-            'afirma inspeccionar ni bloquear tráfico TLS por SNI.',
+            'TLS/SNI: el parser está integrado en sesiones TCP del túnel y '
+            'puede aplicar reglas a nombres visibles. No inspecciona QUIC ni '
+            'descifra ECH; su cobertura requiere validación en el dispositivo.',
             style: TextStyle(
               color: AuraTokens.warning,
               fontFamily: 'monospace',

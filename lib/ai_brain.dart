@@ -165,7 +165,10 @@ class AuraAIBrain {
     final result = await _shieldChannel.invokeMethod<bool>(
       active ? 'startShield' : 'stopShield',
     );
-    return result ?? false;
+    // A start response is correlated with verified native forwarding. A stop
+    // response only acknowledges Android's request, not completed teardown.
+    // This API reports confirmed state changes, not accepted requests.
+    return active && result == true;
   }
 
   Future<bool> addDnsBlockRule(String domain) async {

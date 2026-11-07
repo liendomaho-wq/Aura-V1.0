@@ -647,23 +647,39 @@ abstract class AuraTools {
             activate ? 'startShield' : 'stopShield',
           ) ??
           false;
+      if (!activate && confirmed) {
+        // Android's stopService return value only means that it accepted the
+        // request. The service's native worker may not have stopped yet.
+        return const ToolResult(
+          summary: 'Android aceptó la solicitud de detener la VPN, pero el cierre aún no está confirmado. Comprueba el estado antes de continuar.',
+          data: <String, dynamic>{
+            'ok': false,
+            'request_accepted': true,
+            'error': 'shutdown_unconfirmed',
+            'tool': 'toggle_defenses',
+            'security_level': 'warning',
+          },
+        );
+      }
       return ToolResult(
         summary: confirmed
-            ? activate
-                ? 'DEFENSA ACTIVADA — túnel en marcha'
-                : 'DEFENSA DESACTIVADA — túnel detenido'
+            ? 'DEFENSA ACTIVADA — túnel en marcha'
             : activate
-                ? 'El escudo VPN no se inició: falta el consentimiento de Android o el servicio no respondió.'
-                : 'Android no confirmó la detención del escudo VPN.',
+                ? 'No se confirmó el inicio del escudo VPN. Comprueba su estado antes de reintentar.'
+                : 'Android no confirmó la solicitud de detener el escudo VPN.',
         data: <String, dynamic>{
           'ok': confirmed,
-          if (confirmed) 'vpn_active': activate,
+          if (confirmed) 'vpn_active': true,
           if (!confirmed) 'security_level': 'warning',
         },
       );
     } on PlatformException catch (error) {
       return ToolResult(
-        summary: 'No pude contactar el motor VPN. Revisa que Aura esté activa.',
+        summary: error.code == 'VPN_START_TIMEOUT'
+            ? 'El servicio VPN no confirmó el arranque a tiempo. Comprueba su estado antes de reintentar.'
+            : error.code == 'VPN_CONSENT_TIMEOUT'
+                ? 'El consentimiento VPN agotó el tiempo. Cierra el diálogo del sistema antes de reintentar.'
+                : 'No pude contactar el motor VPN. Revisa que Aura esté activa.',
         data: <String, dynamic>{
           'ok': false,
           'error': 'operation_failed',

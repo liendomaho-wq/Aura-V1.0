@@ -510,6 +510,14 @@ is_ipv6_doh_resolver (const uint8_t *address)
     return 0;
 }
 
+enum {
+    AURA_DNS_NO_MATCH = 0,
+    AURA_DNS_MATCH = 1,
+    /* A valid-looking extension chain exceeds our inspection budget. Never
+     * pass it to lwIP unchecked or report it as a confirmed DNS match. */
+    AURA_DNS_UNINSPECTABLE = 2,
+};
+
 static int
 packet_is_encrypted_dns (const struct pbuf *packet, char *destination_address,
                          size_t address_capacity, uint16_t *port,
@@ -584,10 +592,12 @@ packet_is_encrypted_dns (const struct pbuf *packet, char *destination_address,
             uint8_t extension[8];
             size_t extension_length;
 
-            if (++extensions > 8 || offset + sizeof (extension) > ipv6_packet_length ||
+            if (++extensions > 8)
+                return AURA_DNS_UNINSPECTABLE;
+            if (offset + sizeof (extension) > ipv6_packet_length ||
                 pbuf_copy_partial (packet, extension, sizeof (extension), offset) !=
                     sizeof (extension))
-                return 0;
+                return AURA_DNS_NO_MATCH;
             if (protocol == 44) {
                 const uint16_t fragment =
                     ((uint16_t)extension[2] << 8) | extension[3];
@@ -601,8 +611,10 @@ packet_is_encrypted_dns (const struct pbuf *packet, char *destination_address,
             }
             protocol = extension[0];
             offset += extension_length;
-            if (offset > ipv6_packet_length || offset > 296)
-                return 0;
+            if (offset > ipv6_packet_length)
+                return AURA_DNS_NO_MATCH;
+            if (offset > 296)
+                return AURA_DNS_UNINSPECTABLE;
         }
         ip_header_length = offset;
         if (ipv6_packet_length < ip_header_length + sizeof (transport))
@@ -897,15 +909,20 @@ lwip_io_task_entry (void *data)
         const char *transport_protocol = NULL;
         uint16_t destination_port = 0;
 
-        if (packet_is_encrypted_dns (buf, destination_address,
+        const int dns_classification =
+            packet_is_encrypted_dns (buf, destination_address,
                                      sizeof (destination_address),
                                      &destination_port,
-                                     &transport_protocol)) {
+                                     &transport_protocol);
+        if (dns_classification != AURA_DNS_NO_MATCH) {
 #ifdef __ANDROID__
-            hev_jni_report_encrypted_dns_event (destination_address,
-                                                destination_port,
-                                                transport_protocol);
+            if (dns_classification == AURA_DNS_MATCH)
+                hev_jni_report_encrypted_dns_event (destination_address,
+                                                    destination_port,
+                                                    transport_protocol);
 #endif
+            /* Uninspectable extension chains are dropped, but are not falsely
+             * attributed to DNS or reported as a verified transport match. */
             pbuf_free (buf);
             continue;
         }

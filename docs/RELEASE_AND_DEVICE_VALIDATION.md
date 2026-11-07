@@ -38,11 +38,43 @@ flutter analyze --no-pub
 flutter test --reporter expanded
 python3 tool/test_vpn_config_template.py
 python3 tool/test_aura_sni_firewall.py
+python3 tool/test_mapped_dns.py
+python3 tool/test_tun_packet_filter.py
+python3 tool/test_lwip_fragment_policy.py
+python3 tool/test_verify_packaged_model.py
 python3 tool/test_release_signing_policy.py
+python3 tool/test_release_signing_runtime.py
+python3 tool/test_verify_aab.py
+# En un entorno Python con tool/requirements-train.txt instalado:
+python3 -m pytest -q tool/test_aura_brain.py tool/test_adversarial.py \
+  tool/test_adversarial_split_builder.py tool/test_grouped_splits.py
 bash tool/compile_aura.sh
+# Pruebas JVM de correlación y coordinación del ciclo de vida VPN:
+(cd android && AURA_ALLOW_DEBUG_SIGNING=true ./gradlew :app:testDebugUnitTest \
+  --tests com.ciberdefensa.aura.VpnStartRequestGateTest \
+  --tests com.ciberdefensa.aura.VpnLifecycleGateTest)
 ```
 
+Las pruebas JVM verifican la máquina de correlación y la exclusión entre inicio
+y destrucción; no sustituyen la prueba del diálogo, los broadcasts, JNI ni el
+ciclo de vida reales de Android. El servicio serializa establecimiento TUN y
+arranque/parada JNI con su destrucción. Esas llamadas pueden bloquear: medir
+ANR y tiempos en el dispositivo. Un cierre JNI o TUN no confirmado se informa
+como estado desconocido. El consentimiento tiene un límite de 30 s y el
+arranque nativo otro de 30 s; aceptar el diálogo después de su límite no inicia
+esa solicitud. El límite del agente es 80 s, pero el planificador o un hilo
+bloqueado pueden retrasar callbacks y un timeout no demuestra cancelación ni
+apagado nativo. El fallback de firma de ese comando se limita a configurar
+Gradle para la prueba debug, no autoriza publicar con firma de depuración.
+
 También deben conservarse los resultados de las pruebas Python del modelo y de las suites Android que estén configuradas. No omitir una suite para obtener un pipeline verde.
+
+`compile_aura.sh` verifica el SHA-256 y la firma del modelo incluido con la clave
+pública `AURA_PUBLIC_KEY_ENV` que se incrustará en la aplicación. Si se cambia la
+clave de publicación, el modelo empaquetado debe tener una firma válida para esa
+clave; una incompatibilidad detiene la compilación en lugar de producir un APK
+que rechace el modelo al abrirlo. Esta clave del modelo es independiente del
+certificado usado para firmar el APK.
 
 Un build Codemagic con `AURA_REQUIRE_RELEASE_SIGNING=false` produce únicamente un **artefacto DEBUG de prueba**. Sirve para instalación controlada, no para distribución.
 
@@ -93,15 +125,18 @@ Para métricas ML, conservar dataset real, manifiesto, splits, semilla y reporte
 Documentar estado inicial, acción, resultado observable y logs para cada caso:
 
 - [ ] Android muestra el diálogo de permiso VPN y Aura no lo marca como concedido antes de confirmación.
+- [ ] Comprobar en Android anterior a 13 y en Android 13+ que los broadcasts legítimos de estado llegan, y que una aplicación no firmada con la misma clave no puede falsificar el estado ni una revocación. Verificar resolución de `${applicationId}` en el manifiesto empaquetado.
 - [ ] `AuraVpnService`, TUN y HEV inician; el estado activo se anuncia solo tras verificar forwarding.
 - [ ] Una conexión TCP real atraviesa el relay SOCKS5 y alcanza un destino controlado.
 - [ ] Comprobar HTTP/HTTPS de salida y DNS real sin usar resultados inventados.
 - [ ] Verificar rutas y tráfico IPv4 e IPv6 cuando la red los soporte.
+- [ ] Con un emisor controlado, comprobar descarte de fragmentos IPv4/IPv6 que requieren reensamblaje, tratamiento de fragmentos atómicos IPv6 y compatibilidad de aplicaciones que usen datagramas grandes. Registrar interrupciones y verificar que no se presenten cadenas IPv6 no inspeccionables como bloqueos DNS confirmados.
 - [ ] Ejecutar una prueba independiente de fuga DNS y de IP pública antes/después de activar la VPN.
 - [ ] Wi-Fi → datos móviles → Wi-Fi sin fuga silenciosa y con recuperación verificada.
 - [ ] Pérdida total de red, restauración y nueva sesión de forwarding.
-- [ ] Detener desde Aura, detener desde Android y revocar el permiso VPN.
-- [ ] Repetir al menos diez ciclos start/stop sin worker huérfano ni falso estado activo.
+- [ ] Detener desde Aura, detener desde Android y revocar el permiso VPN. La aceptación de `stopService` no confirma por sí sola el cierre nativo: verificar interfaz y worker después de cada solicitud.
+- [ ] Repetir al menos diez ciclos start/stop sin worker huérfano ni falso estado activo; probar también detener durante establecimiento TUN, inicio JNI y espera SOCKS, y tras agotar el tiempo de espera. Medir bloqueo del hilo principal/ANR.
+- [ ] Dejar vencer el diálogo de consentimiento, aceptar después y verificar que no arranque la solicitud vencida; cerrar el diálogo y comprobar que una nueva solicitud sea posible. Verificar también timeout de arranque y estado desconocido.
 - [ ] Bloquear una regla SNI controlada y verificar el evento; probar ECH sin afirmar descifrado.
 - [ ] Suspender/reanudar el teléfono y reiniciar con la VPN previamente activa.
 - [ ] Medir batería, memoria, temperatura y estabilidad durante una sesión prolongada documentada.
@@ -139,12 +174,20 @@ Configurar secretos únicamente en el almacén seguro del proveedor CI, nunca en
 
 Para una compilación de producción:
 
-1. Establecer `AURA_REQUIRE_RELEASE_SIGNING=true`.
+1. Establecer `AURA_REQUIRE_RELEASE_SIGNING=true`; en el flujo Codemagic actual hay que cambiar su valor predeterminado `false` en la configuración del workflow para el build de producción.
 2. No habilitar `AURA_ALLOW_DEBUG_SIGNING`.
-3. Ejecutar `bash tool/compile_aura.sh` y `bash tool/compile_aura.sh --verify-artifact`.
+3. Ejecutar `bash tool/compile_aura.sh` y `bash tool/compile_aura.sh --verify-artifact`. El APK de producción requiere `apksigner`; el AAB requiere JDK 17. En ambos casos se exige un único firmante que coincida con el certificado del keystore configurado.
 4. Verificar certificado, SHA-256, versión y ausencia de fallback DEBUG.
 5. Instalar el artefacto firmado y repetir las pruebas críticas.
 6. Guardar evidencia y aprobación humana antes de publicar.
+
+Para AAB, `tool/VerifyAab.java` lee cada entrada de contenido con verificación
+JAR, rechaza entradas sin firmar, duplicadas o con más de un firmante y compara
+su certificado con el de carga configurado. Las pruebas usan archivos JAR
+mínimos firmados realmente con certificados temporales; todavía falta validar
+un AAB generado por Android. Este certificado de carga no demuestra qué
+certificado usará Google Play para la distribución. Las pruebas de flujo del
+APK con herramientas simuladas no sustituyen la verificación de un APK real.
 
 ## 10. Plantilla de evidencia
 

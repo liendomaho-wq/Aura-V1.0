@@ -42,6 +42,8 @@ void main() {
         EventChannel('com.aura.cyberdefense/network_stream');
     final calls = <String>[];
     var vpnActive = false;
+    var vpnServiceActive = false;
+    var statusVerified = true;
     final state = AuraStateProvider();
     MockStreamHandlerEventSink? networkEventSink;
     final messenger =
@@ -66,19 +68,22 @@ void main() {
     messenger.setMockMethodCallHandler(shieldChannel, (call) async {
       calls.add(call.method);
       if (call.method == 'startShield') {
+        vpnServiceActive = true;
         vpnActive = true;
         return true;
       }
       if (call.method == 'stopShield') {
+        vpnServiceActive = false;
         vpnActive = false;
         return true;
       }
       if (call.method == 'getShieldStatus') {
         return <String, dynamic>{
-          'service_active': vpnActive,
-          'vpn_interface_active': vpnActive,
+          'service_active': vpnServiceActive,
+          'vpn_interface_active': vpnServiceActive,
           'forwarding_active': vpnActive,
           'isolation_active': false,
+          'status_verified': statusVerified,
         };
       }
       return null;
@@ -159,19 +164,56 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
     await _pumpAuraFrames(tester);
-    expect(calls, <String>['startShield']);
+    expect(calls.where((call) => call != 'getShieldStatus'), <String>['startShield']);
     expect(state.isVpnActive, isTrue);
     // The status is rendered as one complete label, not a standalone 'ON'.
     expect(find.text('DEFENSA: ON'), findsOneWidget);
 
+    // Reopening the app must not retain a stale active state after native failure.
+    vpnActive = false;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await _pumpAuraFrames(tester);
+    expect(state.isVpnActive, isFalse);
+    expect(find.text('DEFENSA: SIN FLUJO'), findsOneWidget);
+
+    // An unverifiable native status is not presented as an active or stopped VPN.
+    statusVerified = false;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await _pumpAuraFrames(tester);
+    expect(find.text('DEFENSA: ?'), findsOneWidget);
+    expect(
+      tester.widget<TextButton>(find.byKey(const ValueKey<String>('vpn-toggle'))).onPressed,
+      isNull,
+    );
+
+    statusVerified = true;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await _pumpAuraFrames(tester);
+    expect(find.text('DEFENSA: SIN FLUJO'), findsOneWidget);
+    // A still-running service must be stopped before attempting a new start.
     await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
     await _pumpAuraFrames(tester);
-    expect(calls, <String>['startShield', 'stopShield']);
+    expect(vpnServiceActive, isFalse);
+    expect(find.text('DEFENSA: OFF'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
+    await _pumpAuraFrames(tester);
+    expect(state.isVpnActive, isTrue);
+    expect(find.text('DEFENSA: ON'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
+    await _pumpAuraFrames(tester);
+    expect(
+      calls.where((call) => call != 'getShieldStatus'),
+      <String>['startShield', 'stopShield', 'startShield', 'stopShield'],
+    );
     expect(state.isVpnActive, isFalse);
 
     await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
     await _pumpAuraFrames(tester);
     expect(state.isVpnActive, isTrue);
+    // Revocation is observed before teardown completes; no verified stop yet.
+    statusVerified = false;
+    vpnActive = false;
     networkEventSink!.success(<String, Object>{
       'timestamp': 2,
       'source_app': 'android',
@@ -183,6 +225,15 @@ void main() {
     await tester.pump();
     await _pumpAuraFrames(tester);
     expect(state.isVpnActive, isFalse);
+    expect(find.text('DEFENSA: ?'), findsOneWidget);
+    expect(
+      tester.widget<TextButton>(find.byKey(const ValueKey<String>('vpn-toggle'))).onPressed,
+      isNull,
+    );
+    statusVerified = true;
+    vpnServiceActive = false;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await _pumpAuraFrames(tester);
     expect(find.text('DEFENSA: OFF'), findsOneWidget);
     expect(
       find.textContaining(

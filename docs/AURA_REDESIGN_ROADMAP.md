@@ -60,18 +60,18 @@
 ### Etapa 3 — módulos Android y protección de red
 - [x] VPN local opcional con rutas IPv4/IPv6 y túnel SOCKS5 local.
 - [x] Parser TLS ClientHello/SNI y reglas dinámicas de dominio en el módulo C, probados de forma aislada.
-- [ ] Integrar el parser SNI en una ruta TUN consciente del reensamblado TCP; el túnel actual incluye el encabezado, pero no invoca el parser en el flujo de paquetes.
+- [x] Integrar el parser SNI en las sesiones TCP del túnel, acumulando el ClientHello antes de evaluar reglas. Esta integración en código y sus pruebas nativas no sustituyen la validación de tráfico real en el dispositivo.
 - [x] Descarga del feed IP HTTPS con límites de tamaño y actualización asíncrona.
 - [x] Pruebas nativas para reglas de dominio, allowlist, entradas inválidas y ClientHello malformado/incompleto.
 - [x] Confirmar ejecución verde de la suite nativa ampliada en Codemagic (confirmación del usuario, 2026-10-30).
 - [x] Integrar descarte de TCP/853 (DoT) y UDP/853 (DoQ) en el lector de paquetes TUN antes de entregar el paquete a lwIP.
 - [x] Integrar descarte de UDP/443 hacia una lista explícita de resolutores DoH conocidos, con evento de auditoría del destino y transporte.
 - [x] Añadir pruebas unitarias de la política de transporte: TCP/853, UDP/853 y UDP/443 solo para resolutores marcados.
-- [ ] Añadir pruebas de integración del analizador de paquetes IPv4/IPv6 (fragmentos, extensiones, longitudes y paquetes malformados).
-- [x] Validar los límites declarados de longitud IPv4/IPv6 antes de inspeccionar puertos DoT/DoQ/DoH; rechazar datagramas truncados, longitudes incoherentes y jumbogramas IPv6 aún no soportados.
-- [x] Limitar el análisis de cabeceras de extensión IPv6 a la longitud declarada del paquete y a un máximo de ocho extensiones/296 bytes.
-- [ ] Resolver explícitamente el tratamiento de fragmentos no iniciales: actualmente no se correlacionan con el primer fragmento, por lo que no se debe afirmar cobertura completa frente a evasión por fragmentación.
-- [ ] Añadir pruebas de regresión específicas del parser TUN (no solo pruebas de política SNI) para IPv4/IPv6, fragmentos, cabeceras de extensión y paquetes truncados.
+- [ ] Validar en Android y con tráfico real la integración del analizador de paquetes IPv4/IPv6 (fragmentos, extensiones, longitudes y paquetes malformados); las pruebas host del parser no cubren el túnel completo.
+- [x] Validar los límites declarados de longitud IPv4/IPv6 antes de inspeccionar puertos DoT/DoQ/DoH; no inspeccionar datos fuera de la longitud declarada ni jumbogramas IPv6 aún no soportados.
+- [x] Limitar el análisis de cabeceras de extensión IPv6 a la longitud declarada del paquete y a un máximo de ocho extensiones/296 bytes; las cadenas que exceden el límite se descartan sin registrarlas como DNS.
+- [ ] Validar el compromiso de compatibilidad de la política provisional: lwIP tiene desactivado el reensamblaje IPv4/IPv6, por lo que descarta datagramas fragmentados en lugar de correlacionarlos. Los fragmentos atómicos IPv6 se inspeccionan como paquetes completos. No afirmar cobertura completa de tráfico cifrado.
+- [x] Añadir pruebas host del parser TUN real con pbufs encadenados y de la entrada IP real de lwIP con adaptadores locales. Incluyen un control que demuestra reensamblaje cuando se habilita; no sustituyen las pruebas del túnel Android.
 - [ ] Evaluar DoH sobre TCP/443 y resolutores no incluidos en la lista; no afirmar cobertura general de DoH.
 - [ ] Validar DoT/DoQ/DoH en dispositivos físicos y comprobar falsos positivos, fugas y compatibilidad.
 - [ ] Definir política explícita para ECH; actualmente solo se identifica su extensión, no se descifra.

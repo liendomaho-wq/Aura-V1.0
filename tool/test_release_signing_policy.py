@@ -76,20 +76,12 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
         verify_script = self.codemagic_workflow.split(
             "- name: Verify Android Release artifact signer", 1
         )[1]
-        self.assertRegex(
-            build_script,
-            re.compile(
-                r"export AURA_REQUIRE_RELEASE_SIGNING=false\s+"
-                r"bash tool/compile_aura\.sh"
-            ),
-        )
+        self.assertIn("bash tool/compile_aura.sh", build_script)
+        self.assertNotIn("export AURA_REQUIRE_RELEASE_SIGNING=false", build_script)
         self.assertIn('AURA_REQUIRE_RELEASE_SIGNING: "false"', self.codemagic_workflow)
-        self.assertIn(
-            "apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk",
-            verify_script,
-        )
-        self.assertIn('grep -q "CN=Android Debug" /tmp/certs.txt', verify_script)
         self.assertIn("bash tool/compile_aura.sh --verify-artifact", verify_script)
+        self.assertIn('APK signer does not match the configured production certificate.', self.build_script)
+        self.assertIn('APK must have exactly one verified signer.', self.build_script)
         self.assertRegex(
             verify_script,
             re.compile(

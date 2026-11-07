@@ -18,6 +18,11 @@ from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precisio
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import _tree
 
+if __package__:
+    from .dataset.grouped_splits import registrable_group
+else:
+    from dataset.grouped_splits import registrable_group
+
 ROOT = Path(__file__).resolve().parents[1]
 COMMON_DOMAINS_PATH = ROOT / "tool/domain_lists/majestic_top_5000_20261018.txt"
 MAJESTIC_TOP_5000 = tuple(
@@ -103,10 +108,18 @@ MIN_ADVERSARIAL_RECALL = 0.60
 def candidate_quality_gate_failures(metrics):
     failures = []
     if metrics.get("evaluation_mode") not in {
-        "stratified-test-split",
-        "stratified-test-split-serialized-mobile-model",
+        "grouped-test-split",
+        "grouped-test-split-serialized-mobile-model",
     }:
-        failures.append("evaluation must use a stratified held-out test split")
+        failures.append("evaluation must use a grouped held-out test split")
+
+    test_counts = metrics.get("test_class_counts")
+    if not isinstance(test_counts, dict) or any(
+        not isinstance(test_counts.get(label), int)
+        or test_counts[label] < MIN_TEST_ROWS_PER_CLASS
+        for label in ("safe", "threat")
+    ):
+        failures.append("held-out test must contain at least 500 samples per class")
 
     test_metrics = metrics.get("test_metrics")
     if not isinstance(test_metrics, dict):
@@ -151,10 +164,10 @@ def candidate_quality_gate_failures(metrics):
             )
     if not isinstance(adversarial_counts, dict) or any(
         not isinstance(adversarial_counts.get(label), int)
-        or adversarial_counts[label] < 1
+        or adversarial_counts[label] < MIN_TEST_ROWS_PER_CLASS
         for label in ("safe", "threat")
     ):
-        failures.append("adversarial test must contain both safe and threat samples")
+        failures.append("adversarial test must contain at least 500 samples per class")
     return failures
 
 
@@ -441,11 +454,63 @@ def read_split(path):
         if reader.fieldnames != expected_header:
             raise ValueError(f"Unexpected dataset CSV schema in {path}: {reader.fieldnames}")
         for row in reader:
-            domain = row["domain"].strip().lower()
+            domain = normalize_domain(row["domain"])
+            try:
+                domain = domain.encode("idna").decode("ascii")
+            except UnicodeError as error:
+                raise ValueError(f"Invalid IDNA domain in {path}") from error
             if not domain or "." not in domain or row["label"] not in {"0", "1"}:
                 raise ValueError(f"Invalid dataset row in {path}: {row}")
             rows.append((domain, int(row["label"])))
     return rows
+
+
+def validate_split_integrity(train_rows, val_rows, test_rows, adversarial_rows):
+    """Reject duplicate hosts and registrable-group leakage before fitting.
+
+    The adversarial set intentionally reuses safe base hosts from the real test
+    split. It may share test groups, but not train/validation groups; shared
+    exact hosts must be safe in both sets. Temporal/source leakage is still possible.
+    """
+    named_rows = {
+        "train": train_rows,
+        "validation": val_rows,
+        "test": test_rows,
+        "adversarial_test": adversarial_rows,
+    }
+    host_labels = {}
+    for name, rows in named_rows.items():
+        labels = {}
+        for raw_host, label in rows:
+            try:
+                host = normalize_domain(raw_host).encode("idna").decode("ascii")
+            except UnicodeError as error:
+                raise ValueError(f"Invalid IDNA host in {name} split") from error
+            if not host or label not in EXPECTED_CLASSES:
+                raise ValueError(f"Invalid sample in {name} split")
+            if host in labels:
+                raise ValueError(f"Duplicate host in {name} split")
+            labels[host] = label
+        host_labels[name] = labels
+
+    groups = {
+        name: {registrable_group(host) for host in labels}
+        for name, labels in host_labels.items()
+    }
+    for left, right in (
+        ("train", "validation"),
+        ("train", "test"),
+        ("validation", "test"),
+        ("train", "adversarial_test"),
+        ("validation", "adversarial_test"),
+    ):
+        if host_labels[left].keys() & host_labels[right].keys():
+            raise ValueError(f"Host overlap between {left} and {right} splits")
+        if groups[left] & groups[right]:
+            raise ValueError(f"Registrable-domain group overlap between {left} and {right} splits")
+    for host in host_labels["test"].keys() & host_labels["adversarial_test"].keys():
+        if host_labels["test"][host] != 0 or host_labels["adversarial_test"][host] != 0:
+            raise ValueError("Only matching safe test bases may overlap the adversarial test")
 
 
 def evaluate_metrics(labels, predictions):
@@ -571,6 +636,7 @@ def write_metrics(metrics, json_path=METRICS_JSON, markdown_path=METRICS_MARKDOW
         [
             "# Aura Random Forest Test Metrics",
             "",
+            f"- Evaluation mode: {metrics['evaluation_mode']}",
             f"- Test rows: {metrics['test_rows']}",
             f"- Test class counts: safe={metrics['test_class_counts']['safe']}, threat={metrics['test_class_counts']['threat']}",
             f"- Accuracy: {scores['accuracy']:.6f}",
@@ -638,7 +704,9 @@ def train_mobile_preset():
     val_rows = read_split(DATASET_DIR / "splits/val.csv")
     test_rows = read_split(DATASET_DIR / "splits/test.csv")
     adversarial_test_rows = read_split(DATASET_DIR / "splits/test_adversarial.csv")
-    for split_name, rows in (("train", train_rows), ("val", val_rows), ("test", test_rows)):
+    validate_split_integrity(train_rows, val_rows, test_rows, adversarial_test_rows)
+    for split_name, rows in (("train", train_rows), ("val", val_rows), ("test", test_rows),
+                             ("adversarial_test", adversarial_test_rows)):
         counts = {label: sum(row_label == label for _, row_label in rows) for label in EXPECTED_CLASSES}
         if any(counts[label] < MIN_TEST_ROWS_PER_CLASS for label in EXPECTED_CLASSES):
             raise SystemExit(
@@ -771,7 +839,7 @@ def train_mobile_preset():
     metrics = {
         "metrics_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "evaluation_mode": "stratified-test-split-serialized-mobile-model",
+        "evaluation_mode": "grouped-test-split-serialized-mobile-model",
         "training_rows": len(train_rows),
         "validation_rows": len(val_rows),
         "test_rows": len(test_rows),
@@ -855,7 +923,7 @@ def main():
             raise SystemExit(
                 f"{error}. Pass --allow-seed-only only for the documented seed fallback."
             ) from error
-        train_rows, val_rows, test_rows = [], [], []
+        train_rows, val_rows, test_rows, adversarial_test_rows = [], [], [], []
     test_counts = {label: sum(row_label == label for _, row_label in test_rows) for label in EXPECTED_CLASSES}
     inadequate_test = any(test_counts[label] < MIN_TEST_ROWS_PER_CLASS for label in EXPECTED_CLASSES)
     if inadequate_test and not args.allow_seed_only:
@@ -871,8 +939,14 @@ def main():
         training_rows = samples
         evaluation_rows = samples
         validation_rows = samples
+        adversarial_test_rows = []
         print("WARNING: using the documented 30-domain seed-only fallback; metrics are not a real holdout evaluation.")
     else:
+        validate_split_integrity(train_rows, val_rows, test_rows, adversarial_test_rows)
+        for split_name, rows in (("train", train_rows), ("val", val_rows), ("adversarial_test", adversarial_test_rows)):
+            counts = {label: sum(row_label == label for _, row_label in rows) for label in EXPECTED_CLASSES}
+            if any(counts[label] < MIN_TEST_ROWS_PER_CLASS for label in EXPECTED_CLASSES):
+                raise SystemExit(f"{split_name} must contain at least 500 rows per class")
         training_rows = train_rows
         evaluation_rows = test_rows
         validation_rows = val_rows
@@ -918,16 +992,18 @@ def main():
     test_metrics = evaluate_metrics(evaluation_labels, predictions)
     adversarial_test_domains = [domain for domain, _ in adversarial_test_rows]
     adversarial_test_labels = [label for _, label in adversarial_test_rows]
-    adversarial_test_features = np.asarray(
-        [extract_maximum_features(domain) for domain in adversarial_test_domains]
-    )
-    adversarial_test_predictions = (
-        forest.predict_proba(adversarial_test_features)[:, 1] >= decision_threshold
-    ).astype(int).tolist()
-    adversarial_test_metrics = evaluate_metrics(
-        adversarial_test_labels,
-        adversarial_test_predictions,
-    )
+    adversarial_test_metrics = None
+    if adversarial_test_rows:
+        adversarial_test_features = np.asarray(
+            [extract_maximum_features(domain) for domain in adversarial_test_domains]
+        )
+        adversarial_test_predictions = (
+            forest.predict_proba(adversarial_test_features)[:, 1] >= decision_threshold
+        ).astype(int).tolist()
+        adversarial_test_metrics = evaluate_metrics(
+            adversarial_test_labels,
+            adversarial_test_predictions,
+        )
     validation_predictions = (
         np.asarray(validation_scores) >= decision_threshold
     ).astype(int).tolist()
@@ -940,7 +1016,9 @@ def main():
         "model_type": "random_forest",
         "training_status": "heuristic_seed" if using_seed_fallback else "heuristic_seed_with_csv",
         "training_samples": len(training_rows),
-        "csv_files": [str((DATASET_DIR / "splits/train_adversarial.csv").relative_to(ROOT))],
+        "csv_files": [] if using_seed_fallback else [
+            str((DATASET_DIR / "splits/train_adversarial.csv").relative_to(ROOT))
+        ],
         "training_config": {
             "n_estimators": 500,
             "max_depth": 10,
@@ -975,7 +1053,7 @@ def main():
     metrics = {
         "metrics_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "evaluation_mode": "seed-only-not-a-holdout" if using_seed_fallback else "stratified-test-split",
+        "evaluation_mode": "seed-only-not-a-holdout" if using_seed_fallback else "grouped-test-split",
         "training_rows": len(training_rows),
         "validation_rows": len(validation_rows),
         "test_rows": len(evaluation_rows),

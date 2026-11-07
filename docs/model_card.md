@@ -25,11 +25,11 @@ Las cifras siguientes son las métricas holdout del preset móvil documentadas e
 | FPR | 0.107160 |
 | Matriz de confusión | `[[13381, 1606], [13916, 43800]]` |
 
-Estas métricas describen esa evaluación y no garantizan el mismo rendimiento en otros datos o dispositivos. No se presentan como una evaluación independiente del asset publicado `3.0.0`.
+Estas cifras históricas proceden de una evaluación anterior con splits por fila, que podrían contener subdominios relacionados en distintos conjuntos. No validan el nuevo método agrupado, no garantizan el mismo rendimiento en otros datos o dispositivos y no se presentan como una evaluación independiente del asset publicado `3.0.0`.
 
 ## Datos de entrenamiento documentados
 
-El manifiesto del dataset registra 484,685 dominios: 384,775 `threat` y 99,910 `safe`. Los splits deterministas usan semilla 42: train 339,279; val 72,703; test 72,703. Las fuentes documentadas son Phishing.Database (MIT) para amenazas y Majestic Million (CC BY 3.0) como baseline seguro. Las listas crudas y los splits son artefactos regenerables, no datos versionados en el repositorio.
+Un manifiesto histórico documenta 484,685 dominios: 384,775 `threat` y 99,910 `safe`. Sus splits anteriores por fila usaban semilla 42: train 339,279; val 72,703; test 72,703. No son resultados del nuevo reparto agrupado. Las fuentes documentadas son Phishing.Database (MIT) para amenazas y Majestic Million (CC BY 3.0) como baseline seguro. Las listas crudas y los splits son artefactos regenerables, no datos versionados en el repositorio.
 
 ## Estado de producción y puerta de calidad
 
@@ -39,7 +39,26 @@ El candidato 3.1.0 se entrena desde cero con un conjunto etiquetado reconstruibl
 
 - Holdout real, no conjunto semilla: tasa de falsos positivos ≤ 8 % y recall de amenazas ≥ 65 %.
 - Prueba adversarial separada: tasa de falsos positivos ≤ 15 % y recall de amenazas ≥ 60 %.
-- Ambas clases presentes en la prueba adversarial.
+- Al menos 500 filas de cada clase en cada partición real y en la prueba adversarial.
+
+El nuevo pipeline asigna todos los subdominios del mismo dominio registrable
+ICANN al mismo conjunto mediante un hash determinista con semilla 42. Usa la
+lista de sufijos incluida en `tldextract==5.3.0`, sin descarga automática, y
+registra su SHA-256. Para sufijos desconocidos agrupa por las dos últimas
+etiquetas; las reglas privadas se excluyen deliberadamente para agrupar de forma
+conservadora, por ejemplo, los sitios de `github.io`. Rechaza particiones con
+menos de 500 filas por clase o con una desviación de más de cinco puntos
+porcentuales por clase respecto a las proporciones objetivo 70/15/15. Es un
+reparto agrupado con controles de balance, **no estratificación exacta**.
+
+Antes de entrenar, se rechazan duplicados y grupos compartidos entre train,
+validación y test. El conjunto adversarial no puede compartir grupos con train ni
+validación; puede compartir grupos con el test real, pero cualquier host exacto
+reutilizado debe ser seguro en ambos. Esto reduce la fuga por subdominios, pero
+no elimina correlaciones por fecha, fuente, familias de marcas o similitud
+léxica. La lista fija de dominios populares también se utiliza para extraer
+características; no debe interpretarse como una evaluación totalmente ciega a
+esos nombres. Sigue faltando evaluación temporal y por fuente con datos reales.
 
 Estos límites son puertas mínimas de ingeniería, no una garantía de rendimiento de producción. El modelo candidato no se promoverá sin revisar el informe, medir rendimiento y tamaño en Android, validar integridad y firma de publicación, y completar pruebas en dispositivo. Los assets firmados actuales no se eliminan ni sustituyen sin una firma válida y una ruta de reversión.
 
@@ -47,7 +66,7 @@ Estos límites son puertas mínimas de ingeniería, no una garantía de rendimie
 
 - El modelo clasifica nombres de dominio; no inspecciona contenido, formularios ni reputación completa de páginas, y no es un detector de phishing basado en contenido.
 - Las puntuaciones representan votos del bosque, no probabilidades calibradas.
-- No hay un filtro UDP por puerto ni una regla TCP/853 verificada; QUIC/DoQ y DoT no se presentan como bloqueados. El parser y callback existentes propagan una señal para ECH, que no se descifra ni tiene una política configurable de bloqueo. ECH y resolutores no conocidos pueden reducir la detección de red.
+- El código del túnel incluye filtros selectivos para TCP/853, UDP/853 y UDP/443 hacia resolutores conocidos, además de inspección SNI en sesiones TCP. Las pruebas nativas no demuestran cobertura universal ni sustituyen la validación de tráfico real en Android. ECH no se descifra; QUIC, DoH no identificado y fragmentación pueden reducir la cobertura.
 - Las métricas holdout no garantizan el rendimiento en producción ni sustituyen una revisión humana.
 - La visibilidad y el bloqueo dependen de Android, del consentimiento y del alcance observable del `VpnService`.
 
@@ -58,13 +77,14 @@ Los comandos reproducibles documentados en la sección 4 del README son:
 ```sh
 python -m pip install -r tool/requirements-train.txt
 python tool/dataset/build_dataset.py --sources phishing_database
+python tool/dataset/build_adversarial_splits.py
 python tool/train_max_aura_brain.py
 python tool/train_max_aura_brain.py --preset mobile
 python tool/bench_aura_brain.py
 python -m pytest tool/test_aura_brain.py -q
 ```
 
-El README enumera seis comandos (incluidos los dos modos de entrenamiento); aquí se conservan todos. El entrenamiento requiere las fuentes seleccionadas y sus condiciones de licencia. CI no firma candidatos automáticamente.
+El entrenamiento requiere las fuentes seleccionadas, las condiciones de sus licencias y conjuntos adversariales generados por separado. CI no firma candidatos automáticamente.
 
 ## Licencias y atribución
 
