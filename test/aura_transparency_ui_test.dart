@@ -161,7 +161,12 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.tap(find.text('SHA-256: d190dddf…'));
+    final digestButton = find.byKey(
+      const ValueKey<String>('verdict-explanation-sha256-verdict-1'),
+    );
+    await tester.ensureVisible(digestButton);
+    await tester.pump();
+    await tester.tap(digestButton);
     await _pumpAuraFrames(tester);
     expect(
       find.text(
