@@ -133,6 +133,7 @@ void main() {
       eventList,
       const Offset(0, 240),
     );
+    await tester.ensureVisible(telemetryPanel);
     await tester.pump();
     expect(telemetryPanel, findsOneWidget);
     expect(find.text('TELEMETRÍA LOCAL'), findsOneWidget);
