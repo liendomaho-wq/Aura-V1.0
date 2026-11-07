@@ -211,6 +211,7 @@ inspect_client_hello (const uint8_t *hello, size_t hello_length, char *sni,
     size_t compression_methods_length;
     size_t extensions_length;
     size_t extensions_end;
+    int saw_ech = 0;
 
     if (hello_length < 4 || hello[0] != 0x01)
         return AURA_TLS_SNI_MALFORMED;
@@ -263,17 +264,9 @@ inspect_client_hello (const uint8_t *hello, size_t hello_length, char *sni,
         extension_end = cursor + extension_length;
 
         if (extension_type == 0xFE0D) {
-            static const char encrypted_sni_marker[] = "[ECH]";
-            if (sni && sni_capacity) {
-                const size_t marker_length = sizeof (encrypted_sni_marker) - 1;
-                const size_t copy_length =
-                    marker_length < sni_capacity - 1
-                        ? marker_length
-                        : sni_capacity - 1;
-                memcpy (sni, encrypted_sni_marker, copy_length);
-                sni[copy_length] = '\0';
-            }
-            return AURA_TLS_SNI_ECH;
+            /* ECH does not make the outer SNI extension disappear. Continue
+             * parsing so extension ordering cannot bypass a block rule. */
+            saw_ech = 1;
         }
 
         if (extension_type == 0x0000) {
@@ -324,6 +317,19 @@ inspect_client_hello (const uint8_t *hello, size_t hello_length, char *sni,
 
     if (cursor != extensions_end)
         return AURA_TLS_SNI_MALFORMED;
+
+    if (saw_ech) {
+        static const char encrypted_sni_marker[] = "[ECH]";
+        if (sni && sni_capacity) {
+            const size_t marker_length = sizeof (encrypted_sni_marker) - 1;
+            const size_t copy_length = marker_length < sni_capacity - 1
+                                           ? marker_length
+                                           : sni_capacity - 1;
+            memcpy (sni, encrypted_sni_marker, copy_length);
+            sni[copy_length] = '\0';
+        }
+        return AURA_TLS_SNI_ECH;
+    }
 
     return AURA_TLS_SNI_ALLOWED;
 }

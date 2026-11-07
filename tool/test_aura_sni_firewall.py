@@ -24,11 +24,34 @@ def _client_hello(extensions):
     return b"\x16\x03\x01" + len(handshake).to_bytes(2, "big") + handshake
 
 
-def _sni_client_hello(hostname):
+def _fragment_tls_record(packet, split_at):
+    handshake = packet[5:]
+    if not 0 < split_at < len(handshake):
+        raise ValueError("split_at must divide the handshake into two non-empty parts")
+    first = handshake[:split_at]
+    second = handshake[split_at:]
+    version = packet[1:3]
+    return (
+        b"\x16"
+        + version
+        + len(first).to_bytes(2, "big")
+        + first
+        + b"\x16"
+        + version
+        + len(second).to_bytes(2, "big")
+        + second
+    )
+
+
+def _sni_extension(hostname):
     encoded = hostname.encode("ascii")
     names = b"\x00" + len(encoded).to_bytes(2, "big") + encoded
     server_name = len(names).to_bytes(2, "big") + names
-    return _client_hello(_extension(0x0000, server_name))
+    return _extension(0x0000, server_name)
+
+
+def _sni_client_hello(hostname):
+    return _client_hello(_sni_extension(hostname))
 
 
 def _inspect(library, packet):
@@ -119,6 +142,19 @@ class AuraSniFirewallTest(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertEqual(host, "example.com")
 
+    def test_ech_extension_order_cannot_bypass_an_sni_block_rule(self):
+        hostname = "ech-order.blocked.example"
+        self.assertEqual(
+            self.library.aura_add_dynamic_sni_rule(hostname.encode("ascii")), 1
+        )
+        ech = _extension(0xFE0D, b"encrypted-client-hello")
+        sni = _sni_extension(hostname)
+        for extensions in (ech + sni, sni + ech):
+            with self.subTest(ech_first=extensions.startswith(ech)):
+                result, host = _inspect(self.library, _client_hello(extensions))
+                self.assertEqual(result, 2)
+                self.assertEqual(host, hostname)
+
     def test_dynamic_rule_blocks_exact_domain_and_subdomains(self):
         self.assertEqual(
             self.library.aura_add_dynamic_sni_rule(b"malicious.example"), 1
@@ -126,6 +162,19 @@ class AuraSniFirewallTest(unittest.TestCase):
         for hostname in ("malicious.example", "login.malicious.example"):
             with self.subTest(hostname=hostname):
                 result, host = _inspect(self.library, _sni_client_hello(hostname))
+                self.assertEqual(result, 2)
+                self.assertEqual(host, hostname)
+
+    def test_client_hello_fragmented_across_tls_records_is_blocked(self):
+        hostname = "multi-record.blocked.example"
+        self.assertEqual(
+            self.library.aura_add_dynamic_sni_rule(hostname.encode("ascii")), 1
+        )
+        hello = _sni_client_hello(hostname)
+        for split_at in range(1, len(hello) - 5):
+            with self.subTest(split_at=split_at):
+                fragmented = _fragment_tls_record(hello, split_at)
+                result, host = _inspect(self.library, fragmented)
                 self.assertEqual(result, 2)
                 self.assertEqual(host, hostname)
 

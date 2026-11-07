@@ -379,7 +379,9 @@ native_start_service (JNIEnv *env, jobject thiz, jstring config_path, jint fd)
         goto exit;
 
     if (thread_joinable) {
-        pthread_join (work_thread, NULL);
+        res = pthread_join (work_thread, NULL);
+        if (res != 0)
+            goto exit;
         thread_joinable = 0;
     }
 
@@ -429,7 +431,11 @@ native_stop_service (JNIEnv *env, jobject thiz)
     if (atomic_load_explicit (&is_running, memory_order_acquire))
         hev_socks5_tunnel_quit ();
     res = pthread_join (work_thread, NULL);
+    if (res != 0)
+        goto exit;
 
+    /* Keep the thread joinable after a failed join so a later stop/start can
+     * reconcile it instead of falsely reporting a completed shutdown. */
     thread_joinable = 0;
     atomic_store_explicit (&is_running, 0, memory_order_release);
 exit:

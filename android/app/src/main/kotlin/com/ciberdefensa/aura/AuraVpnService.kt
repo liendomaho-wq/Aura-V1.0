@@ -205,10 +205,10 @@ class AuraVpnService : VpnService() {
         feedRefresh.shutdownNow()
         integrityMonitor.shutdownNow()
         worker.shutdownNow()
-        if (tunnelStarted) {
-            TProxyService.TProxyStopService()
-            tunnelStarted = false
-        }
+        // Always reconcile JNI, even when the Kotlin flag is stale or the native
+        // thread already exited but still needs to be joined.
+        stopNativeWorker()
+        tunnelStarted = false
         if (activeService === this) activeService = null
         notificationHandler.removeCallbacksAndMessages(null)
         vpnInterface?.close()
@@ -233,6 +233,27 @@ class AuraVpnService : VpnService() {
         super.onRevoke()
     }
 
+    /**
+     * Request native shutdown even if `tunnelStarted` is stale, then verify both
+     * the JNI result and the observable worker state. A false result is never
+     * presented to the user as confirmed forwarding shutdown.
+     */
+    private fun stopNativeWorker(): Boolean {
+        return try {
+            val stopAccepted = TProxyService.TProxyStopService()
+            val workerStopped = !TProxyService.TProxyIsRunning()
+            if (!stopAccepted || !workerStopped) {
+                Log.e("AuraVPN", "El motor nativo no confirmó su detención.")
+                false
+            } else {
+                true
+            }
+        } catch (exception: Exception) {
+            Log.e("AuraVPN", "No se pudo cerrar el worker VPN nativo.", exception)
+            false
+        }
+    }
+
     private fun verifyIntegrityOrStop(): Boolean {
         val report = try {
             AuraAntiTampering.inspect(this)
@@ -243,11 +264,16 @@ class AuraVpnService : VpnService() {
         if (report["isSecure"] == true) return true
 
         Log.e("AuraVPN", "Deteniendo el túnel por fallo de integridad.")
-        if (tunnelStarted) {
-            TProxyService.TProxyStopService()
-            tunnelStarted = false
-        }
-        reportState(false, "Túnel detenido por fallo de integridad.")
+        val stopConfirmed = stopNativeWorker()
+        tunnelStarted = false
+        reportState(
+            false,
+            if (stopConfirmed) {
+                "Túnel detenido por fallo de integridad."
+            } else {
+                "Fallo de integridad; el cierre del motor nativo no está confirmado."
+            },
+        )
         stopSelf()
         return false
     }
@@ -310,13 +336,21 @@ class AuraVpnService : VpnService() {
             Log.i("AuraVPN", "Hev tun2socks conectado al proxy SOCKS5.")
         } catch (e: Exception) {
             Log.e("AuraVPN", "No se pudo iniciar el escudo VPN.", e)
-            if (tunnelStarted) TProxyService.TProxyStopService()
+            val stopConfirmed = stopNativeWorker()
             tunnelStarted = false
             established?.close()
             vpnInterface = null
             underlyingNetwork = null
             startRequested.set(false)
-            reportState(false, e.message ?: "No se pudo iniciar el túnel.")
+            val failureMessage = e.message ?: "No se pudo iniciar el túnel."
+            reportState(
+                false,
+                if (stopConfirmed) {
+                    failureMessage
+                } else {
+                    "$failureMessage El cierre del motor nativo no está confirmado."
+                },
+            )
             updateForegroundNotification()
             stopSelf()
         }
@@ -399,17 +433,23 @@ class AuraVpnService : VpnService() {
             updateForegroundNotification()
             true
         } catch (exception: Exception) {
+            var stopConfirmed = false
             try {
-                if (TProxyService.TProxyIsRunning()) {
-                    TProxyService.TProxyStopService()
-                }
+                stopConfirmed = stopNativeWorker()
             } catch (stopException: Exception) {
                 Log.e("AuraVPN", "No se pudo detener el motor tras fallar la reanudación.", stopException)
             } finally {
                 tunnelStarted = false
             }
             Log.e("AuraVPN", "No se pudo reanudar el forwarding del túnel.", exception)
-            reportState(false, "No se pudo reanudar el túnel; el forwarding permanece detenido.")
+            reportState(
+                false,
+                if (stopConfirmed) {
+                    "No se pudo reanudar el túnel; el forwarding permanece detenido."
+                } else {
+                    "No se pudo reanudar el túnel; el cierre nativo no está confirmado."
+                },
+            )
             updateForegroundNotification()
             false
         }
@@ -520,15 +560,21 @@ class AuraVpnService : VpnService() {
      * and IPv6 routes remain installed, preventing silent physical-network bypass.
      */
     private fun stopTunnelForwardingForNetworkFailure(message: String) {
+        var stopConfirmed = false
         try {
-            if (TProxyService.TProxyIsRunning()) {
-                TProxyService.TProxyStopService()
-            }
+            stopConfirmed = stopNativeWorker()
         } catch (exception: Exception) {
             Log.e("AuraVPN", "No se pudo detener el forwarding tras perder la red.", exception)
         } finally {
             tunnelStarted = false
-            reportState(false, message)
+            reportState(
+                false,
+                if (stopConfirmed) {
+                    message
+                } else {
+                    "$message El cierre del motor nativo no está confirmado."
+                },
+            )
             updateForegroundNotification()
         }
     }
@@ -573,14 +619,16 @@ class AuraVpnService : VpnService() {
             )
             Log.i("AuraVPN", "Motor tun2socks recuperado tras cambiar la red física.")
         } catch (exception: Exception) {
-            if (TProxyService.TProxyIsRunning()) {
-                TProxyService.TProxyStopService()
-            }
+            val stopConfirmed = stopNativeWorker()
             tunnelStarted = false
             Log.e("AuraVPN", "No se pudo recuperar el túnel tras cambiar de red.", exception)
             reportState(
                 false,
-                "La red cambió y el túnel no pudo recuperarse. Reactiva la protección.",
+                if (stopConfirmed) {
+                    "La red cambió y el túnel no pudo recuperarse. Reactiva la protección."
+                } else {
+                    "La red cambió; la recuperación y el cierre nativo no están confirmados."
+                },
             )
         }
     }

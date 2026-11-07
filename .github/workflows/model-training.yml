@@ -44,7 +44,7 @@ jobs:
         run: python tool/bench_aura_brain.py
       - name: Run golden tests (even if candidate training is rejected)
         if: always()
-        run: python -m pytest tool/test_aura_brain.py tool/test_adversarial_split_builder.py -q
+        run: python -m pytest tool/test_aura_brain.py tool/test_adversarial.py tool/test_adversarial_split_builder.py -q
       - name: Upload reports (including rejected candidates)
         if: always()
         uses: actions/upload-artifact@v4
