@@ -289,8 +289,8 @@ class _SplashScreenState extends State<SplashScreen>
                 // authentication choices and made the first-run screen
                 // unnecessarily difficult to use.
                 final coreSize = compact
-                    ? (constraints.maxWidth * 0.52)
-                        .clamp(148.0, 180.0)
+                    ? (constraints.maxWidth * 0.38)
+                        .clamp(112.0, 132.0)
                         .toDouble()
                     : (constraints.maxWidth * 0.72)
                         .clamp(220.0, 310.0)
@@ -340,15 +340,15 @@ class _SplashScreenState extends State<SplashScreen>
                               ),
                             ],
                           ),
-                          SizedBox(height: compact ? 8 : 26),
+                          SizedBox(height: compact ? 4 : 26),
                           AuraAvatar(size: coreSize),
-                          SizedBox(height: compact ? 6 : 18),
+                          SizedBox(height: compact ? 3 : 18),
                           const Text(
                             'A U R A',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: AuraTokens.textPrimary,
-                              fontSize: 34,
+                              fontSize: compact ? 28 : 34,
                               height: 1.0,
                               fontWeight: FontWeight.w300,
                               letterSpacing: 3.5,
@@ -366,11 +366,11 @@ class _SplashScreenState extends State<SplashScreen>
                               letterSpacing: 2.8,
                             ),
                           ),
-                          SizedBox(height: compact ? 10 : 28),
+                          SizedBox(height: compact ? 5 : 28),
                           Container(
                             width: double.infinity,
                             constraints: const BoxConstraints(maxWidth: 390),
-                            padding: EdgeInsets.fromLTRB(18, compact ? 12 : 16, 18, compact ? 12 : 16),
+                            padding: EdgeInsets.fromLTRB(18, compact ? 8 : 16, 18, compact ? 8 : 16),
                             decoration: BoxDecoration(
                               color: const Color(0xA6091730),
                               borderRadius: BorderRadius.circular(22),
@@ -417,7 +417,7 @@ class _SplashScreenState extends State<SplashScreen>
                                     height: 1.45,
                                   ),
                                 ),
-                                const SizedBox(height: 18),
+                                SizedBox(height: compact ? 8 : 18),
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(10),
                                   child: LinearProgressIndicator(
@@ -431,7 +431,7 @@ class _SplashScreenState extends State<SplashScreen>
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 12),
+                                SizedBox(height: compact ? 7 : 12),
                                 Text(
                                   _bootStatusText,
                                   textAlign: TextAlign.center,
@@ -457,7 +457,7 @@ class _SplashScreenState extends State<SplashScreen>
                                   ),
                                 ],
                                 if (_showLockDecision && !_isAuthenticating) ...[
-                                  const SizedBox(height: 14),
+                                  SizedBox(height: compact ? 8 : 14),
                                   _buildDecisionButton(
                                     label: 'CONFIGURAR BLOQUEO DEL TELÉFONO',
                                     color: AuraTokens.accent,
@@ -465,7 +465,7 @@ class _SplashScreenState extends State<SplashScreen>
                                       AgentController.instance.openSecuritySettings(),
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
+                                  SizedBox(height: compact ? 5 : 8),
                                   _buildDecisionButton(
                                     label: 'REINTENTAR',
                                     color: AuraTokens.warning,
@@ -477,7 +477,7 @@ class _SplashScreenState extends State<SplashScreen>
                                     color: AuraTokens.danger,
                                     onPressed: _allowUnsecuredLocalAccess,
                                   ),
-                                  const SizedBox(height: 8),
+                                  SizedBox(height: compact ? 5 : 8),
                                   const Text(
                                     'ALTO RIESGO: CONFIGURA UN PIN PARA PROTEGER AURA.',
                                     textAlign: TextAlign.center,
@@ -491,7 +491,7 @@ class _SplashScreenState extends State<SplashScreen>
                               ],
                             ),
                           ),
-                          SizedBox(height: compact ? 8 : 22),
+                          SizedBox(height: compact ? 4 : 22),
                           const Text(
                             'AURA  /  ANDROID',
                             style: TextStyle(
