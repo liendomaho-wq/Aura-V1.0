@@ -797,7 +797,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'AURA QUANTUM',
+                        'AURA',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: AuraTokens.textPrimary,
@@ -808,7 +808,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                       ),
                       SizedBox(height: 2),
                       Text(
-                        'QUANTUM CYBER DEFENSE',
+                        'SISTEMA DE DEFENSA PERSONAL',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: AuraTokens.accent,
