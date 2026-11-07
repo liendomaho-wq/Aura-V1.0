@@ -1350,14 +1350,28 @@ class _ExplanationCardState extends State<_ExplanationCard> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        subtitle: Text(
-          '${explanation.host} · '
-          '${explanation.isThreat ? 'amenaza' : 'seguro'} · '
-          '${explanation.source}',
-          style: const TextStyle(
-            color: AuraTokens.textPrimary,
-            fontFamily: 'monospace',
-          ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${explanation.host} · '
+              '${explanation.isThreat ? 'amenaza' : 'seguro'} · '
+              '${explanation.source}',
+              style: const TextStyle(
+                color: AuraTokens.textPrimary,
+                fontFamily: 'monospace',
+              ),
+            ),
+            for (final signal in explanation.signals)
+              Text(
+                signal.description,
+                style: const TextStyle(
+                  color: AuraTokens.textMuted,
+                  fontSize: 11,
+                ),
+              ),
+          ],
         ),
         onExpansionChanged: (expanded) {
           if (expanded) _verifyIntegrity();
@@ -1388,13 +1402,6 @@ class _ExplanationCardState extends State<_ExplanationCard> {
                     style: const TextStyle(
                       color: AuraTokens.warning,
                       fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    signal.description,
-                    style: const TextStyle(
-                      color: AuraTokens.textPrimary,
-                      fontSize: 12,
                     ),
                   ),
                 ],
