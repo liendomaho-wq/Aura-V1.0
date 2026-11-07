@@ -284,9 +284,17 @@ class _SplashScreenState extends State<SplashScreen>
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final compact = constraints.maxHeight < 700;
-                final coreSize = (constraints.maxWidth * 0.72)
-                    .clamp(220.0, compact ? 258.0 : 310.0)
-                    .toDouble();
+                // Compact phones need a genuinely smaller core. A 220 px
+                // minimum consumed too much of a 568 px viewport before the
+                // authentication choices and made the first-run screen
+                // unnecessarily difficult to use.
+                final coreSize = compact
+                    ? (constraints.maxWidth * 0.52)
+                        .clamp(148.0, 180.0)
+                        .toDouble()
+                    : (constraints.maxWidth * 0.72)
+                        .clamp(220.0, 310.0)
+                        .toDouble();
                 return SingleChildScrollView(
                   physics: const ClampingScrollPhysics(),
                   child: ConstrainedBox(
@@ -295,10 +303,10 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(
-                        22,
-                        compact ? 10 : 22,
-                        22,
-                        compact ? 12 : 24,
+                        18,
+                        compact ? 6 : 22,
+                        18,
+                        compact ? 8 : 24,
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -332,9 +340,9 @@ class _SplashScreenState extends State<SplashScreen>
                               ),
                             ],
                           ),
-                          SizedBox(height: compact ? 14 : 26),
+                          SizedBox(height: compact ? 8 : 26),
                           AuraAvatar(size: coreSize),
-                          SizedBox(height: compact ? 8 : 18),
+                          SizedBox(height: compact ? 6 : 18),
                           const Text(
                             'A U R A',
                             textAlign: TextAlign.center,
@@ -358,11 +366,11 @@ class _SplashScreenState extends State<SplashScreen>
                               letterSpacing: 2.8,
                             ),
                           ),
-                          SizedBox(height: compact ? 18 : 28),
+                          SizedBox(height: compact ? 10 : 28),
                           Container(
                             width: double.infinity,
                             constraints: const BoxConstraints(maxWidth: 390),
-                            padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                            padding: EdgeInsets.fromLTRB(18, compact ? 12 : 16, 18, compact ? 12 : 16),
                             decoration: BoxDecoration(
                               color: const Color(0xA6091730),
                               borderRadius: BorderRadius.circular(22),
@@ -483,7 +491,7 @@ class _SplashScreenState extends State<SplashScreen>
                               ],
                             ),
                           ),
-                          SizedBox(height: compact ? 14 : 22),
+                          SizedBox(height: compact ? 8 : 22),
                           const Text(
                             'AURA QUANTUM  /  ANDROID',
                             style: TextStyle(
