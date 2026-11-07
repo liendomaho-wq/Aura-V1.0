@@ -663,13 +663,13 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
       required IconData icon,
       required String title,
       required String subtitle,
-      required String command,
+      required VoidCallback onTap,
       Color color = AuraTokens.accent,
     }) {
       return Expanded(
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
-          onTap: quickActionsEnabled ? () => _dispatch(command) : null,
+          onTap: quickActionsEnabled ? onTap : null,
           child: Container(
             constraints: const BoxConstraints(minHeight: 88),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
@@ -964,14 +964,14 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                     icon: Icons.manage_search_rounded,
                     title: 'Analizar',
                     subtitle: 'Dispositivo',
-                    command: 'analiza mi dispositivo',
+                    onTap: () => _dispatch('audita dispositivo'),
                   ),
                   const SizedBox(width: 8),
                   featureTile(
                     icon: Icons.wifi_rounded,
                     title: 'VPN Aura',
                     subtitle: vpnActive ? 'Conectada' : 'Desconectada',
-                    command: vpnActive ? 'desactivar defensas' : 'activar defensas',
+                    onTap: _toggleShield,
                     color: vpnActive ? AuraTokens.success : AuraTokens.accentViolet,
                   ),
                   const SizedBox(width: 8),
@@ -979,7 +979,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                     icon: Icons.lock_outline_rounded,
                     title: 'Privacidad',
                     subtitle: 'Revisar',
-                    command: 'revisa mi privacidad',
+                    onTap: _showTelemetrySettings,
                     color: AuraTokens.accentViolet,
                   ),
                 ],
@@ -993,7 +993,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                     icon: Icons.auto_awesome_rounded,
                     title: 'Aura AI',
                     subtitle: 'Asistente',
-                    command: 'ayuda',
+                    onTap: () => _dispatch('ayuda'),
                     color: AuraTokens.accentViolet,
                   ),
                   const SizedBox(width: 8),
@@ -1001,14 +1001,17 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                     icon: Icons.query_stats_rounded,
                     title: 'Informes',
                     subtitle: 'Actividad',
-                    command: 'estado',
+                    onTap: () => _dispatch('estado'),
                   ),
                   const SizedBox(width: 8),
                   featureTile(
                     icon: Icons.fact_check_outlined,
                     title: 'Auditoría',
                     subtitle: 'Cobertura',
-                    command: 'auditoría',
+                    onTap: () {
+                      setState(() => _showCoverageAudit = true);
+                      _runCoverageAutotest();
+                    },
                     color: AuraTokens.success,
                   ),
                 ],
