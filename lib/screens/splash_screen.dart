@@ -331,13 +331,19 @@ class _SplashScreenState extends State<SplashScreen>
                                 ),
                               ),
                               const SizedBox(width: 9),
-                              const Text(
-                                'SISTEMA DE DEFENSA PERSONAL',
-                                style: TextStyle(
-                                  color: AuraTokens.textMuted,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 2.0,
+                              Flexible(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: const Text(
+                                    'SISTEMA DE DEFENSA PERSONAL',
+                                    style: TextStyle(
+                                      color: AuraTokens.textMuted,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 2.0,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ],
