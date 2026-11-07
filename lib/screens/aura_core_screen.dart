@@ -536,7 +536,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen> {
                       child: Padding(
                         padding: EdgeInsets.only(bottom: 6),
                         child: Text(
-                          'TELEMETRIA LOCAL',
+                          'TELEMETRÍA LOCAL',
                           style: TextStyle(
                             color: _terminalCyan,
                             fontFamily: 'monospace',
@@ -1342,6 +1342,9 @@ class _ExplanationCardState extends State<_ExplanationCard> {
         iconColor: AuraTokens.accent,
         collapsedIconColor: AuraTokens.accent,
         title: Text(
+          key: ValueKey<String>(
+            'verdict-explanation-title-${explanation.id}',
+          ),
           explanation.isThreat
               ? '¿Por qué se bloqueó?'
               : '¿Por qué se consideró seguro?',
@@ -1350,28 +1353,14 @@ class _ExplanationCardState extends State<_ExplanationCard> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '${explanation.host} · '
-              '${explanation.isThreat ? 'amenaza' : 'seguro'} · '
-              '${explanation.source}',
-              style: const TextStyle(
-                color: AuraTokens.textPrimary,
-                fontFamily: 'monospace',
-              ),
-            ),
-            for (final signal in explanation.signals)
-              Text(
-                signal.description,
-                style: const TextStyle(
-                  color: AuraTokens.textMuted,
-                  fontSize: 11,
-                ),
-              ),
-          ],
+        subtitle: Text(
+          '${explanation.host} · '
+          '${explanation.isThreat ? 'amenaza' : 'seguro'} · '
+          '${explanation.source}',
+          style: const TextStyle(
+            color: AuraTokens.textPrimary,
+            fontFamily: 'monospace',
+          ),
         ),
         onExpansionChanged: (expanded) {
           if (expanded) _verifyIntegrity();
@@ -1402,6 +1391,13 @@ class _ExplanationCardState extends State<_ExplanationCard> {
                     style: const TextStyle(
                       color: AuraTokens.warning,
                       fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    signal.description,
+                    style: const TextStyle(
+                      color: AuraTokens.textPrimary,
+                      fontSize: 12,
                     ),
                   ),
                 ],

@@ -119,6 +119,22 @@ void main() {
     await tester.pump();
     await _pumpAuraFrames(tester);
     expect(state.telemetryEvents.single['requested_domain'], 'example.com');
+
+    // The console jumps to the newest event. The local telemetry panel is the
+    // first child of a lazy ListView, so bring it back into the viewport
+    // instead of assuming that an off-screen widget remains mounted.
+    final eventList = find.byKey(const ValueKey<String>('aura-event-list'));
+    final telemetryPanel = find.byKey(
+      const ValueKey<String>('local-telemetry-panel'),
+    );
+    expect(eventList, findsOneWidget);
+    await tester.dragUntilVisible(
+      telemetryPanel,
+      eventList,
+      const Offset(0, 240),
+    );
+    await tester.pump();
+    expect(telemetryPanel, findsOneWidget);
     expect(find.text('TELEMETRÍA LOCAL'), findsOneWidget);
     expect(find.text('REGISTRO LOCAL PAUSADO'), findsOneWidget);
     // Network events remain available to the live session, but opt-out means
