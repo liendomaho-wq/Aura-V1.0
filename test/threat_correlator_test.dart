@@ -6,7 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   const packageName = 'com.example.suspicious';
-  final baseTimestamp = DateTime.now().millisecondsSinceEpoch;
+  late int baseTimestamp;
+
+  setUp(() {
+    // Refresh the fixture clock for every test. The CI suite may spend several
+    // minutes running earlier tests before this file is executed.
+    baseTimestamp = DateTime.now().millisecondsSinceEpoch;
+  });
 
   Map<String, dynamic> blockedEvent({
     required int timestamp,
