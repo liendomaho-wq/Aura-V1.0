@@ -94,8 +94,33 @@ Acciones/herramientas presentes en el código (la disponibilidad real depende de
 - Asset activo documentado: modelo `3.0.0`, bosque de 500 árboles y seis características históricas.
 - SHA-256 documentado del JSON 3.0.0: `d190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2`.
 - El cliente descarga JSON, sidecar SHA-256 y firma; valida antes de instalar/cifrar el modelo. Ante fallo de integridad no debe aceptar el modelo nuevo.
-- Existe un contrato de vector mejorado de 18 características sincronizado entre Python y Dart, pero el modelo móvil 3.0.0 usa seis características. No cambiar el vector del modelo activo sin entrenar, evaluar y versionar un modelo compatible.
+- Existe un contrato de vector mejorado de 18 características sincronizado entre Python y Dart para el **candidato 3.1.0**, pero el modelo móvil 3.0.0 usa únicamente las seis primeras. No cambiar el vector del modelo activo sin entrenar, evaluar y versionar un modelo compatible.
 - Las características auxiliares que no pertenecen al vector de seis campos no deben presentarse como causa de la predicción.
+
+Contrato de extracción compartido por `tool/train_max_aura_brain.py` y `AuraAIInference`:
+
+| # | Característica | Alcance |
+|---:|---|---|
+| 1 | `length` | Longitud total del host normalizado. |
+| 2 | `shannon_entropy` | Entropía de Shannon de los caracteres del host. |
+| 3 | `digit_ratio` | Proporción de dígitos ASCII. |
+| 4 | `vowel_ratio` | Proporción de vocales sobre letras ASCII. |
+| 5 | `consonant_sequence_ratio` | Proporción de letras en secuencias de tres o más consonantes. |
+| 6 | `suspicious_tld` | Indicador de TLD incluido en la lista léxica de sospecha. |
+| 7 | `min_normalized_levenshtein` | Distancia de edición mínima normalizada frente a dominios comunes. |
+| 8 | `bigram_repeat_ratio` | Proporción de bigramas repetidos. |
+| 9 | `trigram_repeat_ratio` | Proporción de trigramas repetidos. |
+| 10 | `subdomain_depth` | Profundidad de subdominios normalizada. |
+| 11 | `tld_length_ratio` | Longitud del TLD normalizada. |
+| 12 | `idn_homograph_indicator` | Señal acotada de caracteres cirílicos confundibles. |
+| 13 | `non_ascii_ratio` | Proporción de caracteres no ASCII. |
+| 14 | `consecutive_digits_indicator` | Indicador de dígitos consecutivos. |
+| 15 | `conditional_entropy` | Entropía ponderada de etiquetas normalizada. |
+| 16 | `rare_character_ratio` | Proporción de letras poco frecuentes definidas por el extractor. |
+| 17 | `longest_label_length_ratio` | Longitud de la etiqueta más larga normalizada. |
+| 18 | `suspicious_keyword_indicator` | Indicador de palabras clave léxicas de sospecha. |
+
+Estas señales describen el nombre de dominio, no el contenido del sitio. Las doce últimas solo se usan en inferencia cuando el modelo declara exactamente el orden completo de 18 campos.
 - El pipeline de datos está en `tool/dataset/`; entrenador en `tool/train_max_aura_brain.py`; benchmark en `tool/bench_aura_brain.py`; pruebas en `tool/test_aura_brain.py`.
 - Las fuentes, licencias, splits y métricas deben ser reproducibles y versionados como artefactos apropiados. No usar datasets sintéticos/seed-only para afirmar métricas holdout.
 - Model Card: [docs/model_card.md](docs/model_card.md). Modelo y documentación pública: [GitHub Pages](https://yojamm16-boop.github.io/Aura-V1.0/model-card.md) (comprobar que la publicación corresponde al commit actual).

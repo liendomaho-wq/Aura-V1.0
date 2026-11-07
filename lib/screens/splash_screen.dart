@@ -126,7 +126,7 @@ class _SplashScreenState extends State<SplashScreen>
       if (!mounted) return;
       setState(() {
         _loadingProgress = 0.55;
-        _bootStatusText = 'DESCIFRANDO MODELO AES-256...';
+        _bootStatusText = 'VALIDANDO MODELO LOCAL E INTEGRIDAD...';
       });
       final modelReady = await _aiBrain.preloadModel();
       if (!mounted) return;
@@ -343,7 +343,7 @@ class _SplashScreenState extends State<SplashScreen>
                           SizedBox(height: compact ? 4 : 26),
                           AuraAvatar(size: coreSize),
                           SizedBox(height: compact ? 3 : 18),
-                          const Text(
+                          Text(
                             'A U R A',
                             textAlign: TextAlign.center,
                             style: TextStyle(

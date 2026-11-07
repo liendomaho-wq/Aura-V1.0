@@ -9,11 +9,13 @@ ANTI_TAMPERING_SOURCE = Path("android/app/src/main/kotlin/com/ciberdefensa/aura/
 CRYPTO_SOURCE = Path("lib/crypto/aura_crypto_layer.dart")
 NATIVE_TUNNEL = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/hev-socks5-tunnel.c")
 NATIVE_SOCKS = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/core/src/hev-socks5-misc.c")
+NATIVE_JNI = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/hev-jni.c")
 text = SOURCE.read_text(encoding="utf-8")
 anti_tampering = ANTI_TAMPERING_SOURCE.read_text(encoding="utf-8")
 crypto_source = CRYPTO_SOURCE.read_text(encoding="utf-8")
 native_tunnel = NATIVE_TUNNEL.read_text(encoding="utf-8")
 native_socks = NATIVE_SOCKS.read_text(encoding="utf-8")
+native_jni = NATIVE_JNI.read_text(encoding="utf-8")
 manifest = Path("android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
 CONSOLE_SOURCE = Path("lib/screens/aura_core_screen.dart").read_text(encoding="utf-8")
 
@@ -438,7 +440,7 @@ for required_fail_closed_guard in (
     "recoverTunnelAfterNetworkChange()",
     "TProxyService.TProxyStopService()",
     "tunnelStarted = false",
-    "reportState(false, message)",
+    "stopConfirmed = stopNativeWorker()",
 ):
     if required_fail_closed_guard not in text:
         sys.exit("FAIL: VPN underlay fail-closed lifecycle is missing " + required_fail_closed_guard)
@@ -450,12 +452,69 @@ fail_closed = re.search(
 )
 if not fail_closed:
     sys.exit("FAIL: VPN underlay failure must have a dedicated forwarding shutdown path")
-if "TProxyService.TProxyIsRunning()" not in fail_closed.group(1):
-    sys.exit("FAIL: forwarding shutdown must check native worker state")
+if "stopNativeWorker()" not in fail_closed.group(1):
+    sys.exit("FAIL: forwarding shutdown must reconcile the native worker")
+if "stopConfirmed" not in fail_closed.group(1):
+    sys.exit("FAIL: forwarding shutdown must not claim success when JNI stop is unconfirmed")
 if "updateForegroundNotification()" not in fail_closed.group(1):
     sys.exit("FAIL: degraded network state must be reflected in the VPN notification")
 
+native_stop = re.search(
+    r"private fun stopNativeWorker\(\): Boolean \{(.*?)\n    \}",
+    text,
+    re.DOTALL,
+)
+if not native_stop:
+    sys.exit("FAIL: VPN must have a centralized native-worker shutdown guard")
+for required_native_stop_guard in (
+    "val stopAccepted = TProxyService.TProxyStopService()",
+    "val workerStopped = !TProxyService.TProxyIsRunning()",
+    "if (!stopAccepted || !workerStopped)",
+):
+    if required_native_stop_guard not in native_stop.group(1):
+        sys.exit("FAIL: native shutdown verification is missing " + required_native_stop_guard)
+
+on_destroy = re.search(
+    r"override fun onDestroy\(\) \{(.*?)\n    override fun onRevoke",
+    text,
+    re.DOTALL,
+)
+if not on_destroy or "stopNativeWorker()" not in on_destroy.group(1):
+    sys.exit("FAIL: VPN destruction must always reconcile native worker state")
+if "if (tunnelStarted)" in on_destroy.group(1):
+    sys.exit("FAIL: a stale Kotlin flag must not skip native worker cleanup")
+
 print("PASS: VPN underlay loss stops native forwarding and recovery can restart from a stopped state.")
+print("PASS: VPN teardown verifies JNI shutdown independently of the Kotlin forwarding flag.")
+
+native_start = re.search(
+    r"\nnative_start_service \(JNIEnv \*env.*?\)\n\{(.*?)\n\}",
+    native_jni,
+    re.DOTALL,
+)
+native_stop = re.search(
+    r"\nnative_stop_service \(JNIEnv \*env.*?\)\n\{(.*?)\n\}",
+    native_jni,
+    re.DOTALL,
+)
+if not native_start or not native_stop:
+    sys.exit("FAIL: could not inspect native VPN start/stop lifecycle")
+for lifecycle_name, lifecycle_body in (
+    ("start", native_start.group(1)),
+    ("stop", native_stop.group(1)),
+):
+    join_guard = re.search(
+        r"res = pthread_join \(work_thread, NULL\);\s*"
+        r"if \(res != 0\)\s*goto exit;\s*"
+        r"(?:/\*.*?\*/\s*)?thread_joinable = 0;",
+        lifecycle_body,
+        re.DOTALL,
+    )
+    if not join_guard:
+        sys.exit(
+            f"FAIL: native {lifecycle_name} must preserve joinable state after pthread_join failure"
+        )
+print("PASS: native VPN start/stop retains recoverable state when pthread_join fails.")
 
 # Verify that the native TUN packet path invokes encrypted-DNS classification
 # and discards matched packets, rather than testing only the standalone port helper.

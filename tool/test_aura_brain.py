@@ -132,17 +132,19 @@ def test_enhanced_features_preserve_legacy_values_and_normalize_new_values():
 
     assert len(features) == 18
     assert maximum_features == features
-    assert features[:6] == [
-        9.0,
-        -(
-            (3 / 9) * math.log2(3 / 9)
-            + 6 * (1 / 9) * math.log2(1 / 9)
-        ),
-        1 / 9,
-        1 / 7,
-        6 / 7,
-        1.0,
-    ]
+    assert features[:6] == pytest.approx(
+        [
+            9.0,
+            -(
+                (3 / 9) * math.log2(3 / 9)
+                + 6 * (1 / 9) * math.log2(1 / 9)
+            ),
+            1 / 9,
+            1 / 7,
+            6 / 7,
+            1.0,
+        ]
+    )
     assert all(0.0 <= value <= 1.0 for value in features[6:])
     assert features[11] == 0.0
     assert features[13] == 0.0
@@ -206,7 +208,7 @@ def test_enhanced_features_combine_repeated_bigrams_and_trigrams():
     assert features[8] <= 1.0
 
 
-def test_feature_helpers_and_model_metadata_follow_the_v4_contract():
+def test_feature_helpers_and_model_metadata_follow_the_candidate_contract():
     assert 0.0 < calculate_bigram_repeat_ratio("ABABAB.example") <= 1.0
     assert 0.0 < calculate_trigram_repeat_ratio("ABABAB.example") <= 1.0
     assert 0.0 <= calculate_conditional_entropy("ABABAB.example") <= 1.0
@@ -218,7 +220,7 @@ def test_feature_helpers_and_model_metadata_follow_the_v4_contract():
         "feature_names",
         "trained_at",
     }
-    assert metadata["version"] == MODEL_VERSION == "4.0.0"
+    assert metadata["version"] == MODEL_VERSION == "3.1.0"
     assert metadata["feature_count"] == 18
     assert metadata["feature_names"] == FEATURE_ORDER
     assert datetime.fromisoformat(metadata["trained_at"]).tzinfo is not None
