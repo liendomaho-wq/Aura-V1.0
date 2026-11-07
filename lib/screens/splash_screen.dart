@@ -330,7 +330,7 @@ class _SplashScreenState extends State<SplashScreen>
                               ),
                               const SizedBox(width: 9),
                               const Text(
-                                'SISTEMA DE DEFENSA PERSONAL',
+                                'INTELIGENCIA DE CIBERDEFENSA',
                                 style: TextStyle(
                                   color: AuraTokens.textMuted,
                                   fontSize: 9,
@@ -344,20 +344,20 @@ class _SplashScreenState extends State<SplashScreen>
                           AuraAvatar(size: coreSize),
                           SizedBox(height: compact ? 6 : 18),
                           const Text(
-                            'A U R A',
+                            'AURA QUANTUM',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: AuraTokens.textPrimary,
-                              fontSize: 42,
+                              fontSize: 34,
                               height: 1.0,
-                              fontWeight: FontWeight.w200,
-                              letterSpacing: 7,
+                              fontWeight: FontWeight.w300,
+                              letterSpacing: 3.5,
                               fontFamily: 'sans-serif',
                             ),
                           ),
                           const SizedBox(height: 10),
                           const Text(
-                            'INTELIGENCIA QUE PROTEGE',
+                            'TU ALIADA EN EL MUNDO DIGITAL',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: AuraTokens.accent,
@@ -397,7 +397,7 @@ class _SplashScreenState extends State<SplashScreen>
                             child: Column(
                               children: [
                                 const Text(
-                                  'TU CENTRO DE CIBERDEFENSA',
+                                  'PROTECCIÓN INTELIGENTE PARA ANDROID',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: AuraTokens.textPrimary,
@@ -408,8 +408,8 @@ class _SplashScreenState extends State<SplashScreen>
                                 ),
                                 const SizedBox(height: 7),
                                 const Text(
-                                  'Una inteligencia local para ayudarte a comprender, '
-                                  'supervisar y proteger tu entorno digital.',
+                                  'Aura analiza señales de riesgo, ayuda a revisar aplicaciones y conexiones, '
+                                  'y explica qué medidas puedes tomar para proteger tu privacidad.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: AuraTokens.textMuted,
