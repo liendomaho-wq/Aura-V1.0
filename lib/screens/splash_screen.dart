@@ -186,9 +186,9 @@ class _SplashScreenState extends State<SplashScreen>
           backgroundColor: color.withValues(alpha: 0.08),
           foregroundColor: color,
           side: BorderSide(color: color),
-          padding: const EdgeInsets.symmetric(
+          padding: EdgeInsets.symmetric(
             horizontal: AuraTokens.s2,
-            vertical: AuraTokens.s3,
+            vertical: MediaQuery.sizeOf(context).height < 700 ? 6 : AuraTokens.s3,
           ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AuraTokens.rSm),
@@ -290,7 +290,7 @@ class _SplashScreenState extends State<SplashScreen>
                 // unnecessarily difficult to use.
                 final coreSize = compact
                     ? (constraints.maxWidth * 0.38)
-                        .clamp(112.0, 132.0)
+                        .clamp(96.0, 112.0)
                         .toDouble()
                     : (constraints.maxWidth * 0.72)
                         .clamp(220.0, 310.0)
@@ -342,7 +342,7 @@ class _SplashScreenState extends State<SplashScreen>
                           ),
                           SizedBox(height: compact ? 4 : 26),
                           AuraAvatar(size: coreSize),
-                          SizedBox(height: compact ? 3 : 18),
+                          SizedBox(height: compact ? 2 : 18),
                           Text(
                             'A U R A',
                             textAlign: TextAlign.center,
@@ -366,11 +366,11 @@ class _SplashScreenState extends State<SplashScreen>
                               letterSpacing: 2.8,
                             ),
                           ),
-                          SizedBox(height: compact ? 5 : 28),
+                          SizedBox(height: compact ? 3 : 28),
                           Container(
                             width: double.infinity,
                             constraints: const BoxConstraints(maxWidth: 390),
-                            padding: EdgeInsets.fromLTRB(18, compact ? 8 : 16, 18, compact ? 8 : 16),
+                            padding: EdgeInsets.fromLTRB(18, compact ? 6 : 16, 18, compact ? 6 : 16),
                             decoration: BoxDecoration(
                               color: const Color(0xA6091730),
                               borderRadius: BorderRadius.circular(22),
