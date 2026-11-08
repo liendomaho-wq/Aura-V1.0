@@ -145,6 +145,15 @@ void main() {
     // they must not be persisted in local telemetry storage.
     expect(await AuraLocalTelemetry.loadEvents(), isEmpty);
 
+    // Inspecting the console scrolls the overview off stage. A real downward
+    // gesture must restore it; do not bypass the visible-widget assertions.
+    await tester.dragUntilVisible(
+      find.text('Hola, soy Aura.'),
+      eventList,
+      const Offset(0, 240),
+    );
+    await tester.pump();
+
     expect(find.text('DEFENSA: OFF'), findsOneWidget);
     expect(find.text('Hola, soy Aura.'), findsOneWidget);
     expect(find.byType(AuraAvatar), findsOneWidget);

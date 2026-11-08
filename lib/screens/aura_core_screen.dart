@@ -52,6 +52,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
 
   final TextEditingController _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final GlobalKey<NestedScrollViewState> _overviewScrollKey =
+      GlobalKey<NestedScrollViewState>();
   AuraNetworkAuditor? _networkAuditor;
   AuraAIBrain? _aiBrain;
   StreamSubscription<NetworkAuditEvent>? _networkEventSubscription;
@@ -718,10 +720,13 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
 
   void _scrollToLatest(int eventCount, {bool force = false}) {
     if (!force && eventCount == _lastRenderedEventCount) return;
+    final keepInitialOverview = _lastRenderedEventCount < 0 && !force;
     _lastRenderedEventCount = eventCount;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
-      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      if (!mounted || keepInitialOverview) return;
+      final controller = _overviewScrollKey.currentState?.innerController;
+      if (controller == null || !controller.hasClients) return;
+      controller.jumpTo(controller.position.maxScrollExtent);
     });
   }
 
@@ -964,9 +969,11 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                 // Keep VPN controls and input pinned; let the overview and
                 // warnings scroll instead of exhausting the bounded console.
                 Expanded(
-                  child: CustomScrollView(
-                    key: const ValueKey<String>('aura-overview-scroll'),
-                    slivers: [
+                  key: const ValueKey<String>('aura-overview-scroll'),
+                  child: NestedScrollView(
+                    key: _overviewScrollKey,
+                    controller: _scrollController,
+                    headerSliverBuilder: (context, innerBoxIsScrolled) => [
                       SliverToBoxAdapter(
                         child: Column(
                           children: [
@@ -1226,81 +1233,78 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                           ],
                         ),
                       ),
-                      SliverFillRemaining(
-                        hasScrollBody: true,
-                        child: _isAuthenticated
-                            ? StreamBuilder<AgentEvent>(
-                                stream: AgentController.instance.events,
-                                builder: (context, snapshot) {
-                                  final events =
-                                      AgentController.instance.history;
-                                  final explanationCount =
-                                      state.explanationHistory.length;
-                                  final leadingCardCount =
-                                      (_showCoverageAudit ||
-                                              explanationCount > 0
-                                          ? 1
-                                          : 0) +
-                                      (!_telemetryEndpointConfigured ? 1 : 0);
-                                  _scrollToLatest(
-                                    events.length + leadingCardCount,
-                                  );
-                                  return ListView(
-                                    key: const ValueKey<String>(
-                                      'aura-event-list',
-                                    ),
-                                    controller: _scrollController,
-                                    padding: const EdgeInsets.fromLTRB(
-                                      14,
-                                      14,
-                                      14,
-                                      18,
-                                    ),
-                                    children: [
-                                      if (_showCoverageAudit)
-                                        _CoverageAuditCard(
-                                          isVpnActive: state.isVpnActive,
-                                          sniObserved: state.sniObservedEvents,
-                                          encryptedSni:
-                                              state.encryptedSniEvents,
-                                          directIp: state.directIpEvents,
-                                          blocked: state.blockedEvents,
-                                          dgaAlerts: state.dgaAlertEvents,
-                                          encryptedDnsBlocked:
-                                              state.encryptedDnsBlocks,
-                                          quicBlocked: state.quicBlocked,
-                                          decisionThreshold:
-                                              state.activeDecisionThreshold,
-                                          observedResolvers:
-                                              state.observedPublicDnsResolvers,
-                                          autotestStatus:
-                                              _coverageAutotestStatus,
-                                          onRunAutotest: _runCoverageAutotest,
-                                        )
-                                      else if (explanationCount > 0)
-                                        _ExplanationCard(
-                                          explanation:
-                                              state.explanationHistory.last,
-                                          onVerifyIntegrity:
-                                              _verifyModelIntegrity,
-                                          onReportFalsePositive:
-                                              _reportFalsePositive,
-                                          onOpenModelCard: _openModelCard,
-                                        ),
-                                      if (!_telemetryEndpointConfigured)
-                                        _LocalTelemetryPanel(
-                                          events: _localTelemetryEvents,
-                                          enabled: _localTelemetryEnabled,
-                                        ),
-                                      for (final event in events)
-                                        _SyslogLine(event: event),
-                                    ],
-                                  );
-                                },
-                              )
-                            : const SizedBox.expand(),
-                      ),
                     ],
+                    body: _isAuthenticated
+                        ? StreamBuilder<AgentEvent>(
+                            stream: AgentController.instance.events,
+                            builder: (context, snapshot) {
+                              final events =
+                                  AgentController.instance.history;
+                              final explanationCount =
+                                  state.explanationHistory.length;
+                              final leadingCardCount =
+                                  (_showCoverageAudit ||
+                                          explanationCount > 0
+                                      ? 1
+                                      : 0) +
+                                  (!_telemetryEndpointConfigured ? 1 : 0);
+                              _scrollToLatest(
+                                events.length + leadingCardCount,
+                              );
+                              return ListView(
+                                key: const ValueKey<String>(
+                                  'aura-event-list',
+                                ),
+                                primary: true,
+                                padding: const EdgeInsets.fromLTRB(
+                                  14,
+                                  14,
+                                  14,
+                                  18,
+                                ),
+                                children: [
+                                  if (_showCoverageAudit)
+                                    _CoverageAuditCard(
+                                      isVpnActive: state.isVpnActive,
+                                      sniObserved: state.sniObservedEvents,
+                                      encryptedSni:
+                                          state.encryptedSniEvents,
+                                      directIp: state.directIpEvents,
+                                      blocked: state.blockedEvents,
+                                      dgaAlerts: state.dgaAlertEvents,
+                                      encryptedDnsBlocked:
+                                          state.encryptedDnsBlocks,
+                                      quicBlocked: state.quicBlocked,
+                                      decisionThreshold:
+                                          state.activeDecisionThreshold,
+                                      observedResolvers:
+                                          state.observedPublicDnsResolvers,
+                                      autotestStatus:
+                                          _coverageAutotestStatus,
+                                      onRunAutotest: _runCoverageAutotest,
+                                    )
+                                  else if (explanationCount > 0)
+                                    _ExplanationCard(
+                                      explanation:
+                                          state.explanationHistory.last,
+                                      onVerifyIntegrity:
+                                          _verifyModelIntegrity,
+                                      onReportFalsePositive:
+                                          _reportFalsePositive,
+                                      onOpenModelCard: _openModelCard,
+                                    ),
+                                  if (!_telemetryEndpointConfigured)
+                                    _LocalTelemetryPanel(
+                                      events: _localTelemetryEvents,
+                                      enabled: _localTelemetryEnabled,
+                                    ),
+                                  for (final event in events)
+                                    _SyslogLine(event: event),
+                                ],
+                              );
+                            },
+                          )
+                        : const SizedBox.expand(),
                   ),
                 ),
                 SizedBox(
