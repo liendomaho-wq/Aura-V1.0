@@ -1,7 +1,7 @@
 # Aura Mobile Defens — documentación técnica y guía de continuidad
 
 > **Documento de traspaso para una IA o desarrollador que continúe el proyecto.**  
-> Última revisión documental: **2026-11-06**. Rama objetivo: `main`.
+> Última revisión documental: **2026-11-08**. Rama objetivo de release: `main`.
 > «Defens» es la ortografía intencional del producto; no corregir. Reporta vulnerabilidades según [SECURITY.md](SECURITY.md).
 
 ## 1. Resumen ejecutivo y estado real
@@ -20,7 +20,7 @@ La app no garantiza protección integral, no sustituye Play Protect ni un produc
 | Agente IA | `AgentController`, parser de intenciones, respuestas locales, `AuraTools`, timeouts por herramienta, postcondiciones y bitácora cifrada. | No es un LLM generativo ni razona libremente como ChatGPT; algunas llamadas nativas no se pueden cancelar al vencer el timeout. |
 | Modelo de dominios | Bosque de decisión local; modelo JSON 3.0.0, 500 árboles, seis características históricas; verificación SHA-256/firma antes de instalar modelo. | No analiza contenido de páginas, archivos ni comportamiento completo del sitio. Una clasificación no garantiza que un dominio sea seguro o malicioso. |
 | Seguridad Android | Auditorías heurísticas de root/emulador/instrumentación/overlays; escáner de apps, permisos, servicios, firmas y señales de ofuscación. | No detecta todo malware, no puede ver todos los paquetes/estados y no aísla arbitrariamente otras apps. |
-| Red/VPN | `VpnService`, túnel TUN/HEV, rutas IPv4/IPv6, filtros DNS selectivos y parser SNI conectado al flujo TCP del TUN con reensamblado del ClientHello. | No es un firewall universal. SNI/ECH/QUIC, DoH y el comportamiento en hardware real aún requieren validación exhaustiva; ECH no se descifra. |
+| Red/VPN | `VpnService`, túnel TUN/HEV, rutas IPv4/IPv6, filtros DNS selectivos y parser SNI conectado al flujo TCP del TUN con reensamblado del ClientHello. El SOCKS5 local de Android usa RFC 1929 con contraseña efímera por servicio, límite de 64 sesiones y timeout de 5 s por espera de E/S del handshake. | No es un firewall universal. La autenticación local endurece el listener, pero no demuestra forwarding; SNI/ECH/QUIC, DoH y el comportamiento en hardware real aún requieren validación exhaustiva; ECH no se descifra. |
 | Privacidad | Telemetría local opt-in; telemetría remota opcional con consentimiento y endpoint HTTPS; los dominios se representan con HMAC-SHA-256 usando una clave de SecureVault. Revocar consentimiento elimina colas locales/remotas. | Los HMAC son seudónimos, no anonimización absoluta: el servidor ve la IP de conexión y los datos correlacionables siguen siendo sensibles. |
 | Release | Script de compilación/verificación y workflow Codemagic con `apksigner` en modo estricto. El workflow actual configura fallback DEBUG con advertencia visible para pruebas. | Con `AURA_REQUIRE_RELEASE_SIGNING=false`, el artefacto es DEBUG y no debe distribuirse. La firma de producción real sigue pendiente. |
 | Calidad | Pruebas Flutter/Dart, pruebas Python y workflows GitHub Actions/Codemagic definidos. | No afirmar que todos los tests/builds pasan en el estado actual sin un run verde del commit exacto. |
@@ -59,7 +59,8 @@ Componentes principales:
 - `lib/voice_engine.dart`: voz/TTS.
 - `lib/theme/aura_tokens.dart`: tokens visuales.
 - `android/app/src/main/kotlin/com/ciberdefensa/aura/MainActivity.kt`: puente Android/Flutter y funciones nativas.
-- `android/app/src/main/kotlin/com/ciberdefensa/aura/AuraVpnService.kt`: servicio VPN.
+- `android/app/src/main/kotlin/com/ciberdefensa/aura/AuraVpnService.kt`: servicio VPN y ciclo de vida de credenciales locales efímeras.
+- `android/app/src/main/kotlin/com/ciberdefensa/aura/AuraSocks5Credentials.kt` y `Socks5AuthProtocol.kt`: credenciales aleatorias y handshake RFC 1929 del proxy SOCKS5 local.
 - `android/app/src/main/kotlin/com/ciberdefensa/aura/AuraAppGenomeScanner.kt`: inventario y análisis heurístico de apps.
 - `android/app/src/main/kotlin/com/ciberdefensa/aura/AuraHostileEnvironment.kt`: señales del entorno hostil.
 - `android/app/src/main/kotlin/com/ciberdefensa/aura/AuraBlocklistService.kt`: feeds/blocklist.
@@ -161,6 +162,7 @@ Manifest observado incluye, entre otros: `INTERNET`, `ACCESS_NETWORK_STATE`, `QU
 
 Documentos de entrega:
 
+- [Auditoría final de estado y límites de validación](AURA_FINAL_AUDIT.md).
 - [Política de privacidad basada en el comportamiento del código](docs/PRIVACY.md).
 - [Guía de release, firma y validación en dispositivo](docs/RELEASE_AND_DEVICE_VALIDATION.md).
 
@@ -173,7 +175,7 @@ Configuración observada en `pubspec.yaml`:
 - SDK Dart: `>=3.12.0 <4.0.0`; Flutter declarado `>=3.44.0`.
 - Android applicationId documentado: `com.ciberdefensa.aura`.
 - El README previo documentaba compile/target SDK 36 y NDK `28.2.13676358`; verificar Gradle antes de actualizar versiones.
-- Codemagic: workflow `android-build`, Flutter stable, Java 17, cachés Pub/Gradle, `flutter pub get`, `flutter analyze --no-pub`, pruebas Python de configuración VPN y firewall SNI, `flutter test --reporter expanded`, `bash tool/compile_aura.sh` y `bash tool/compile_aura.sh --verify-artifact`.
+- Codemagic: workflow `android-build`, Flutter stable, Java 17, cachés Pub/Gradle, `flutter pub get`, `flutter analyze --no-pub`, pruebas Python de configuración VPN y firewall SNI, `flutter test --reporter expanded`, pruebas JVM de ciclo de vida VPN/SOCKS5 mediante `:app:testDebugUnitTest`, `bash tool/compile_aura.sh` y `bash tool/compile_aura.sh --verify-artifact`.
 - Artefactos esperados: `build/app/outputs/flutter-apk/*.apk`, `build/app/outputs/bundle/release/*.aab`, `pubspec.lock`.
 
 Comandos locales:
@@ -184,6 +186,7 @@ flutter pub get
 flutter analyze
 python3 tool/test_vpn_config_template.py
 python3 tool/test_aura_sni_firewall.py
+(cd android && ./gradlew :app:testDebugUnitTest)
 flutter test --reporter expanded
 bash tool/compile_aura.sh
 bash tool/compile_aura.sh --verify-artifact
@@ -305,3 +308,14 @@ Aura solo puede marcarse como lista cuando: (a) alcance funcional y límites est
 - Model Card: [docs/model_card.md](docs/model_card.md)
 - Seguridad: [SECURITY.md](SECURITY.md)
 - PR de reconstrucción VPN pendiente de revisión: [#4](https://github.com/liendomaho-wq/Aura-V1.0/pull/4)
+
+## Endurecimiento del SOCKS5 local de Android — 2026-11-08
+
+- El listener existente de HEV permanece en `127.0.0.1:18763`; Android ahora falla cerrado si no hay credenciales y negocia RFC 1929 (usuario/contraseña), no el método SOCKS5 `NONE`.
+- `AuraVpnService` genera una contraseña efímera de 256 bits con `SecureRandom` para el ciclo activo, la escribe junto con el usuario fijo `aura` en el YAML privado que consume HEV y verifica el handshake RFC 1929 antes de informar que el motor quedó listo. No hay contraseña fija ni secreto de producción en el APK.
+- El parser C rechaza credenciales ausentes en el listener Android, credenciales incompletas, vacías o mayores de 255 bytes; el listener limita las sesiones a 64 y aplica un timeout de 5 s por espera de E/S durante el handshake, no como deadline total. La comparación de la contraseña no termina en el primer byte distinto; buffers temporales y las copias nativas se limpian al terminar su uso cuando es posible.
+- Al detenerse o fallar el motor, Aura borra del mejor modo posible el YAML temporal y descarta la referencia Kotlin. Esto no es borrado forense garantizado: las `String` de Kotlin y las copias/bloques del sistema de archivos no pueden sobrescribirse con certeza mientras el proceso o el almacenamiento los conserven.
+- Se añadieron pruebas JVM del protocolo cliente (éxito, servidor que ofrece `NONE` y rechazo de credenciales), pruebas de credenciales aleatorias y guards de integración C. La prueba JVM todavía requiere ejecutarse en un entorno con Java/Gradle y Android SDK.
+- **Alcance de la evidencia:** la suite Python de este snapshot pasó con 112 tests, 8 omitidos y 124 subtests; los guards y la sintaxis C de host pasan. Este resultado no es una compilación Android, no ejecuta el servicio/VPN y no demuestra forwarding ni tráfico real. Flutter/Gradle/Codemagic y la validación en un dispositivo físico siguen pendientes.
+- No declarar la VPN funcional por el éxito del handshake local. Para ello se necesita un build Android del SHA exacto, pruebas de integración/CI y comprobar tráfico real en el dispositivo indicado en `docs/RELEASE_AND_DEVICE_VALIDATION.md`.
+- La PR #8 propone un relay Kotlin diferente y no se integró: añade otro listener en vez de endurecer el listener HEV existente; la revisión detectó un pool de hilos sin límite, un error de lectura en el framing UDP y credenciales que no se vuelven a sincronizar con el YAML al reanudar. Revisar el SHA/base y corregirlo antes de cualquier decisión; no combinar dos relays.

@@ -168,6 +168,7 @@ class AuraVpnService : VpnService() {
     private var feedRefreshScheduled = false
     @Volatile private var panicIsolationActive = false
     @Volatile private var tunnelStarted = false
+    @Volatile private var localSocks5Credentials: AuraSocks5Credentials? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -268,6 +269,7 @@ class AuraVpnService : VpnService() {
             vpnInterface = null
             nativeStopped && interfaceClosed
         }
+        discardTunnelConfiguration()
         if (activeService === this) {
             lastShutdownConfirmed = shutdownConfirmed
             activeService = null
@@ -386,29 +388,7 @@ class AuraVpnService : VpnService() {
             } ?: throw IOException("El servicio VPN está cerrándose.")
             established = tun
 
-            val configFile = File(filesDir, "aura-hev-socks5.yml")
-            configFile.writeText(
-                """
-                tunnel:
-                  name: aura0
-                  mtu: 1500
-                  ipv4: 10.0.0.2
-                  ipv6: 'fd00::2'
-                  icmp: 'off'
-                socks5:
-                  port: $LOCAL_SOCKS5_PORT
-                  address: $LOCAL_SOCKS5_HOST
-                  udp: 'tcp'
-                misc:
-                  log-level: error
-                mapdns:
-                  address: 10.0.0.3
-                  port: 53
-                  network: 100.64.0.0
-                  netmask: 255.192.0.0
-                  cache-size: 8192
-                """.trimIndent(),
-            )
+            val (configFile, socks5Credentials) = prepareTunnelConfiguration()
 
             val started = lifecycleGate.runIfOpen {
                 if (vpnInterface !== tun || !tun.fileDescriptor.valid()) {
@@ -419,7 +399,7 @@ class AuraVpnService : VpnService() {
                 }
             } ?: false
             if (!started) throw IOException("El motor tun2socks no pudo iniciar.")
-            verifyLocalSocks5Ready()
+            verifyLocalSocks5Ready(socks5Credentials)
             for (endpoint in AuraBlocklistService.knownEncryptedDnsEndpoints()) {
                 val applied = lifecycleGate.runIfOpen {
                     TProxyService.TProxyAddDynamicSniRule(endpoint)
@@ -442,7 +422,7 @@ class AuraVpnService : VpnService() {
                 requestId = requestId,
             )
             updateForegroundNotification()
-            Log.i("AuraVPN", "Hev tun2socks conectado al proxy SOCKS5.")
+            Log.i("AuraVPN", "Hev tun2socks autenticado con el proxy SOCKS5 local.")
         } catch (e: Exception) {
             handleTunnelStartFailure(e, established, requestId)
         } catch (error: LinkageError) {
@@ -460,6 +440,7 @@ class AuraVpnService : VpnService() {
     ) {
         Log.e("AuraVPN", "No se pudo iniciar el escudo VPN.", error)
         val stopConfirmed = stopNativeWorker()
+        if (stopConfirmed) discardTunnelConfiguration()
         tunnelStarted = false
         lifecycleGate.runIfOpen {
             try {
@@ -505,6 +486,7 @@ class AuraVpnService : VpnService() {
                     .commit()
                 return false
             }
+            discardTunnelConfiguration()
             tunnelStarted = false
             panicIsolationActive = true
             startRequested.set(false)
@@ -529,16 +511,13 @@ class AuraVpnService : VpnService() {
         return try {
             val tun = vpnInterface
                 ?: throw IOException("La interfaz VPN no está disponible para reanudar el forwarding.")
-            val configFile = File(filesDir, "aura-hev-socks5.yml")
-            if (!configFile.isFile) {
-                throw IOException("No existe la configuración del túnel para reanudarlo.")
-            }
+            val (configFile, socks5Credentials) = prepareTunnelConfiguration()
 
             // Reconcile native state and restart as one lifecycle operation.
             if (!restartNativeWorker(configFile.absolutePath, tun)) {
                 throw IOException("El motor VPN no pudo iniciar durante la reanudación.")
             }
-            verifyLocalSocks5Ready()
+            verifyLocalSocks5Ready(socks5Credentials)
 
             val resumed = lifecycleGate.runIfOpen {
                 val cleared = TProxyService.TProxyIsRunning() &&
@@ -567,6 +546,7 @@ class AuraVpnService : VpnService() {
 
     private fun handleResumeFailure(error: Throwable): Boolean {
         val stopConfirmed = stopNativeWorker()
+        if (stopConfirmed) discardTunnelConfiguration()
         tunnelStarted = false
         Log.e("AuraVPN", "No se pudo reanudar el forwarding del túnel.", error)
         reportState(
@@ -711,6 +691,7 @@ class AuraVpnService : VpnService() {
         } catch (exception: Exception) {
             Log.e("AuraVPN", "No se pudo detener el forwarding tras perder la red.", exception)
         } finally {
+            if (stopConfirmed) discardTunnelConfiguration()
             tunnelStarted = false
             reportState(
                 false,
@@ -739,10 +720,11 @@ class AuraVpnService : VpnService() {
         }
 
         try {
-            if (!restartNativeWorker(File(filesDir, "aura-hev-socks5.yml").absolutePath, tun)) {
+            val (configFile, socks5Credentials) = prepareTunnelConfiguration()
+            if (!restartNativeWorker(configFile.absolutePath, tun)) {
                 throw IOException("El motor VPN no pudo reiniciarse en la nueva red.")
             }
-            verifyLocalSocks5Ready()
+            verifyLocalSocks5Ready(socks5Credentials)
             for (endpoint in AuraBlocklistService.knownEncryptedDnsEndpoints()) {
                 val applied = lifecycleGate.runIfOpen {
                     TProxyService.TProxyAddDynamicSniRule(endpoint)
@@ -760,7 +742,7 @@ class AuraVpnService : VpnService() {
             if (!ready) throw IOException("El motor VPN se detuvo durante la recuperación.")
             reportState(
                 true,
-                "Red física cambiada; motor VPN reiniciado y proxy SOCKS5 verificado.",
+                "Red física cambiada; motor VPN reiniciado y proxy SOCKS5 autenticado.",
             )
             Log.i("AuraVPN", "Motor tun2socks recuperado tras cambiar la red física.")
         } catch (exception: Exception) {
@@ -772,6 +754,7 @@ class AuraVpnService : VpnService() {
 
     private fun handleNetworkRecoveryFailure(error: Throwable) {
         val stopConfirmed = stopNativeWorker()
+        if (stopConfirmed) discardTunnelConfiguration()
         tunnelStarted = false
         Log.e("AuraVPN", "No se pudo recuperar el túnel tras cambiar de red.", error)
         reportState(
@@ -842,7 +825,53 @@ class AuraVpnService : VpnService() {
         }
     }
 
-    private fun verifyLocalSocks5Ready() {
+    @Synchronized
+    private fun prepareTunnelConfiguration(): Pair<File, AuraSocks5Credentials> {
+        if (serviceShuttingDown) throw IOException("El servicio VPN está cerrándose.")
+        val credentials = localSocks5Credentials
+            ?: AuraSocks5Credentials.generate().also { localSocks5Credentials = it }
+        val configFile = File(filesDir, "aura-hev-socks5.yml")
+        val config =
+            """
+            tunnel:
+              name: aura0
+              mtu: 1500
+              ipv4: 10.0.0.2
+              ipv6: 'fd00::2'
+              icmp: 'off'
+            socks5:
+              port: $LOCAL_SOCKS5_PORT
+              address: $LOCAL_SOCKS5_HOST
+              username: '${credentials.username}'
+              password: '${credentials.password}'
+              udp: 'tcp'
+            misc:
+              log-level: error
+            mapdns:
+              address: 10.0.0.3
+              port: 53
+              network: 100.64.0.0
+              netmask: 255.192.0.0
+              cache-size: 8192
+            """.trimIndent()
+        configFile.writeText(config, Charsets.UTF_8)
+        return configFile to credentials
+    }
+
+    @Synchronized
+    private fun discardTunnelConfiguration() {
+        localSocks5Credentials = null
+        val configFile = File(filesDir, "aura-hev-socks5.yml")
+        try {
+            if (configFile.exists() && !configFile.delete()) {
+                Log.w("AuraVPN", "No se pudo borrar la configuración efímera del proxy SOCKS5.")
+            }
+        } catch (exception: SecurityException) {
+            Log.w("AuraVPN", "No se pudo borrar la configuración efímera del proxy SOCKS5.", exception)
+        }
+    }
+
+    private fun verifyLocalSocks5Ready(credentials: AuraSocks5Credentials) {
         val deadline = android.os.SystemClock.elapsedRealtime() + 5000
         var lastFailure: Exception? = null
         while (android.os.SystemClock.elapsedRealtime() < deadline) {
@@ -853,22 +882,11 @@ class AuraVpnService : VpnService() {
                         250,
                     )
                     socket.soTimeout = 500
-                    socket.getOutputStream().write(byteArrayOf(5, 1, 0))
-                    socket.getOutputStream().flush()
-                    val response = ByteArray(2)
-                    var offset = 0
-                    while (offset < response.size) {
-                        val count = socket.getInputStream().read(
-                            response,
-                            offset,
-                            response.size - offset,
-                        )
-                        if (count < 0) throw IOException("El proxy SOCKS5 local cerró el saludo.")
-                        offset += count
-                    }
-                    if (response[0].toInt() != 5 || response[1].toInt() != 0) {
-                        throw IOException("El proxy SOCKS5 local rechazó la negociación.")
-                    }
+                    Socks5AuthProtocol.authenticate(
+                        socket.getInputStream(),
+                        socket.getOutputStream(),
+                        credentials,
+                    )
                 }
                 if (!TProxyService.TProxyIsRunning()) {
                     throw IOException("El proxy respondió, pero el motor VPN ya no está activo.")
@@ -879,7 +897,10 @@ class AuraVpnService : VpnService() {
                 Thread.sleep(100)
             }
         }
-        throw IOException("El proxy SOCKS5 local no quedó listo; túnel detenido.", lastFailure)
+        throw IOException(
+            "El proxy SOCKS5 local autenticado no quedó listo; túnel detenido.",
+            lastFailure,
+        )
     }
 
     private fun downloadThreatFeed(): Set<String> {

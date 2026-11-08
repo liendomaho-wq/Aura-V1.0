@@ -42,6 +42,10 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Run Kotlin VPN and local SOCKS5 unit tests
+        working-directory: android
+        run: AURA_ALLOW_DEBUG_SIGNING=true ./gradlew :app:testDebugUnitTest --no-daemon
+
       - name: Validate generated VPN configuration template
         run: python3 tool/test_vpn_config_template.py
 

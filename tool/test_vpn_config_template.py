@@ -9,12 +9,32 @@ ANTI_TAMPERING_SOURCE = Path("android/app/src/main/kotlin/com/ciberdefensa/aura/
 CRYPTO_SOURCE = Path("lib/crypto/aura_crypto_layer.dart")
 NATIVE_TUNNEL = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/hev-socks5-tunnel.c")
 NATIVE_SOCKS = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/core/src/hev-socks5-misc.c")
+NATIVE_CONFIG = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/hev-config.c")
+NATIVE_MAIN = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/hev-main.c")
+NATIVE_USER = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/core/src/hev-socks5-user.c")
+NATIVE_SERVER = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/core/src/hev-socks5-server.c")
 NATIVE_JNI = Path("android/app/src/main/cpp/hev-socks5-tunnel/src/hev-jni.c")
+KOTLIN_SOCKS5_CREDENTIALS = Path(
+    "android/app/src/main/kotlin/com/ciberdefensa/aura/AuraSocks5Credentials.kt"
+)
+KOTLIN_SOCKS5_AUTH = Path(
+    "android/app/src/main/kotlin/com/ciberdefensa/aura/Socks5AuthProtocol.kt"
+)
+KOTLIN_SOCKS5_TEST = Path(
+    "android/app/src/test/kotlin/com/ciberdefensa/aura/Socks5AuthProtocolTest.kt"
+)
 text = SOURCE.read_text(encoding="utf-8")
 anti_tampering = ANTI_TAMPERING_SOURCE.read_text(encoding="utf-8")
 crypto_source = CRYPTO_SOURCE.read_text(encoding="utf-8")
 native_tunnel = NATIVE_TUNNEL.read_text(encoding="utf-8")
 native_socks = NATIVE_SOCKS.read_text(encoding="utf-8")
+native_config = NATIVE_CONFIG.read_text(encoding="utf-8")
+native_main = NATIVE_MAIN.read_text(encoding="utf-8")
+native_user = NATIVE_USER.read_text(encoding="utf-8")
+native_server = NATIVE_SERVER.read_text(encoding="utf-8")
+kotlin_credentials = KOTLIN_SOCKS5_CREDENTIALS.read_text(encoding="utf-8")
+kotlin_socks5_auth = KOTLIN_SOCKS5_AUTH.read_text(encoding="utf-8")
+kotlin_socks5_test = KOTLIN_SOCKS5_TEST.read_text(encoding="utf-8")
 native_jni = NATIVE_JNI.read_text(encoding="utf-8")
 manifest = Path("android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
 CONSOLE_SOURCE = Path("lib/screens/aura_core_screen.dart").read_text(encoding="utf-8")
@@ -218,7 +238,7 @@ if "cobertura reducida" not in refresh_match.group(1):
     sys.exit("FAIL: feed failures must be reported as reduced protection coverage")
 
 match = re.search(
-    r"configFile\.writeText\(\s*\"\"\"(.*?)\"\"\"\.trimIndent\(\)",
+    r"val config\s*=\s*\"\"\"(.*?)\"\"\"\.trimIndent\(\)",
     text,
     re.DOTALL,
 )
@@ -260,9 +280,16 @@ for section in required:
     if section_index + 1 >= len(normalized) or not normalized[section_index + 1].startswith("  "):
         sys.exit(f"FAIL: section {section!r} has no indented child keys")
 
-for required_line in ("port: $LOCAL_SOCKS5_PORT", "address: $LOCAL_SOCKS5_HOST",
-                      "udp: 'tcp'", "log-level: error",
-                      "address: 10.0.0.3", "cache-size: 8192"):
+for required_line in (
+    "port: $LOCAL_SOCKS5_PORT",
+    "address: $LOCAL_SOCKS5_HOST",
+    "username: '${credentials.username}'",
+    "password: '${credentials.password}'",
+    "udp: 'tcp'",
+    "log-level: error",
+    "address: 10.0.0.3",
+    "cache-size: 8192",
+):
     if required_line not in raw:
         sys.exit(f"FAIL: expected configuration entry not found: {required_line}")
 
@@ -270,6 +297,77 @@ if "AURA_LOCAL_SOCKS5_PORT 18763" not in native_tunnel or "INADDR_LOOPBACK" not 
     sys.exit("FAIL: local SOCKS5 listener must bind only to loopback port 18763")
 if "hev_socks5_server_new" not in native_tunnel:
     sys.exit("FAIL: local SOCKS5 server is not wired into the Hev task system")
+for required_auth_call in (
+    "local_socks5_configure_server_auth",
+    "hev_config_get_socks5_server",
+    "hev_socks5_authenticator_new",
+    "hev_socks5_user_new",
+    "hev_socks5_authenticator_add",
+    "hev_socks5_server_set_auth",
+    "hev_socks5_set_timeout",
+    "AURA_LOCAL_SOCKS5_AUTH_TIMEOUT_MS 5000",
+    "AURA_LOCAL_SOCKS5_MAX_SESSIONS 64",
+    "local_socks5_session_count++",
+    "local_socks5_session_count--",
+):
+    if required_auth_call not in native_tunnel:
+        sys.exit(f"FAIL: native local SOCKS5 security control is missing {required_auth_call}")
+if "#ifdef __ANDROID__" not in native_tunnel or (
+    "!config->user[0] || !config->pass[0])\n        return -1;" not in native_tunnel
+):
+    sys.exit("FAIL: Android's local SOCKS5 listener must fail closed without credentials")
+if not re.search(
+    r"if \(self->auth\)\s*method = HEV_SOCKS5_AUTH_METHOD_USER;\s*else\s*method = HEV_SOCKS5_AUTH_METHOD_NONE;",
+    native_server,
+):
+    sys.exit("FAIL: HEV must negotiate only username/password when auth is attached")
+if "hev_socks5_authenticator_get (self->auth" not in native_server:
+    sys.exit("FAIL: HEV must validate RFC 1929 credentials against its authenticator")
+if "Must be set both socks5 username and password!" not in native_config:
+    sys.exit("FAIL: HEV config must reject a username or password supplied alone")
+if any(
+    required not in native_config
+    for required in (
+        "user_len > 255",
+        "pass_len > 255",
+        "hev_config_clear_socks5_credentials ();",
+    )
+):
+    sys.exit("FAIL: native SOCKS5 credentials must be bounded and cleared")
+if native_main.count("hev_config_clear_socks5_credentials ();\n    return res;") != 2:
+    sys.exit("FAIL: native worker must clear SOCKS5 credentials after shutdown")
+if "difference |= (unsigned char)self->pass[i] ^ (unsigned char)pass[i]" not in native_user:
+    sys.exit("FAIL: SOCKS5 password comparison must not exit early on a partial match")
+if "hev_socks5_user_clear_secret (self->pass, self->pass_len + 1)" not in native_user:
+    sys.exit("FAIL: native SOCKS5 password buffers must be wiped before release")
+if any(
+    required not in kotlin_credentials
+    for required in ("SecureRandom()", "random.nextBytes(secret)", "secret.fill(0)")
+):
+    sys.exit("FAIL: local SOCKS5 passwords must be generated ephemerally and clear temporary bytes")
+if "Socks5AuthProtocol.authenticate(" not in text:
+    sys.exit("FAIL: VPN startup must authenticate its local SOCKS5 readiness probe")
+if any(
+    required not in kotlin_socks5_auth
+    for required in (
+        "USER_PASSWORD_METHOD = 2",
+        "output.write(username)",
+        "output.write(password)",
+        "USER_PASSWORD_METHOD.toByte()",
+        "result[1].toInt() != 0",
+        "password.fill(0.toByte())",
+    )
+):
+    sys.exit("FAIL: local SOCKS5 readiness probe must complete RFC 1929 authentication")
+if any(
+    required not in kotlin_socks5_test
+    for required in (
+        "completesRfc1929AuthenticationWithTheSuppliedCredentials",
+        "rejectsAServerThatSelectsNoAuthentication",
+        "surfacesRfc1929CredentialRejection",
+    )
+):
+    sys.exit("FAIL: SOCKS5 auth regression tests must cover success and rejection cases")
 if "hev_jni_protect_socket (fd)" not in native_socks:
     sys.exit("FAIL: native outbound sockets are not protected from VPN recursion")
 if "activeService?.protectAndBindSocket(socketFd)" not in text:
@@ -283,7 +381,7 @@ if "network.bindSocket(socketFd)" not in text:
 if "hev_jni_resolve_host (name" not in native_socks:
     sys.exit("FAIL: Android destination DNS must resolve on the underlying network")
 
-print("PASS: Hev YAML, loopback SOCKS5 wiring, socket protection and physical DNS checks passed.")
+print("PASS: ephemeral RFC 1929 SOCKS5 auth, native secret cleanup, socket protection and physical DNS checks passed.")
 
 # Secure-storage upgrade must preserve v9 secrets while migrating to authenticated encryption.
 PUBSPEC = Path("pubspec.yaml").read_text(encoding="utf-8")
@@ -404,7 +502,7 @@ if not recovery:
 recovery_body = recovery.group(1)
 for required_recovery_step in (
     "restartNativeWorker(",
-    "verifyLocalSocks5Ready()",
+    "verifyLocalSocks5Ready(socks5Credentials)",
     "AuraBlocklistService.knownEncryptedDnsEndpoints()",
     "lifecycleGate.runIfOpen",
     "tunnelStarted = true",
@@ -741,7 +839,7 @@ start_tunnel = re.search(
 )
 if not start_tunnel:
     sys.exit("FAIL: could not locate VPN startup lifecycle")
-if "verifyLocalSocks5Ready()" not in start_tunnel.group(1):
+if "verifyLocalSocks5Ready(socks5Credentials)" not in start_tunnel.group(1):
     sys.exit("FAIL: VPN cannot report active before SOCKS5 readiness is verified")
 if "updateForegroundNotification()" not in start_tunnel.group(1):
     sys.exit("FAIL: foreground notification must refresh after startup verification and failure")
@@ -772,7 +870,7 @@ resume_match = re.search(
 if not resume_match:
     sys.exit("FAIL: could not locate VPN forwarding recovery")
 resume_body = resume_match.group(1)
-if "verifyLocalSocks5Ready()" not in resume_body:
+if "verifyLocalSocks5Ready(socks5Credentials)" not in resume_body:
     sys.exit("FAIL: VPN resume must verify the local SOCKS5 service")
 if (
     "handleResumeFailure(exception)" not in resume_body

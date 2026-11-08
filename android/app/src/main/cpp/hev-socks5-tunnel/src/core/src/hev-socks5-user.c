@@ -14,6 +14,14 @@
 
 #include "hev-socks5-user.h"
 
+static void
+hev_socks5_user_clear_secret (char *secret, unsigned int length)
+{
+    volatile unsigned char *cursor = (volatile unsigned char *)secret;
+    while (length--)
+        *cursor++ = 0;
+}
+
 HevSocks5User *
 hev_socks5_user_new (const char *name, unsigned int name_len, const char *pass,
                      unsigned int pass_len)
@@ -49,15 +57,18 @@ static int
 hev_socks5_user_checker (HevSocks5User *self, const char *pass,
                          unsigned int pass_len)
 {
+    unsigned int i;
+    unsigned char difference = 0;
+
     LOG_D ("%p socks5 user checker", self);
 
     if (self->pass_len != pass_len)
         return -1;
 
-    if (memcmp (self->pass, pass, pass_len) != 0)
-        return -1;
+    for (i = 0; i < pass_len; i++)
+        difference |= (unsigned char)self->pass[i] ^ (unsigned char)pass[i];
 
-    return 0;
+    return difference ? -1 : 0;
 }
 
 int
@@ -102,7 +113,11 @@ hev_socks5_user_destruct (HevObject *base)
     LOG_D ("%p socks5 user destruct", self);
 
     free (self->name);
-    free (self->pass);
+    if (self->pass) {
+        hev_socks5_user_clear_secret (self->pass, self->pass_len + 1);
+        free (self->pass);
+        self->pass = NULL;
+    }
 
     HEV_OBJECT_ATOMIC_TYPE->destruct (base);
     free (base);

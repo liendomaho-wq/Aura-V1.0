@@ -81,7 +81,9 @@ workflows:
           # This fallback applies only to the test command, not to publication.
           AURA_ALLOW_DEBUG_SIGNING=true ./gradlew :app:testDebugUnitTest \
             --tests com.ciberdefensa.aura.VpnStartRequestGateTest \
-            --tests com.ciberdefensa.aura.VpnLifecycleGateTest
+            --tests com.ciberdefensa.aura.VpnLifecycleGateTest \
+            --tests com.ciberdefensa.aura.AuraSocks5CredentialsTest \
+            --tests com.ciberdefensa.aura.Socks5AuthProtocolTest
       - name: Build Android Release artifact
         script: |
           set -euo pipefail
