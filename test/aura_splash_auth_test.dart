@@ -177,6 +177,18 @@ void main() {
       reason: 'Estado real al agotar la espera: $bootText',
     );
     expect(find.text('Hola, soy Aura.'), findsOneWidget);
+    final overview = find.byKey(
+      const ValueKey<String>('aura-overview-scroll'),
+    );
+    expect(overview, findsOneWidget);
+    await tester.drag(overview, const Offset(0, -220));
+    await tester.pump();
+    final vpnBounds = tester.getRect(
+      find.byKey(const ValueKey<String>('vpn-toggle')),
+    );
+    final inputBounds = tester.getRect(find.byType(TextField));
+    expect(vpnBounds.top, greaterThanOrEqualTo(0));
+    expect(inputBounds.bottom, lessThanOrEqualTo(568));
     expect(tester.takeException(), isNull);
   });
 
