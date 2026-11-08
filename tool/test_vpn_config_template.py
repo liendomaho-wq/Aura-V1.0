@@ -433,6 +433,24 @@ if secure_decrypt.group(0).find("_verifyEnvelopeTag(") > secure_decrypt.group(0)
 
 print("PASS: model encryption authenticates payloads before native decryption.")
 
+# USB debugging is a user-controlled development setting, not proof of
+# runtime tampering. Keep it observable but do not make it disable the VPN.
+integrity_policy = re.search(
+    r"val integrityFailed = (.*?)\n\n        return mapOf",
+    anti_tampering,
+    re.DOTALL,
+)
+if (
+    not integrity_policy
+    or "adbEnabled" in integrity_policy.group(1)
+    or "adbBlocked" in anti_tampering
+    or '"adbEnabled" to adbEnabled' not in anti_tampering
+    or "debuggerBlocked" not in integrity_policy.group(1)
+):
+    sys.exit("FAIL: ADB must remain diagnostic while signature/debugger tampering checks stay enforced")
+
+print("PASS: USB debugging is reported as an advisory signal without disabling VPN protection.")
+
 # The VPN must track physical connectivity without selecting another VPN as its underlay.
 for required_network_guard in (
     "NetworkRequest.Builder()",
