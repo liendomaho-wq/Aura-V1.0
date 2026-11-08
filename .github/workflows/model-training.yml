@@ -46,7 +46,7 @@ jobs:
         run: python tool/ci_run.py python tool/train_max_aura_brain.py --preset mobile
       - name: Benchmark candidate even if quality-rejected (not release acceptance)
         if: ${{ !cancelled() && (steps.training.outcome == 'success' || steps.training.outcome == 'failure') }}
-        run: python tool/bench_aura_brain.py
+        run: python tool/ci_run.py python tool/bench_aura_brain.py
       - name: Run golden tests (even if candidate training is rejected)
         if: always()
         run: python -m pytest tool/test_aura_brain.py tool/test_adversarial.py tool/test_adversarial_split_builder.py tool/test_grouped_splits.py -q

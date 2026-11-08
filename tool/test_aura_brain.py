@@ -405,3 +405,20 @@ def test_quality_gate_rejects_missing_adversarial_class():
     metrics["adversarial_test_class_counts"] = {"safe": 500, "threat": 0}
     failures = candidate_quality_gate_failures(metrics)
     assert any("at least 500 samples per class" in failure for failure in failures)
+
+
+def test_benchmark_module_import_has_no_stray_top_level_expression():
+    import bench_aura_brain
+    assert bench_aura_brain.WARM_INFERENCES == 10_000
+    assert bench_aura_brain.COLD_INFERENCES == 500
+
+
+def test_benchmark_percentiles_preserve_millisecond_units_and_counts():
+    from bench_aura_brain import percentiles_ms
+    # Unit math only, not an actual inference/device timing claim.
+    report = percentiles_ms([0.001, 0.002, 0.003])
+    assert report["inference_count"] == 3
+    assert report["p50_ms"] == pytest.approx(2.0)
+    assert report["p95_ms"] == pytest.approx(2.9)
+    assert report["p99_ms"] == pytest.approx(2.98)
+    assert report["domains_per_second"] == pytest.approx(500)
