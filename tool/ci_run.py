@@ -66,7 +66,10 @@ def main(args):
             annotate("notice", "Dart format evidence",
                      f"SHA256={digest}; chunks={len(chunks)}; bytes={len(diff.encode('utf-8'))}; encoding=xz+base64")
             for index, chunk in enumerate(chunks, 1):
-                annotate("notice", f"Dart format compressed patch {index}", chunk)
+                # Formatting is already a failed check. Additional pending-format
+                # diagnostics use the separate warning quota after nine notices.
+                level = "notice" if index <= 9 else "warning"
+                annotate(level, f"Dart format compressed patch {index}", chunk)
     return status if status >= 0 else 128 - status
 
 
