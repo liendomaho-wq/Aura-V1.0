@@ -17,6 +17,9 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
         cls.release_workflow = (
             ROOT / ".github/workflows/android-release.yml"
         ).read_text(encoding="utf-8")
+        cls.integrity_workflow = (
+            ROOT / ".github/workflows/release-signing-integrity.yml"
+        ).read_text(encoding="utf-8")
         cls.codemagic_workflow = (
             ROOT / "codemagic.yaml"
         ).read_text(encoding="utf-8")
@@ -137,6 +140,14 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
         )
         self.assertIn("if ! adb get-state; then", self.codemagic_workflow)
         self.assertNotIn("--tests com.ciberdefensa.aura.SecureStorageMigrationTest", self.codemagic_workflow)
+
+    def test_integrity_retains_real_positive_and_negative_signing_checks(self):
+        self.assertIn("python3 tool/test_release_signing_policy.py", self.integrity_workflow)
+        self.assertIn("Expected printReleaseSigning to fail without signing variables.", self.integrity_workflow)
+        self.assertIn("grep -Fq 'IS_DEBUG_SIGNING=false'", self.integrity_workflow)
+        self.assertIn("STORE_FILE=$AURA_KEYSTORE_PATH", self.integrity_workflow)
+        self.assertIn("KEY_ALIAS=$AURA_KEY_ALIAS", self.integrity_workflow)
+        self.assertNotIn("continue-on-error", self.integrity_workflow)
 
     def test_release_and_privacy_guides_preserve_honest_limits(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

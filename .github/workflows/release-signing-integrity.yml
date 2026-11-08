@@ -33,6 +33,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -74,38 +76,17 @@ jobs:
               exit 1
             fi
           done
-      - name: Reject debug signing in release build type
-        shell: bash
-        run: |
-          set -euo pipefail
-          if awk '
-            /^[[:space:]]*buildTypes[[:space:]]*\{/ { in_build_types = 1; next }
-            in_build_types && /^[[:space:]]*release[[:space:]]*\{/ {
-              in_release = 1
-              release_found = 1
-              depth = 1
-              next
-            }
-            in_release {
-              if ($0 ~ /signingConfigs\.debug/) found_debug_signing = 1
-              line = $0
-              depth += gsub(/\{/, "{", line)
-              line = $0
-              depth -= gsub(/\}/, "}", line)
-              if (depth == 0) in_release = 0
-            }
-            END { if (!release_found || found_debug_signing) exit 1 }
-          ' android/app/build.gradle; then
-            printf '%s\n' 'Release build type contains no debug signing reference.'
-          else
-            printf '%s\n' 'Missing release block or debug signing reference found in it.' >&2
-            exit 1
-          fi
+      - name: Reject implicit debug signing using the strict production policy
+        # The old awk rejected even the existing explicitly opted-in test
+        # ternary. Check the actual default-deny guard and release tooling.
+        run: python3 tool/test_release_signing_policy.py
 
   sbom:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -129,6 +110,9 @@ jobs:
         run: flutter pub get
       - name: Resolve and lock Android dependencies
         working-directory: android
+        # Metadata resolution only: this job creates no signed release artifact.
+        env:
+          AURA_ALLOW_DEBUG_SIGNING: 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -140,7 +124,7 @@ jobs:
               }
           }
           EOF
-          ./gradlew :app:dependencies \
+          python3 ../tool/ci_run.py ./gradlew :app:dependencies \
             --configuration releaseRuntimeClasspath \
             --write-locks \
             --init-script "$init_script"
@@ -164,6 +148,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -204,8 +190,8 @@ jobs:
             -keypass "$AURA_KEY_PASSWORD" \
             -dname 'CN=Aura Ephemeral CI Release,O=Aura,C=US'
           cd android
-          output="$(./gradlew :app:printReleaseSigning --console=plain)"
-          printf '%s\n' "$output"
-          grep -Fq "STORE_FILE=$AURA_KEYSTORE_PATH" <<< "$output"
-          grep -Fq "KEY_ALIAS=$AURA_KEY_ALIAS" <<< "$output"
-          grep -Fq 'IS_DEBUG_SIGNING=false' <<< "$output"
+          output="$RUNNER_TEMP/aura-release-signing-report.txt"
+          python3 ../tool/ci_run.py ./gradlew :app:printReleaseSigning --console=plain | tee "$output"
+          grep -Fq "STORE_FILE=$AURA_KEYSTORE_PATH" "$output"
+          grep -Fq "KEY_ALIAS=$AURA_KEY_ALIAS" "$output"
+          grep -Fq 'IS_DEBUG_SIGNING=false' "$output"
