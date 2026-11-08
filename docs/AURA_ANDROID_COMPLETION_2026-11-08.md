@@ -273,3 +273,19 @@ tool/vpn_echo_fixture.py
 ### Suite local más reciente
 
 `python -m pytest -q -rs`: **203 passed, 8 skipped, 124 subtests passed in 11.03s**. Los ocho skips siguen siendo sólo AAB por falta de JDK completo local; CI `1195e46` sí ejecutó sus ocho casos, pero el código nuevo necesita su propia CI. Guards, procedencia y diff-check aprobados; modelo activo y fixture original de migración siguen intactos. Ningún éxito anterior se transfiere a los cambios nuevos sin repetir la verificación pertinente.
+
+
+### Primera ejecución de `2a196dc`: fallo real de compilación del test, no Keystore
+
+- Flutter `42497569413` **SUCCESS** y firma CI `42497569402` **tres jobs SUCCESS**. El build Android `42497569423` / `128783129310` ejecutó otra vez **26 JVM, 0 fallos/skips**, pero **FAILURE** al compilar el APK instrumentado: el nuevo test importaba `KeyCipherImplementationAES23`, clase package-private publicada por el SDK. No llegó a ejecutar Android ni a producir el APK final de esa lane.
+- Se corrige **sólo el test** para invocar el `StorageCipherFactory.getCurrentKeyCipher()` público real, que construye el mismo provider contra el mismo alias. No se expone una clase privada, no hay reflexión/mock, no se elimina la regresión y no se suprime el compilador. Necesita una nueva CI real.
+- También se reprodujo y quitó `NameError: name 'setoo' is not defined` al importar el benchmark: una expresión basura ya presente en main, situada después del `SystemExit` del CLI. No cambiaba el benchmark CLI, pero impedía importarlo/validarlo. Dos tests de importación/estadística cubren la corrección. El benchmark CI mantiene **10.000 warm / 500 cold** y ahora expone su salida real con `ci_run`, incluso si el candidato es rechazado.
+
+### Evaluación completa real de `1195e46`: candidato explícitamente rechazado
+
+Modelo `42496511684` / `128779981812`: **FAILURE exit 2**, por gate de calidad real; benchmark y golden tests **SUCCESS** y artefacto de rechazo preservado. SHA candidato **`15a15e151ae1e8c3ca038b41712ca483980ec78e0569953a34112e0397ba8dac`**; manifiesto de datos **`051a73cdaf9e4e1cceb6c7190801b26bf017d0be66c8115a71fabd13a4cd6e33`**.
+
+- Bosque calibrado **500 árboles / 3.621.963 bytes / depth 8 / leaf mínimo 1024 / umbral 0,52**. El primer ensayo depth10/leaf512 fue 7.207.921 bytes y no se seleccionó.
+- Holdout **88.219** (14.899 safe / 73.320 threat): TN **14.139**, FP **760**, FN **12.323**, TP **60.997**; accuracy **0,8516986**, precision **0,9876937**, recall **0,8319285**, FPR **0,0510101**.
+- Adversarial independiente **1.186** (593 / 593): TN **582**, FP **11**, FN **581**, TP **12**; recall **0,0202361**, FPR **0,0185497**. Rechazado por recall **0,0202 < 0,60**, sin bajar el gate ni ajustar usando ese holdout. Estas cifras agregadas no sustituyen una revisión independiente por dominio de FP/FN.
+- Runtime de esa evaluación: Python **3.11.18**, NumPy **2.4.6**, scikit-learn **1.9.1**. No son métricas del modelo activo 3.0.0 ni de un teléfono. No se promueve/firma 3.1.0. La evaluación de `2a196dc` sigue en curso; no se asume su resultado.
