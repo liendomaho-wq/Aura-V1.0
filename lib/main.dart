@@ -24,9 +24,7 @@ Future<void> main() async {
   }
   runApp(
     MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AuraStateProvider()),
-      ],
+      providers: [ChangeNotifierProvider(create: (_) => AuraStateProvider())],
       child: const AuraApp(),
     ),
   );

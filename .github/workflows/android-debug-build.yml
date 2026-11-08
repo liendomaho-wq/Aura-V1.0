@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - principal
+      - arena/063013fc-aura-v1-0
   pull_request:
     branches:
       - main
@@ -26,12 +27,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Setup Android SDK command-line tools
+        uses: android-actions/setup-android@v3
+        with:
+          # v3's default also requests the retired "tools" package.
+          packages: platform-tools
+
+      - name: Install declared Android toolchain
+        run: python3 tool/ci_run.py sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
 
       - name: Setup Flutter stable
         uses: subosito/flutter-action@v2
@@ -40,17 +52,182 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: flutter pub get
+        run: python3 tool/ci_run.py flutter pub get
 
       - name: Run Kotlin VPN and local SOCKS5 unit tests
         working-directory: android
-        run: AURA_ALLOW_DEBUG_SIGNING=true ./gradlew :app:testDebugUnitTest --no-daemon
+        run: AURA_ALLOW_DEBUG_SIGNING=true python3 ../tool/ci_run.py ./gradlew :app:testDebugUnitTest --no-daemon
+
+      - name: Record actual JVM result counts from JUnit XML
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          paths = sorted(Path("build/app/test-results/testDebugUnitTest").glob("TEST-*.xml"))
+          if not paths:
+              raise SystemExit("No real JVM test results were generated.")
+          suites = [ET.parse(path).getroot() for path in paths]
+          counts = {key: sum(int(suite.get(key, "0")) for suite in suites)
+                    for key in ("tests", "failures", "errors", "skipped")}
+          detail = "; ".join(f"{suite.get('name')}: {suite.get('tests')}" for suite in suites)
+          print(f"::notice title=Actual JVM results::{counts}; {detail}")
+          if counts["tests"] == 0 or any(counts[key] for key in ("failures", "errors", "skipped")):
+              raise SystemExit("JVM tests are empty, failed or skipped; not accepted.")
+          PYTHON
 
       - name: Validate generated VPN configuration template
-        run: python3 tool/test_vpn_config_template.py
+        run: python3 tool/ci_run.py python3 tool/test_vpn_config_template.py
+
+      - name: Expose the first real Android test failure without suppressing it
+        if: failure()
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          from tool.ci_run import annotate, annotation_chunks
+
+          for path in sorted(Path("build/app").rglob("TEST-*.xml")):
+              for case in ET.parse(path).getroot().iter("testcase"):
+                  failure = case.find("failure")
+                  if failure is None:
+                      failure = case.find("error")
+                  if failure is not None:
+                      details = f"{case.get('classname')}.{case.get('name')}\n{failure.get('message')}\n{failure.text}"
+                      for index, chunk in enumerate(annotation_chunks(details), 1):
+                          annotate("error", f"Android test failure details {index}", chunk)
+                      raise SystemExit(1)
+          print("No failed test XML exists; inspect the preceding setup/compiler/emulator failure.")
+          PYTHON
+
+      - name: Compile isolated migration APKs (not a Keystore execution result)
+        working-directory: android
+        env:
+          AURA_ALLOW_DEBUG_SIGNING: 'true'
+        run: python3 ../tool/ci_run.py ./gradlew :app:assembleStorageMigration :app:assembleStorageMigrationAndroidTest --no-daemon
 
       - name: Build debug APK including native tunnel
-        run: flutter build apk --debug
+        env:
+          AURA_ALLOW_DEBUG_SIGNING: 'true'
+        run: python3 tool/ci_run.py flutter build apk --debug
 
       - name: Verify debug APK exists
-        run: test -s build/app/outputs/flutter-apk/app-debug.apk
+        run: |
+          set -euo pipefail
+          test -s build/app/outputs/flutter-apk/app-debug.apk
+          git rev-parse HEAD > build/app/outputs/flutter-apk/SOURCE_COMMIT.txt
+          python3 - <<'PYTHON'
+          import hashlib
+          from pathlib import Path
+          import zipfile
+
+          apk = Path("build/app/outputs/flutter-apk/app-debug.apk")
+          targets = {"armeabi-v7a": (1, 40), "arm64-v8a": (2, 183),
+                     "x86": (1, 3), "x86_64": (2, 62)}
+          with zipfile.ZipFile(apk) as archive:
+              for abi, (elf_class, machine) in targets.items():
+                  member = f"lib/{abi}/libhev-socks5-tunnel.so"
+                  data = archive.read(member)
+                  if (len(data) < 20 or data[:4] != b"\x7fELF"
+                          or data[4] != elf_class or data[5] != 1
+                          or int.from_bytes(data[18:20], "little") != machine):
+                      raise SystemExit(f"Invalid or mismatched packaged ELF: {member}")
+                  print(f"::notice title=Packaged native ELF::{member}; bytes={len(data)}; sha256={hashlib.sha256(data).hexdigest()}")
+              model_path = "assets/model/aura_brain_model.json"
+              for relative in (model_path, model_path + ".sha256", model_path + ".sig"):
+                  if archive.read("assets/flutter_assets/" + relative) != Path(relative).read_bytes():
+                      raise SystemExit(f"Packaged model asset differs from source: {relative}")
+              digest = hashlib.sha256(archive.read("assets/flutter_assets/" + model_path)).hexdigest()
+              print(f"::notice title=Packaged model bytes::Model, digest and signature match the exact checkout byte-for-byte; model sha256={digest}")
+          PYTHON
+          (cd build/app/outputs/flutter-apk && sha256sum app-debug.apk | tee SHA256SUMS)
+          printf '::notice title=Debug APK SHA-256::%s\n' "$(cat build/app/outputs/flutter-apk/SHA256SUMS)"
+
+      - name: Upload debug APK and exact source identity
+        uses: actions/upload-artifact@v4
+        with:
+          name: aura-debug-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            build/app/outputs/flutter-apk/app-debug.apk
+            build/app/outputs/flutter-apk/SOURCE_COMMIT.txt
+            build/app/outputs/flutter-apk/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
+  # This remains a non-optional workflow validation when its runner is unavailable.
+  # Keeping it separate permits a hashed debug artifact without claiming that
+  # Keystore/device acceptance passed or changing the user's application UID.
+  keystore-migration:
+    name: Real Android Keystore migration (not a JVM substitute)
+    needs: android-debug
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Require unprivileged emulator acceleration
+        run: |
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            echo '::error title=Android emulator blocked::This runner has no unprivileged KVM access. Provide a KVM-enabled runner; no root/device bypass is used.'
+            exit 1
+          fi
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK command-line tools
+        uses: android-actions/setup-android@v3
+        with:
+          # v3's default also requests the retired "tools" package.
+          packages: platform-tools
+
+      - name: Install declared Android toolchain
+        run: python3 tool/ci_run.py sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+
+      - name: Setup Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: python3 tool/ci_run.py flutter pub get
+
+      - name: Real v9 to v10 Keystore migration on Android 16 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          AURA_ALLOW_DEBUG_SIGNING: 'true'
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          disable-linux-hw-accel: false
+          working-directory: android
+          script: python3 ../tool/ci_run.py ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest --no-daemon
+
+      - name: Expose the first real Android test failure without suppressing it
+        if: failure()
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          from tool.ci_run import annotate, annotation_chunks
+
+          for path in sorted(Path("build/app").rglob("TEST-*.xml")):
+              for case in ET.parse(path).getroot().iter("testcase"):
+                  failure = case.find("failure")
+                  if failure is None:
+                      failure = case.find("error")
+                  if failure is not None:
+                      details = f"{case.get('classname')}.{case.get('name')}\n{failure.get('message')}\n{failure.text}"
+                      for index, chunk in enumerate(annotation_chunks(details), 1):
+                          annotate("error", f"Android test failure details {index}", chunk)
+                      raise SystemExit(1)
+          print("No failed test XML exists; inspect the preceding setup/compiler/emulator failure.")
+          PYTHON

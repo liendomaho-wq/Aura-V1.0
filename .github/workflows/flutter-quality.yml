@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - principal
+      - arena/063013fc-aura-v1-0
   workflow_dispatch:
 
 permissions:
@@ -26,11 +27,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
+          python-version: "3.11"
+
+      - name: Setup Java 17 for real signed-AAB tests
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Python test dependencies
+        run: python -m pip install -r tool/requirements-train.txt
 
       - name: Setup Flutter stable
         uses: subosito/flutter-action@v2
@@ -39,22 +51,28 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: flutter pub get
+        run: python3 tool/ci_run.py flutter pub get
+
+      - name: Dart format
+        run: python3 tool/ci_run.py --format-diff dart format --set-exit-if-changed .
 
       - name: Static security regression checks
         run: |
-          python3 tool/test_vpn_config_template.py
-          python3 tool/test_aura_sni_firewall.py
-          python3 tool/test_mapped_dns.py
-          python3 tool/test_tun_packet_filter.py
-          python3 tool/test_lwip_fragment_policy.py
-          python3 tool/test_verify_packaged_model.py
-          python3 tool/test_release_signing_policy.py
-          python3 tool/test_release_signing_runtime.py
-          python3 tool/test_verify_aab.py
+          python3 tool/ci_run.py python3 tool/test_vpn_config_template.py
+          python3 tool/ci_run.py python3 tool/test_aura_sni_firewall.py
+          python3 tool/ci_run.py python3 tool/test_mapped_dns.py
+          python3 tool/ci_run.py python3 tool/test_tun_packet_filter.py
+          python3 tool/ci_run.py python3 tool/test_lwip_fragment_policy.py
+          python3 tool/ci_run.py python3 tool/test_verify_packaged_model.py
+          python3 tool/ci_run.py python3 tool/test_release_signing_policy.py
+          python3 tool/ci_run.py python3 tool/test_release_signing_runtime.py
+          python3 tool/ci_run.py python3 tool/test_verify_aab.py
+
+      - name: Full Python suite (JDK required; no omitted AAB tests)
+        run: python3 tool/ci_run.py python3 -m pytest -q -rs
 
       - name: Static analysis
-        run: flutter analyze --no-pub
+        run: python3 tool/ci_run.py flutter analyze --no-pub
 
       - name: Unit and widget tests
-        run: flutter test --no-pub
+        run: python3 tool/ci_run.py flutter test --no-pub

@@ -22,19 +22,28 @@ class AuraSecureVault {
 
   @visibleForTesting
   static AndroidOptions get androidMigrationOptions => _androidOptions;
-  static Future<void> _writeQueue = Future<void>.value();
+  static Future<void>? _writeQueue;
 
   /// Serializes mutations and key creation across every vault instance.
   /// The queue itself never remains failed; each caller receives its own error.
   static Future<T> _enqueue<T>(Future<T> Function() operation) {
     final completion = Completer<T>();
-    _writeQueue = _writeQueue.then((_) async {
+    final previous = _writeQueue;
+    late final Future<void> queued;
+    queued = Future<void>.microtask(() async {
       try {
+        if (previous != null) await previous;
         completion.complete(await operation());
       } on Object catch (error, stackTrace) {
         completion.completeError(error, stackTrace);
+      } finally {
+        // A completed Future schedules late listeners in its original zone.
+        // Do not retain an idle tail from a disposed boot/test scheduler, and
+        // never clear a newer caller's still-pending reservation.
+        if (identical(_writeQueue, queued)) _writeQueue = null;
       }
     });
+    _writeQueue = queued;
     return completion.future;
   }
 

@@ -17,6 +17,9 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
         cls.release_workflow = (
             ROOT / ".github/workflows/android-release.yml"
         ).read_text(encoding="utf-8")
+        cls.integrity_workflow = (
+            ROOT / ".github/workflows/release-signing-integrity.yml"
+        ).read_text(encoding="utf-8")
         cls.codemagic_workflow = (
             ROOT / "codemagic.yaml"
         ).read_text(encoding="utf-8")
@@ -114,6 +117,37 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
             "branch_patterns:", 1
         )[0]
         self.assertIn("- pull_request", events)
+
+    def test_codemagic_pr_patterns_select_destination_branches(self):
+        for branch in ("main", "principal"):
+            self.assertRegex(
+                self.codemagic_workflow,
+                rf"pattern: '{branch}'\s+include: true\s+source: false",
+            )
+
+    def test_codemagic_keeps_full_validation_and_vault_recovery_tests(self):
+        self.assertIn("dart format --set-exit-if-changed .", self.codemagic_workflow)
+        self.assertIn('"$VENV_DIR/bin/python" -m pytest -q -rs', self.codemagic_workflow)
+        self.assertIn("python3 tool/test_verify_aab.py", self.codemagic_workflow)
+        self.assertIn("--tests com.ciberdefensa.aura.VpnRecoveryGateTest", self.codemagic_workflow)
+        # The migration needs AndroidKeyStore; a desktop --tests invocation
+        # cannot provide it. Require the real instrumentation task and class.
+        self.assertIn(":app:connectedStorageMigrationAndroidTest", self.codemagic_workflow)
+        self.assertIn(
+            "-Pandroid.testInstrumentationRunnerArguments.class="
+            "com.ciberdefensa.aura.SecureStorageMigrationTest",
+            self.codemagic_workflow,
+        )
+        self.assertIn("if ! adb get-state; then", self.codemagic_workflow)
+        self.assertNotIn("--tests com.ciberdefensa.aura.SecureStorageMigrationTest", self.codemagic_workflow)
+
+    def test_integrity_retains_real_positive_and_negative_signing_checks(self):
+        self.assertIn("python3 tool/test_release_signing_policy.py", self.integrity_workflow)
+        self.assertIn("Expected printReleaseSigning to fail without signing variables.", self.integrity_workflow)
+        self.assertIn("grep -Fq 'IS_DEBUG_SIGNING=false'", self.integrity_workflow)
+        self.assertIn("STORE_FILE=$AURA_KEYSTORE_PATH", self.integrity_workflow)
+        self.assertIn("KEY_ALIAS=$AURA_KEY_ALIAS", self.integrity_workflow)
+        self.assertNotIn("continue-on-error", self.integrity_workflow)
 
     def test_release_and_privacy_guides_preserve_honest_limits(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

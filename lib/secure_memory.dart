@@ -3,11 +3,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
-typedef _MemsetNative = Pointer<Void> Function(
-  Pointer<Void>,
-  Int32,
-  Size,
-);
+typedef _MemsetNative = Pointer<Void> Function(Pointer<Void>, Int32, Size);
 typedef _MemsetDart = Pointer<Void> Function(Pointer<Void>, int, int);
 
 /// Runs synchronous operations on a native copy of sensitive bytes.

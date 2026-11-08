@@ -38,8 +38,7 @@ void main() {
 
     test('a DGA-like hostname exceeds the legitimate-domain entropy', () {
       final legitimateEntropy = calculateShannonEntropy('google.com');
-      final dgaEntropy =
-          calculateShannonEntropy('q7x2m9v4k1z8p3r6w5n0.biz');
+      final dgaEntropy = calculateShannonEntropy('q7x2m9v4k1z8p3r6w5n0.biz');
 
       expect(legitimateEntropy, closeTo(2.6464393446710157, 1e-12));
       expect(dgaEntropy, greaterThan(legitimateEntropy));

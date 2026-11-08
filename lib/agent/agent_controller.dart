@@ -684,9 +684,8 @@ class AgentController {
       }
 
       _emit(intent.toEvent());
-      final toolArguments = <String, dynamic>{
-        ...intent.entities,
-      }..remove('confirmed_by_user');
+      final toolArguments = <String, dynamic>{...intent.entities}
+        ..remove('confirmed_by_user');
       if (requiresConfirmation && hasConfirmation) {
         toolArguments['confirmed_by_user'] = true;
       }

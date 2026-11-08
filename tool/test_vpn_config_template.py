@@ -376,8 +376,12 @@ if "private fun protectAndBindSocket(socketFd: Int): Boolean" not in text:
     sys.exit("FAIL: VPN socket protection/binding routine is missing")
 if "if (!protect(socketFd)) return false" not in text:
     sys.exit("FAIL: VPN must protect upstream sockets before binding them")
-if "network.bindSocket(socketFd)" not in text:
+if "network.bindSocket(descriptor.fileDescriptor)" not in text:
     sys.exit("FAIL: VPN upstream sockets are not pinned to the selected physical network")
+if "ParcelFileDescriptor.fromFd(socketFd).use { descriptor ->" not in text:
+    sys.exit("FAIL: binding must duplicate the JNI descriptor and close only its temporary wrapper")
+if "ParcelFileDescriptor.adoptFd(socketFd)" in text or "network.bindSocket(socketFd)" in text:
+    sys.exit("FAIL: binding must neither take ownership of the native socket nor pass an unsupported Int overload")
 if "hev_jni_resolve_host (name" not in native_socks:
     sys.exit("FAIL: Android destination DNS must resolve on the underlying network")
 
@@ -433,6 +437,27 @@ if secure_decrypt.group(0).find("_verifyEnvelopeTag(") > secure_decrypt.group(0)
 
 print("PASS: model encryption authenticates payloads before native decryption.")
 
+# USB debugging is a user-controlled development setting, not proof of
+# runtime tampering. Keep it observable but do not make it disable the VPN.
+integrity_policy = re.search(
+    r"val integrityFailed = (.*?)\n\n        return mapOf",
+    anti_tampering,
+    re.DOTALL,
+)
+if (
+    not integrity_policy
+    or "adbEnabled" in integrity_policy.group(1)
+    or "adbBlocked" in integrity_policy.group(1)
+    or '"adbEnabled" to adbEnabled' not in anti_tampering
+    or '"adbBlocked" to false' not in anti_tampering
+    or any(signal not in integrity_policy.group(1) for signal in (
+        "!signatureValid", "!mapsInspectionSucceeded", "fridaDetected", "debuggerBlocked",
+    ))
+):
+    sys.exit("FAIL: ADB must remain diagnostic while signature/debugger tampering checks stay enforced")
+
+print("PASS: USB debugging is reported as an advisory signal without disabling VPN protection.")
+
 # The VPN must track physical connectivity without selecting another VPN as its underlay.
 for required_network_guard in (
     "NetworkRequest.Builder()",
@@ -472,6 +497,60 @@ if "network == excludedNetwork" not in network_selection.group(1):
 
 print("PASS: VPN tracks physical network availability and unregisters callbacks safely.")
 
+# Forwarding relies on sockets bound to the selected Network. If Android rejects
+# callback registration, Aura cannot safely recover after a handover, so startup,
+# panic-isolation resume and network recovery must refuse to report forwarding.
+monitor_guard = re.search(
+    r"private fun requireUnderlyingNetworkMonitor\(\) \{(.*?)\n    \}",
+    text,
+    re.DOTALL,
+)
+if not monitor_guard:
+    sys.exit("FAIL: VPN must fail closed when physical-network monitoring is unavailable")
+monitor_guard_body = monitor_guard.group(1)
+if "!networkCallbackRegistered" not in monitor_guard_body or "throw IOException(" not in monitor_guard_body:
+    sys.exit("FAIL: failed physical-network monitoring must prevent forwarding")
+start_tunnel_region = text.split("private fun startTunnel(", 1)[1].split(
+    "private fun handleTunnelStartFailure", 1
+)[0]
+resume_tunnel_region = text.split("private fun resumeTunnelForwarding()", 1)[1].split(
+    "private fun handleResumeFailure", 1
+)[0]
+recovery_region = text.split("private fun recoverTunnelAfterNetworkChange(", 1)[1].split(
+    "private fun handleNetworkRecoveryFailure", 1
+)[0]
+for region_name, region in (
+    ("startup", start_tunnel_region),
+    ("resume", resume_tunnel_region),
+    ("handover recovery", recovery_region),
+):
+    if "requireUnderlyingNetworkMonitor()" not in region:
+        sys.exit(f"FAIL: VPN {region_name} must require a registered physical-network callback")
+
+print("PASS: VPN fails closed when physical-network monitoring cannot be registered.")
+
+# A failed setUnderlyingNetworks call must not commit the candidate Network;
+# keeping the previous value makes the next callback retry the same handover.
+refresh_network_region = text.split(
+    "private fun refreshUnderlyingNetwork(excludedNetwork: Network? = null)", 1
+)[1].split("private fun stopTunnelForwardingForNetworkFailure", 1)[0]
+metadata_update_position = refresh_network_region.find("setUnderlyingNetworks(")
+metadata_failure_position = refresh_network_region.find("if (!underlayUpdated)")
+metadata_failure_return_position = refresh_network_region.find("return", metadata_failure_position)
+network_commit_position = refresh_network_region.find("underlyingNetwork = selected")
+if (
+    metadata_update_position < 0
+    or metadata_failure_position < metadata_update_position
+    or metadata_failure_return_position < metadata_failure_position
+    or network_commit_position <= metadata_failure_return_position
+):
+    sys.exit(
+        "FAIL: a failed underlay update must stop before committing its candidate Network, "
+        "so a later callback can retry recovery"
+    )
+
+print("PASS: failed physical-network metadata updates remain retryable on a later callback.")
+
 # The legacy shield query must expose real active feed rules, not a permanent
 # empty placeholder or a claim that these rules are observed traffic events.
 MAIN_ACTIVITY = Path(
@@ -493,7 +572,7 @@ print("PASS: shield diagnostics return bounded active IP threat-feed rules witho
 # A physical-network handover must restart the native worker: merely updating
 # Android's underlay metadata does not migrate sockets opened on the old network.
 recovery = re.search(
-    r"private fun recoverTunnelAfterNetworkChange\(\) \{(.*?)\n    \}",
+    r"private fun recoverTunnelAfterNetworkChange\(requestId: String\? = null\) \{(.*?)\n    \}",
     text,
     re.DOTALL,
 )
@@ -509,10 +588,10 @@ for required_recovery_step in (
 ):
     if required_recovery_step not in recovery_body:
         sys.exit("FAIL: VPN handover recovery is missing " + required_recovery_step)
-if "recoverTunnelAfterNetworkChange()" not in text:
-    sys.exit("FAIL: selected physical-network changes do not invoke tunnel recovery")
+if "requestTunnelRecovery()" not in text:
+    sys.exit("FAIL: selected physical-network changes do not schedule tunnel recovery")
 failure_handler = re.search(
-    r"private fun handleNetworkRecoveryFailure\(error: Throwable\) \{(.*?)\n    \}",
+    r"private fun handleNetworkRecoveryFailure\(error: Throwable, requestId: String\? = null\) \{(.*?)\n    \}",
     text,
     re.DOTALL,
 )
@@ -527,6 +606,94 @@ if (
     sys.exit("FAIL: failed network recovery must report the tunnel as inactive")
 
 print("PASS: physical-network handover restarts and verifies tun2socks before reporting protection active.")
+
+# Failed handovers retain the TUN but must remain explicitly recoverable.
+# A dedicated single-flight gate prevents duplicate worker restarts; the same
+# selected Network and an explicit user start both retry without creating a
+# second Android TUN interface.
+recovery_request = re.search(
+    r"private fun requestTunnelRecovery\(requestId: String\? = null\) \{(.*?)\n    \}",
+    text,
+    re.DOTALL,
+)
+if not recovery_request:
+    sys.exit("FAIL: retained TUN recovery request gate is missing")
+recovery_request_body = recovery_request.group(1)
+for required in (
+    "recoveryGate.tryBegin(requestId)",
+    "worker.execute",
+    "recoverTunnelAfterNetworkChange(attempt.requestId)",
+    "recoveryGate.finish(attempt)",
+):
+    if required not in recovery_request_body:
+        sys.exit("FAIL: VPN recovery gate is missing " + required)
+if "tunnelStarted" in recovery_request_body.split("if (serviceShuttingDown || panicIsolationActive)", 1)[0]:
+    sys.exit("FAIL: active handovers must be allowed to restart native sockets on the new underlay")
+
+start_command = re.search(
+    r"override fun onStartCommand\([^)]*\): Int \{(.*?)\n    \}\n\n    override fun onDestroy",
+    text,
+    re.DOTALL,
+)
+if not start_command or (
+    "shouldRetryTunnelRecovery()" not in start_command.group(1)
+    or 'shieldStatus()["forwarding_active"] == true' not in start_command.group(1)
+    or "requestTunnelRecovery(requestId)" not in start_command.group(1)
+):
+    sys.exit("FAIL: explicit VPN activation must recover forwarding on the retained TUN")
+
+same_network_retry = re.search(
+    r"private fun refreshUnderlyingNetwork\(excludedNetwork: Network\? = null\) \{(.*?)\n    \}",
+    text,
+    re.DOTALL,
+)
+if not same_network_retry or (
+    "selected == previous" not in same_network_retry.group(1)
+    or "requestTunnelRecovery()" not in same_network_retry.group(1)
+    or "selected != null && shouldRetryTunnelRecovery()" not in same_network_retry.group(1)
+):
+    sys.exit("FAIL: a later callback on the same physical network must retry failed forwarding")
+
+retry_policy = re.search(
+    r"private fun shouldRetryTunnelRecovery\(\): Boolean =(.*?)\n    /\*\*",
+    text,
+    re.DOTALL,
+)
+if not retry_policy or any(part not in retry_policy.group(1) for part in (
+    "recoveryGate.canRetryRetainedTunnel(",
+    "hasValidInterface = vpnInterface?.fileDescriptor?.valid() == true",
+    "panicIsolationActive = panicIsolationActive",
+    'forwardingVerified = shieldStatus()["forwarding_active"] == true',
+    "startInProgress = startRequested.get()",
+    "closing = serviceShuttingDown || worker.isShutdown",
+)):
+    sys.exit("FAIL: retry decisions must use a valid retained TUN, live native status and lifecycle/start gates")
+recovery_gate = Path(
+    "android/app/src/main/kotlin/com/ciberdefensa/aura/VpnRecoveryGate.kt"
+).read_text(encoding="utf-8")
+for required in (
+    "hasValidInterface && !panicIsolationActive",
+    "!forwardingVerified && !startInProgress && !closing",
+    "@Synchronized\n    fun tryBegin(requestId: String?): Attempt?",
+    "if (active != null) return null",
+    "Attempt(requestId).also { active = it }",
+    "@Synchronized\n    fun finish(attempt: Attempt): Boolean",
+    "if (active !== attempt) return false",
+    "active = null",
+):
+    if required not in recovery_gate:
+        sys.exit("FAIL: JVM-tested recovery ownership/policy is missing " + required)
+if not re.search(r"finally\s*\{\s*recoveryGate.finish\(attempt\)", recovery_request_body):
+    sys.exit("FAIL: every completed or failed recovery must release its own attempt in finally")
+if "requestId = attempt.requestId" not in recovery_request_body:
+    sys.exit("FAIL: cancelled queued recovery must retain the original request correlation")
+
+if "startRequested.set(false)" not in failure_body:
+    sys.exit("FAIL: failed network recovery must release the start gate for a later retry")
+if "startRequested.set(false)" not in start_tunnel_region:
+    sys.exit("FAIL: successful initial startup must release the in-progress gate")
+
+print("PASS: failed VPN handovers can be retried on the retained TUN without duplicate starts.")
 
 # App-risk findings must be based on confirmed access, not permission declarations.
 APP_SCANNER = Path(
@@ -684,7 +851,7 @@ for required_fail_closed_guard in (
     "if (!underlayUpdated)",
     "stopTunnelForwardingForNetworkFailure(",
     "else if (vpnInterface != null && !panicIsolationActive)",
-    "recoverTunnelAfterNetworkChange()",
+    "recoverTunnelAfterNetworkChange(attempt.requestId)",
     "TProxyService.TProxyStopService()",
     "tunnelStarted = false",
     "stopConfirmed = stopNativeWorker()",
@@ -703,6 +870,8 @@ if "stopNativeWorker()" not in fail_closed.group(1):
     sys.exit("FAIL: forwarding shutdown must reconcile the native worker")
 if "stopConfirmed" not in fail_closed.group(1):
     sys.exit("FAIL: forwarding shutdown must not claim success when JNI stop is unconfirmed")
+if "startRequested.set(false)" not in fail_closed.group(1):
+    sys.exit("FAIL: underlay failure must release the start gate while retaining the fail-closed TUN")
 if "updateForegroundNotification()" not in fail_closed.group(1):
     sys.exit("FAIL: degraded network state must be reflected in the VPN notification")
 

@@ -10,61 +10,47 @@ void main() {
 
   test('successful non-audit tools preserve the last device posture', () {
     expect(
-      AgentController.resolveSecurityLevel(
-        <String, dynamic>{'ok': true},
-        AuraSecurityLevel.critical,
-      ),
+      AgentController.resolveSecurityLevel(<String, dynamic>{
+        'ok': true,
+      }, AuraSecurityLevel.critical),
       AuraSecurityLevel.critical,
     );
     expect(
-      AgentController.resolveSecurityLevel(
-        <String, dynamic>{'ok': true},
-        AuraSecurityLevel.warning,
-      ),
+      AgentController.resolveSecurityLevel(<String, dynamic>{
+        'ok': true,
+      }, AuraSecurityLevel.warning),
       AuraSecurityLevel.warning,
     );
     expect(
-      AgentController.resolveSecurityLevel(
-        <String, dynamic>{
-          'ok': true,
-          'security_level': 'warning',
-          'tool': 'analyze_domain',
-        },
-        AuraSecurityLevel.critical,
-      ),
+      AgentController.resolveSecurityLevel(<String, dynamic>{
+        'ok': true,
+        'security_level': 'warning',
+        'tool': 'analyze_domain',
+      }, AuraSecurityLevel.critical),
       AuraSecurityLevel.critical,
     );
     expect(
-      AgentController.resolveSecurityLevel(
-        <String, dynamic>{
-          'ok': true,
-          'security_level': 'safe',
-          'tool': 'analyze_domain',
-        },
-        AuraSecurityLevel.warning,
-      ),
+      AgentController.resolveSecurityLevel(<String, dynamic>{
+        'ok': true,
+        'security_level': 'safe',
+        'tool': 'analyze_domain',
+      }, AuraSecurityLevel.warning),
       AuraSecurityLevel.warning,
     );
     expect(
-      AgentController.resolveSecurityLevel(
-        <String, dynamic>{
-          'ok': true,
-          'security_level': 'safe',
-          'tool': 'audit_device',
-        },
-        AuraSecurityLevel.warning,
-      ),
+      AgentController.resolveSecurityLevel(<String, dynamic>{
+        'ok': true,
+        'security_level': 'safe',
+        'tool': 'audit_device',
+      }, AuraSecurityLevel.warning),
       AuraSecurityLevel.safe,
     );
     expect(
-      AgentController.resolveSecurityLevel(
-        <String, dynamic>{
-          'ok': true,
-          'security_level': 'safe',
-          'tool': 'audit_device',
-        },
-        AuraSecurityLevel.critical,
-      ),
+      AgentController.resolveSecurityLevel(<String, dynamic>{
+        'ok': true,
+        'security_level': 'safe',
+        'tool': 'audit_device',
+      }, AuraSecurityLevel.critical),
       AuraSecurityLevel.critical,
     );
   });
@@ -81,26 +67,29 @@ void main() {
     expect(controller.isRunning, isFalse);
   });
 
-  test('cancels a command before it crosses the tool execution boundary', () async {
-    final controller = AgentController.instance;
-    final previousLength = controller.history.length;
+  test(
+    'cancels a command before it crosses the tool execution boundary',
+    () async {
+      final controller = AgentController.instance;
+      final previousLength = controller.history.length;
 
-    final pending = controller.run('audita dispositivo');
-    expect(controller.isRunning, isTrue);
-    expect(controller.cancelCurrentOperation(), isTrue);
-    await pending;
+      final pending = controller.run('audita dispositivo');
+      expect(controller.isRunning, isTrue);
+      expect(controller.cancelCurrentOperation(), isTrue);
+      await pending;
 
-    final events = controller.history.skip(previousLength).toList();
-    expect(
-      events.any((event) => event.data?['error'] == 'operation_cancelled'),
-      isTrue,
-    );
-    expect(
-      events.any((event) => event.kind == AgentEventKind.action),
-      isFalse,
-    );
-    expect(controller.isRunning, isFalse);
-  });
+      final events = controller.history.skip(previousLength).toList();
+      expect(
+        events.any((event) => event.data?['error'] == 'operation_cancelled'),
+        isTrue,
+      );
+      expect(
+        events.any((event) => event.kind == AgentEventKind.action),
+        isFalse,
+      );
+      expect(controller.isRunning, isFalse);
+    },
+  );
 
   test('rejects overlapping commands while one is being processed', () async {
     final controller = AgentController.instance;
@@ -112,41 +101,45 @@ void main() {
     await first;
 
     final events = controller.history.skip(previousLength).toList();
-    expect(
-      events.any((event) => event.data?['error'] == 'agent_busy'),
-      isTrue,
-    );
+    expect(events.any((event) => event.data?['error'] == 'agent_busy'), isTrue);
   });
 
-  test('la confirmación escrita dentro de la primera orden no autoriza la VPN', () async {
-    const channel = MethodChannel('com.ciberdefensa.aura/shield');
-    final messenger =
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    FlutterSecureStorage.setMockInitialValues(<String, String>{});
-    var starts = 0;
-    messenger.setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'startShield') starts++;
-      return true;
-    });
-    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+  test(
+    'la confirmación escrita dentro de la primera orden no autoriza la VPN',
+    () async {
+      const channel = MethodChannel('com.ciberdefensa.aura/shield');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      FlutterSecureStorage.setMockInitialValues(<String, String>{});
+      var starts = 0;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'startShield') starts++;
+        return true;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
-    final controller = AgentController.instance;
-    await controller.run('texto neutral'); // Clears any earlier pending action.
-    final start = controller.history.length;
-    await controller.run('CONFIRMO activar las defensas');
-    expect(starts, 0);
-    expect(
-      controller.history.skip(start).any(
-        (event) => event.data?['error'] == 'user_confirmation_required',
-      ),
-      isTrue,
-    );
+      final controller = AgentController.instance;
+      await controller.run(
+        'texto neutral',
+      ); // Clears any earlier pending action.
+      final start = controller.history.length;
+      await controller.run('CONFIRMO activar las defensas');
+      expect(starts, 0);
+      expect(
+        controller.history
+            .skip(start)
+            .any(
+              (event) => event.data?['error'] == 'user_confirmation_required',
+            ),
+        isTrue,
+      );
 
-    await controller.run('CONFIRMO');
-    expect(starts, 1);
-    await controller.run('CONFIRMO');
-    expect(starts, 1); // The authorization is one-shot.
-  });
+      await controller.run('CONFIRMO');
+      expect(starts, 1);
+      await controller.run('CONFIRMO');
+      expect(starts, 1); // The authorization is one-shot.
+    },
+  );
 
   test('una orden negada no queda pendiente de autorización', () async {
     const channel = MethodChannel('com.ciberdefensa.aura/shield');
@@ -163,9 +156,9 @@ void main() {
     final start = controller.history.length;
     await controller.run('no quiero activar las defensas');
     expect(
-      controller.history.skip(start).any(
-        (event) => event.data?['error'] == 'user_denied_operation',
-      ),
+      controller.history
+          .skip(start)
+          .any((event) => event.data?['error'] == 'user_denied_operation'),
       isTrue,
     );
     await controller.run('CONFIRMO');
@@ -175,7 +168,8 @@ void main() {
 
   test('una negativa prevalece incluso con confirmación de UI', () async {
     const channel = MethodChannel('com.ciberdefensa.aura/shield');
-    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     var starts = 0;
     messenger.setMockMethodCallHandler(channel, (_) async {
       starts++;
@@ -183,7 +177,10 @@ void main() {
     });
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
     final controller = AgentController.instance;
-    await controller.run('no quiero activar las defensas', confirmedByUser: true);
+    await controller.run(
+      'no quiero activar las defensas',
+      confirmedByUser: true,
+    );
     expect(starts, 0);
     expect(controller.history.last.data?['error'], 'user_denied_operation');
   });
@@ -196,18 +193,23 @@ void main() {
     expect(controller.history.last.data?['error'], 'no_pending_confirmation');
   });
 
-  test('un identificador que contiene no no se interpreta como negativa', () async {
-    final controller = AgentController.instance;
-    final start = controller.history.length;
-    await controller.run('bloquea no.example');
-    expect(
-      controller.history.skip(start).any(
-        (event) => event.data?['error'] == 'user_confirmation_required',
-      ),
-      isTrue,
-    );
-    await controller.run('texto neutral');
-  });
+  test(
+    'un identificador que contiene no no se interpreta como negativa',
+    () async {
+      final controller = AgentController.instance;
+      final start = controller.history.length;
+      await controller.run('bloquea no.example');
+      expect(
+        controller.history
+            .skip(start)
+            .any(
+              (event) => event.data?['error'] == 'user_confirmation_required',
+            ),
+        isTrue,
+      );
+      await controller.run('texto neutral');
+    },
+  );
 
   test('una instrucción nueva invalida la autorización pendiente', () async {
     final controller = AgentController.instance;
@@ -229,10 +231,7 @@ void main() {
 
     expect(status['nativeAuthAvailable'], isFalse);
     expect(status['deviceSecure'], isTrue);
-    expect(
-      await controller.authenticateDeviceCredential(),
-      isFalse,
-    );
+    expect(await controller.authenticateDeviceCredential(), isFalse);
   });
 
   test('empty native authentication status also fails closed', () async {
@@ -249,7 +248,8 @@ void main() {
   });
 
   test('help devuelve exactamente la lista de órdenes solicitada', () async {
-    const expected = 'ÓRDENES DISPONIBLES — ACTIVAR DEFENSAS · '
+    const expected =
+        'ÓRDENES DISPONIBLES — ACTIVAR DEFENSAS · '
         'DESACTIVAR DEFENSAS · BLOQUEAR <dominio> · REVISAR APP <paquete> · '
         'AISLAMIENTO DE EMERGENCIA · REANUDAR LA RED · ACTUALIZAR '
         'DEFENSAS · AUDITAR DISPOSITIVO · ESCANEAR APLICACIONES · ANALIZAR DOMINIO <host> · ESTADO · PURGA CRIPTOGRÁFICA. '

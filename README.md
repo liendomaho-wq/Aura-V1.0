@@ -1,104 +1,100 @@
-# Aura Mobile Defens — documentación técnica y guía de continuidad
+# Aura Mobile Defens
 
-> **Documento de traspaso para una IA o desarrollador que continúe el proyecto.**  
-> Última revisión documental: **2026-11-08**. Rama objetivo de release: `main`.
-> «Defens» es la ortografía intencional del producto; no corregir. Reporta vulnerabilidades según [SECURITY.md](SECURITY.md).
+Aplicación Android de ciberdefensa local con Flutter/Dart, Kotlin y C/JNI.
+Funciona como una app normal, **sin root, Shizuku ni Superuser**. «Defens» es la
+ortografía intencional del producto.
 
-## 1. Resumen ejecutivo y estado real
+**En desarrollo; no certificada ni lista para release.** La implementación, una
+prueba unitaria y una función verificada en un teléfono son evidencias distintas.
+El estado de validación, los SHA, fallos y enlaces de CI pertenecen a
+[AURA_FINAL_AUDIT.md](AURA_FINAL_AUDIT.md), no a este README.
 
-Aura Mobile Defens es una aplicación Android de ciberdefensa local, desarrollada con Flutter/Dart y componentes nativos Kotlin, C/JNI. Está diseñada para funcionar **sin root**. La interfaz gira alrededor de un agente local y un avatar; el producto no debe convertirse en un dashboard genérico con escudos o radares.
+La experiencia aprobada conserva el tema oscuro, cian/violeta, consola y avatar
+con la IA protagonista. Este trabajo no rediseña la interfaz ni incorpora
+publicación, monetización o cambios de distribución.
 
-**Estado del producto: EN DESARROLLO — no declarar terminado ni certificado.** El repositorio contiene capacidades reales de análisis del dispositivo, inventario limitado de aplicaciones, clasificación local de dominios, auditoría de eventos de red y un servicio VPN Android opcional. Sin embargo, la cobertura de red es parcial, el agente conversacional es determinista y heurístico (no un LLM generativo completo), y aún se necesitan pruebas en dispositivos físicos y validación del pipeline en el commit de entrega.
+## Producto y alcance
 
-La app no garantiza protección integral, no sustituye Play Protect ni un producto EDR, y no puede inspeccionar libremente otras aplicaciones debido al sandbox y las restricciones de Android. Toda respuesta de seguridad debe diferenciar entre **acción solicitada**, **acción aceptada por Android/motor**, **evento observado** y **resultado verificado**.
-
-### Estado resumido
-
-| Área | Lo que existe en el código | Lo que NO debe afirmarse |
+| Componente | Capacidad implementada | Límites |
 |---|---|---|
-| Interfaz | Flutter, consola conversacional, avatar Aura, estados visuales y accesibilidad/reducción de movimiento. | No afirmar que la experiencia visual final está validada en todos los tamaños/dispositivos. |
-| Agente IA | `AgentController`, parser de intenciones, respuestas locales, `AuraTools`, timeouts por herramienta, postcondiciones y bitácora cifrada. | No es un LLM generativo ni razona libremente como ChatGPT; algunas llamadas nativas no se pueden cancelar al vencer el timeout. |
-| Modelo de dominios | Bosque de decisión local; modelo JSON 3.0.0, 500 árboles, seis características históricas; verificación SHA-256/firma antes de instalar modelo. | No analiza contenido de páginas, archivos ni comportamiento completo del sitio. Una clasificación no garantiza que un dominio sea seguro o malicioso. |
-| Seguridad Android | Auditorías heurísticas de root/emulador/instrumentación/overlays; escáner de apps, permisos, servicios, firmas y señales de ofuscación. | No detecta todo malware, no puede ver todos los paquetes/estados y no aísla arbitrariamente otras apps. |
-| Red/VPN | `VpnService`, túnel TUN/HEV, rutas IPv4/IPv6, filtros DNS selectivos y parser SNI conectado al flujo TCP del TUN con reensamblado del ClientHello. El SOCKS5 local de Android usa RFC 1929 con contraseña efímera por servicio, límite de 64 sesiones y timeout de 5 s por espera de E/S del handshake. | No es un firewall universal. La autenticación local endurece el listener, pero no demuestra forwarding; SNI/ECH/QUIC, DoH y el comportamiento en hardware real aún requieren validación exhaustiva; ECH no se descifra. |
-| Privacidad | Telemetría local opt-in; telemetría remota opcional con consentimiento y endpoint HTTPS; los dominios se representan con HMAC-SHA-256 usando una clave de SecureVault. Revocar consentimiento elimina colas locales/remotas. | Los HMAC son seudónimos, no anonimización absoluta: el servidor ve la IP de conexión y los datos correlacionables siguen siendo sensibles. |
-| Release | Script de compilación/verificación y workflow Codemagic con `apksigner` en modo estricto. El workflow actual configura fallback DEBUG con advertencia visible para pruebas. | Con `AURA_REQUIRE_RELEASE_SIGNING=false`, el artefacto es DEBUG y no debe distribuirse. La firma de producción real sigue pendiente. |
-| Calidad | Pruebas Flutter/Dart, pruebas Python y workflows GitHub Actions/Codemagic definidos. | No afirmar que todos los tests/builds pasan en el estado actual sin un run verde del commit exacto. |
+| Agente local | Parser de intenciones por reglas, herramientas permitidas, confirmaciones, plazos y postcondiciones. | **No es un LLM** ni un agente generativo de propósito general. Un timeout Dart no cancela necesariamente un trabajo nativo. |
+| Clasificador ML | Bosque local de dominios, modelo activo **3.0.0**, seis características. | No inspecciona páginas ni archivos; una clasificación no garantiza seguridad. |
+| Auditoría Android | Inventario visible, permisos concedidos, servicios habilitados, firma, provenance y estados AppOps accesibles. | Visibilidad y APIs de una app normal; no puede aislar, desinstalar ni vigilar arbitrariamente otras apps. |
+| VPN opcional | VpnService → TUN → HEV; rutas IPv4/IPv6, SOCKS5 autenticado y filtros DNS/SNI selectivos. | Arranque local no demuestra tráfico extremo a extremo ni ausencia de fugas. ECH, DoH personalizado y QUIC no se descifran. |
+| Privacidad | Telemetría opt-in, HMAC de dominios y almacenamiento protegido. | Seudonimización, no anonimización absoluta; un servidor puede observar la IP de conexión. |
 
-## 2. Arquitectura y flujo de datos
+Aura no sustituye un EDR ni garantiza protección universal. Los resultados deben
+distinguir **solicitud**, **aceptación por Android/motor**, **evento observado** y
+**postcondición verificada**. Una señal heurística no es un incidente confirmado.
+
+## Arquitectura
 
 ```text
-Android / Kotlin
-  MainActivity + MethodChannels
-    ├─ biometría, notificaciones, estado de seguridad y auditoría del dispositivo
-    ├─ AuraAppGenomeScanner / AuraBlocklistService / AuraTelemetryService
-    └─ AuraVpnService (VpnService) → TUN → HEV SOCKS5 tunnel (C/JNI)
-                                      └─ filtro selectivo DNS / eventos de red
-                                                │ EventChannel
-                                                ▼
-Flutter / Dart
-  AuraCoreScreen → AuraNetworkAuditor → AuraAIBrain → AuraAIInference (isolate)
-        │                 │                  └─ modelo JSON local validado
-        │                 └─ AuraStateProvider / bitácora local
-        └─ AgentController → AuraIntentParser → AuraTools → canales nativos
+Consola Flutter / avatar
+  ├─ AgentController → AuraIntentParser → AuraTools → MethodChannels
+  ├─ AuraStateProvider / explicaciones / bitácora cifrada
+  └─ AuraNetworkAuditor → AuraAIBrain → inferencia local en isolate
+                                      └─ modelo validado
+
+Android: MainActivity / servicios / inventario / biometría
+  └─ AuraVpnService → TUN → cliente HEV → listener HEV SOCKS5 local
+                         C/JNI           RFC 1929 + salida física protegida
+                           └─ filtros DNS/SNI → EventChannel → Flutter
 ```
 
-Componentes principales:
+Rutas principales:
 
-- `lib/main.dart`: punto de entrada Flutter.
-- `lib/screens/aura_core_screen.dart`: consola principal, avatar, estados, auditoría, explicaciones y controles.
-- `lib/screens/splash_screen.dart`: splash y autenticación.
-- `lib/agent/agent_controller.dart`: controlador de conversación, intenciones, historial y coordinación de acciones.
-- `lib/agent/aura_intent_parser.dart`: parser determinista de órdenes.
-- `lib/agent/aura_tools.dart`: herramientas/acciones locales; valida argumentos y comunica resultados.
-- `lib/ai_brain.dart`, `lib/services/ai_brain.dart`, `lib/models/aura_ai_brain.dart`: núcleo de carga/modelo (hay namespaces/implementaciones heredadas; revisar referencias antes de refactorizar).
-- `lib/inference/aura_ai_inference.dart`: extracción de características e inferencia del bosque.
-- `lib/network_auditor.dart`: recepción y coordinación de eventos de red.
-- `lib/providers/aura_state_provider.dart`: estado observable, telemetría y explicaciones.
-- `lib/services/aura_local_telemetry.dart`: persistencia/consentimiento de telemetría.
-- `lib/voice_engine.dart`: voz/TTS.
-- `lib/theme/aura_tokens.dart`: tokens visuales.
-- `android/app/src/main/kotlin/com/ciberdefensa/aura/MainActivity.kt`: puente Android/Flutter y funciones nativas.
-- `android/app/src/main/kotlin/com/ciberdefensa/aura/AuraVpnService.kt`: servicio VPN y ciclo de vida de credenciales locales efímeras.
-- `android/app/src/main/kotlin/com/ciberdefensa/aura/AuraSocks5Credentials.kt` y `Socks5AuthProtocol.kt`: credenciales aleatorias y handshake RFC 1929 del proxy SOCKS5 local.
-- `android/app/src/main/kotlin/com/ciberdefensa/aura/AuraAppGenomeScanner.kt`: inventario y análisis heurístico de apps.
-- `android/app/src/main/kotlin/com/ciberdefensa/aura/AuraHostileEnvironment.kt`: señales del entorno hostil.
-- `android/app/src/main/kotlin/com/ciberdefensa/aura/AuraBlocklistService.kt`: feeds/blocklist.
-- `android/app/src/main/kotlin/com/ciberdefensa/aura/AuraNetworkStream.kt`: eventos nativos de red.
-- `android/app/src/main/kotlin/com/ciberdefensa/aura/AuraTelemetryService.kt`: telemetría.
-- `android/app/src/main/cpp/aura_sni_firewall.c/.h`: parser SNI conectado al flujo de sesiones TCP del túnel; requiere validación exhaustiva en dispositivos.
-- `android/app/src/main/cpp/hev-socks5-tunnel/`: motor de túnel C de terceros.
-- `assets/model/aura_brain_model.json`, `.sha256`, `.sig`: modelo móvil y material de integridad.
+- `lib/agent/`: controlador, validación de herramientas y guard de ejecución.
+- `lib/infrastructure/agent/aura_intent_parser.dart`: parser por reglas;
+  `lib/agent/aura_intent_parser.dart` conserva el acceso de compatibilidad.
+- `lib/ai_brain.dart`, `lib/models/aura_ai_brain.dart`, `lib/inference/`:
+  carga, integridad, contrato de características e inferencia.
+- `lib/providers/aura_state_provider.dart`, `lib/network_auditor.dart` y
+  `lib/services/aura_local_telemetry.dart`: estado, eventos y consentimiento.
+- `lib/secure_vault.dart`, `lib/crypto/aura_crypto_layer.dart`,
+  `lib/secure_memory.dart`: persistencia, formatos criptográficos y buffers.
+- `android/app/src/main/kotlin/com/ciberdefensa/aura/`: puente, VPN, escáner,
+  `VpnLifecycleGate`, `VpnStartRequestGate` y `VpnRecoveryGate`.
+- `android/app/src/main/cpp/`: integración HEV, JNI y filtros de paquetes/SNI.
 
-Conviven dos namespaces Kotlin por legado: `com.aura.cyberdefense` y `com.ciberdefensa.aura`. No unificarlos sin revisar Manifest, JNI, nombres de canales y llamadas Dart.
+Conviven namespaces nativos `com.ciberdefensa.aura` y `com.aura.cyberdefense` por
+compatibilidad. No renombrarlos sin reconciliar Manifest, JNI y canales Dart.
 
-## 3. IA: capacidades, límites y trabajo pendiente
+### Agente, reglas, heurísticas y ML no son lo mismo
 
-La IA actual es un **agente local basado en reglas + herramientas + clasificador ML**. `AgentController` contiene respuestas deterministas para intenciones como saludo, identidad, capacidades y seguridad. `AuraIntentParser` reconoce órdenes predefinidas. `AuraTools` ejecuta operaciones específicas mediante Dart y canales nativos. El bosque de decisión clasifica nombres de dominio; no es el cerebro conversacional generativo.
+El parser reconoce órdenes y el controlador selecciona herramientas conocidas.
+Las operaciones que cambian el estado requieren la confirmación prevista, de un
+solo uso y con caducidad; las entradas no confiables no deben autorizar acciones.
+La bitácora cifra inicio/cierre sin guardar los valores de argumentos. Si no se
+puede persistir el inicio, no se despacha la herramienta. Un resultado desconocido
+no debe convertirse en éxito ni reintentarse automáticamente como si fuera inocuo.
 
-La arquitectura de ejecución ya aplica límites de tiempo por herramienta, comprobación de postcondiciones antes de declarar éxito y una bitácora cifrada de inicio/cierre en SecureVault. La bitácora no guarda valores de argumentos y una falla al persistir el inicio impide despachar la herramienta. El timeout no detiene necesariamente una llamada nativa que ya comenzó; en ese caso el resultado se informa como desconocido y requiere comprobar el estado.
+Las reglas DNS/IP/SNI son políticas concretas; las señales de root, emulación,
+instrumentación y riesgo de apps son heurísticas; el bosque de dominios es ML.
+Ninguno convierte al parser conversacional en un LLM.
 
-Acciones/herramientas presentes en el código (la disponibilidad real depende de permisos, estado y respuesta nativa):
+### Modelo activo
 
-- `audit_device`: consulta señales de root, emulador, instrumentación, overlay y accesibilidad expuestas por Android. Los errores deben dar estado incompleto.
-- `scan_apps`: consulta apps/servicios/accesos especiales, firmas y heurísticas. El inventario depende de visibilidad Android.
-- `analyze_domain`: valida el host y ejecuta el modelo local si está disponible e íntegro.
-- `update_defenses`: solicita actualización de defensas/feeds según configuración.
-- Revisión de app: abre Ajustes Android para revisión humana; no desinstala ni deshabilita apps.
-- Bloqueo DNS: solicita una regla local; el flujo conversacional requiere confirmación explícita.
-- Aislamiento de emergencia/purga/activar o desactivar defensas: requieren confirmación explícita en segundo paso.
+- Asset: `assets/model/aura_brain_model.json`, versión **3.0.0**, 500 árboles.
+- Características: `length`, `shannon_entropy`, `digit_ratio`, `vowel_ratio`,
+  `consonant_sequence_ratio`, `suspicious_tld`.
+- SHA-256 del JSON: `d190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2`.
+- Se conservan digest y firma RSA separados del modelo.
 
-**Pendiente real de IA:** el LLM generativo sigue pendiente. La allowlist de herramientas, los límites de argumentos, las confirmaciones, los timeouts, las postcondiciones y el Audit Log ya forman parte del agente. Aún falta completar cancelación cooperativa y progreso granular para escaneos nativos largos, además de evaluar si un LLM local o remoto es viable. Cualquier modelo futuro debe permanecer separado de las herramientas privilegiadas: nunca ejecutar comandos arbitrarios, código, shell ni operaciones no registradas. No simular respuestas de IA ni mostrar “acción completada” si solo se envió una solicitud.
+El contrato de 18 características y el candidato **3.1.0** no sustituyen al
+modelo móvil activo. No promocionar un candidato sin dataset verificable,
+licencias, separación por grupos sin contaminación, evaluación independiente,
+métricas reproducibles y revisión de falsos positivos/negativos. Los tests golden,
+fixtures y benchmarks no son métricas holdout de producción. Véanse
+[Model Card](docs/model_card.md), `tool/dataset/`, `tool/train_max_aura_brain.py` y
+`tool/bench_aura_brain.py`.
 
-## 4. Modelo ML y datos
+### Contrato de características del extractor
 
-- Asset activo documentado: modelo `3.0.0`, bosque de 500 árboles y seis características históricas.
-- SHA-256 documentado del JSON 3.0.0: `d190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2`.
-- El cliente descarga JSON, sidecar SHA-256 y firma; valida antes de instalar/cifrar el modelo. Ante fallo de integridad no debe aceptar el modelo nuevo.
-- Existe un contrato de vector mejorado de 18 características sincronizado entre Python y Dart para el **candidato 3.1.0**, pero el modelo móvil 3.0.0 usa únicamente las seis primeras. No cambiar el vector del modelo activo sin entrenar, evaluar y versionar un modelo compatible.
-- Las características auxiliares que no pertenecen al vector de seis campos no deben presentarse como causa de la predicción.
-
-Contrato de extracción compartido por `tool/train_max_aura_brain.py` y `AuraAIInference`:
+El orden compartido por Python y Dart es parte del contrato de ingeniería.
+**Solo los campos 1–6 alimentan el modelo activo 3.0.0**; los campos 7–18
+pertenecen al contrato candidato, no son una promoción del modelo ni causas
+adicionales de su predicción actual.
 
 | # | Característica | Alcance |
 |---:|---|---|
@@ -121,201 +117,119 @@ Contrato de extracción compartido por `tool/train_max_aura_brain.py` y `AuraAII
 | 17 | `longest_label_length_ratio` | Longitud de la etiqueta más larga normalizada. |
 | 18 | `suspicious_keyword_indicator` | Indicador de palabras clave léxicas de sospecha. |
 
-Estas señales describen el nombre de dominio, no el contenido del sitio. Las doce últimas solo se usan en inferencia cuando el modelo declara exactamente el orden completo de 18 campos.
-- El pipeline de datos está en `tool/dataset/`; entrenador en `tool/train_max_aura_brain.py`; benchmark en `tool/bench_aura_brain.py`; pruebas en `tool/test_aura_brain.py`.
-- Las fuentes, licencias, splits y métricas deben ser reproducibles y versionados como artefactos apropiados. No usar datasets sintéticos/seed-only para afirmar métricas holdout.
-- Model Card: [docs/model_card.md](docs/model_card.md). Modelo y documentación pública: [GitHub Pages](https://yojamm16-boop.github.io/Aura-V1.0/model-card.md) (comprobar que la publicación corresponde al commit actual).
+Las señales describen el nombre del dominio, no el contenido del sitio. Las doce
+últimas solo pueden usarse para inferencia si un modelo evaluado declara el
+orden completo de 18 campos. No alterar el vector de 3.0.0 para acomodar al candidato.
 
-El README anterior registraba para el modelo 3.0.0 un test holdout de 72,703 filas y una matriz `[[13381, 1606], [13916, 43800]]`; esas cifras son históricas/documentales y deben comprobarse contra el artefacto y el pipeline vigente antes de reutilizarlas en material de producto.
+### Red y recuperación
 
-## 5. Protección de red: alcance exacto y advertencias
+El listener Android es `127.0.0.1:18763`. Usa usuario `aura` y contraseña aleatoria
+efímera de 256 bits, compartida mediante el YAML privado con el cliente HEV. No
+hay una contraseña de producción fija. El listener exige RFC 1929, limita las
+sesiones y aplica timeout por espera de E/S del handshake, no un deadline global.
+El servicio exige worker nativo vivo y handshake autenticado antes de informar
+arranque local; eso **no prueba** que un paquete del TUN alcance Internet.
 
-La VPN es parte de `main` actualmente. Android solicita consentimiento del sistema para el `VpnService`; el servicio crea TUN y coordina el motor HEV. El parser SNI ya está conectado al callback de recepción TCP de las sesiones TUN: acumula los segmentos hasta completar el ClientHello y puede abortar la conexión cuando una regla SNI activa bloquea el host. Esto demuestra integración de código y pruebas nativas/unitarias, no validación exhaustiva de tráfico en equipos reales. El filtrado de ingreso descrito en el README anterior descarta TCP/853, UDP/853 y UDP/443 solo cuando el destino coincide con una lista fija de resolutores DoH conocidos.
+La pérdida de red debe detener forwarding conservando las rutas completas del
+TUN. La recuperación reutiliza una interfaz válida, respeta el aislamiento de
+pánico y el cierre de ciclo de vida, y correlaciona el resultado con el requestId.
+Un flag Kotlin por sí solo no demuestra un worker vivo. La autenticación y el
+reinicio efectivo tras fallo necesitan también la prueba física descrita en
+[el protocolo de tráfico real](docs/ANDROID_TRAFFIC_VALIDATION.md).
 
-Limitaciones confirmadas en el código/documentación revisados:
+La inspección SNI observa ClientHello visible; no descifra TLS/ECH. Las reglas de
+puertos/resolvedores conocidos no bloquean todo DoH ni inspeccionan QUIC/HTTP3.
+La fragmentación y los casos no inspeccionables tienen políticas conservadoras
+que pueden afectar compatibilidad. Esta VPN es local, no un servicio de anonimato.
 
-1. DoH sobre TCP/443 no queda bloqueado de forma general; la lista de resolutores es selectiva.
-2. UDP/443 no equivale a bloquear todo QUIC/HTTP3: el filtrado descrito depende del destino conocido.
-3. El parser SNI está conectado al flujo TUN para TCP y reensambla el ClientHello; una regla bloqueada aborta la sesión y reporta el evento. Falta validación exhaustiva en hardware real, especialmente IPv6, fragmentación/reordenamiento, QUIC y ECH. ECH solo se reconoce como contenido cifrado: no se descifra ni se conoce el hostname oculto. No anunciar inspección SNI dentro de QUIC ni bloqueo general de ECH.
-4. La detección de IP directa tampoco está demostrada como conectada al camino de paquetes.
-5. El firewall es userspace/TUN; no usa iptables/ip6tables y no tiene privilegios de sistema para hacerlo.
-6. Cambios de red, revocación de permiso VPN, fugas IPv4/IPv6, DNS, fragmentación, suspensión, batería, reconexión y compatibilidad OEM requieren pruebas en dispositivos reales.
-7. Los contadores/eventos solo significan lo que confirme el motor. No presentar un contador como paquetes descartados si no hay confirmación del motor.
+### Datos, integridad y biometría
 
-**Decisión de continuidad:** no borrar ni fusionar código VPN a ciegas. El usuario ha expresado frustración con esta parte y pidió eliminar restos que no sean útiles, pero la rama principal aún depende de ella en servicios, UI, herramientas, manifest, tests y scripts. Antes de retirarla, hacer inventario de dependencias y decidir formalmente si Aura conservará VPN opcional o pasará a una arquitectura sin VPN. Si se conserva, corregir y probar el ciclo de vida del túnel; si se elimina, retirar de forma coherente todos los consumidores y actualizar documentación/pruebas. No ocultar el botón dejando servicios huérfanos.
+- SecureVault conserva la migración **v9→v10**, backup de migración y
+  `resetOnError=false`; no borrar datos ante corrupción para aparentar recuperación.
+  El almacenamiento v10 usa RSA-OAEP para envolver claves y AES-GCM para valores.
+- El formato histórico de modelo cifrado **v2** usa **AES-256-CBC + HMAC**, no
+  AES-GCM. Se autentica el sobre antes de descifrar, también en la ruta JNI.
+  El JSON empaquetado usa SHA-256 y firma RSA; no es ese sobre cifrado.
+- Los buffers mutables se limpian donde lo permite el runtime. No se garantiza
+  borrado de copias inmutables, cachés del SO o almacenamiento físico.
+- `adbEnabled` es informativo y `adbBlocked=false` conserva el contrato con Dart.
+  La depuración USB no debe apagar la VPN. Firma, depurador adjunto en release e
+  instrumentación son comprobaciones de cliente **esquivables, no un límite de
+  seguridad**.
+- `BiometricPrompt` no usa `CryptoObject`: actualmente es una puerta de UI, no
+  vinculación criptográfica a cada descifrado. No cambiar ese contrato sin diseño
+  autorizado y migración que preserve datos.
 
-### PR de reconstrucción VPN
+La aplicación declara inventario amplio (`QUERY_ALL_PACKAGES`), audio,
+notificaciones, biometría, red y foreground services. El consentimiento y las
+restricciones de Android siguen siendo obligatorios. Denegar un permiso no debe
+inventar resultados. Políticas: [privacidad](docs/PRIVACY.md) y
+[seguridad](SECURITY.md).
 
-Existe una PR abierta de reconstrucción: [PR #4](https://github.com/liendomaho-wq/Aura-V1.0/pull/4), cuya rama de trabajo es `rebuild/vpn-from-zero`. **No está aprobada para merge.** En revisión se encontró que `AuraLocalSocks5Proxy.stop()` apagaba el executor sin recrearlo, lo que rompía un ciclo stop/start sobre la misma instancia. Se corrigió en la rama de la PR mediante recreación del pool al reiniciar y manejo de `RejectedExecutionException` al competir el cierre con una aceptación de socket (commit [a0a6e26](https://github.com/liendomaho-wq/Aura-V1.0/commit/a0a6e265a63fc7defb136b8dfbd96237243930e0)). **La corrección aún no está integrada en `main` ni tiene CI verde verificado.** La rama de la PR está divergida respecto de `main` (22 commits por delante y 237 por detrás en la última comparación); no fusionarla directamente. Reconciliar los cambios sobre el `main` actual y ejecutar pruebas antes de cualquier merge.
+## Ingeniería y compilación
 
-## 6. Seguridad Android, permisos y privacidad
+| Herramienta/plataforma | Contrato del proyecto |
+|---|---|
+| Dart / Flutter | Dart `>=3.12.0 <4.0.0`, Flutter `>=3.44.0`; los workflows seleccionan stable. |
+| Java / Gradle / AGP | JDK 17 / Wrapper 8.14.3 / AGP 8.13.0. |
+| Kotlin | 2.2.20, JVM target 17. |
+| Android | minSdk 24, compileSdk 36, targetSdk 36 (Android 16). |
+| NDK | `28.2.13676358`, `ndk-build`; alineación de páginas de 16 KiB configurada. |
+| ABIs declaradas | `armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64`. |
 
-Manifest observado incluye, entre otros: `INTERNET`, `ACCESS_NETWORK_STATE`, `QUERY_ALL_PACKAGES`, `RECORD_AUDIO`, `POST_NOTIFICATIONS`, `USE_BIOMETRIC`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE`, y declara `AuraVpnService` con `BIND_VPN_SERVICE`.
+Son requisitos/configuración, **no una certificación de todos los teléfonos**.
+La referencia física es Redmi Note 15 Pro Plus 5G, 8 GB, Android 16. Compatibilidad
+real depende del OEM, permisos, ABI, red y pruebas en cada versión relevante.
 
-- `QUERY_ALL_PACKAGES` tiene restricciones de Google Play. Mantenerlo solo con justificación válida y evaluar una alternativa de visibilidad limitada.
-- El reconocimiento de voz usa el proveedor disponible en Android; el repositorio no demuestra que el audio permanezca local. No prometer procesamiento de voz 100% offline.
-- El escáner de apps ofrece señales heurísticas, no análisis dinámico ni descompilación completa.
-- Los indicadores root/emulador/Frida/debugger/overlay pueden tener falsos positivos y falsos negativos.
-- `allowBackup=false` y `usesCleartextTraffic=false` están configurados en el Manifest revisado.
-- Telemetría local opt-in. El modo remoto exige endpoint HTTPS y consentimiento; los dominios se representan con HMAC-SHA-256 con clave protegida. Son identificadores seudónimos, no anonimización irreversible.
-- Mantener secretos fuera del repositorio, logs, APK y README. Las claves públicas pueden estar versionadas; keystores, contraseñas y claves privadas nunca.
-
-Documentos de entrega:
-
-- [Auditoría final de estado y límites de validación](AURA_FINAL_AUDIT.md).
-- [Política de privacidad basada en el comportamiento del código](docs/PRIVACY.md).
-- [Guía de release, firma y validación en dispositivo](docs/RELEASE_AND_DEVICE_VALIDATION.md).
-
-## 7. Build, versiones y CI/CD
-
-Configuración observada en `pubspec.yaml`:
-
-- Paquete Dart: `aura_mobile_defens`.
-- Versión: `1.0.2+3`.
-- SDK Dart: `>=3.12.0 <4.0.0`; Flutter declarado `>=3.44.0`.
-- Android applicationId documentado: `com.ciberdefensa.aura`.
-- El README previo documentaba compile/target SDK 36 y NDK `28.2.13676358`; verificar Gradle antes de actualizar versiones.
-- Codemagic: workflow `android-build`, Flutter stable, Java 17, cachés Pub/Gradle, `flutter pub get`, `flutter analyze --no-pub`, pruebas Python de configuración VPN y firewall SNI, `flutter test --reporter expanded`, pruebas JVM de ciclo de vida VPN/SOCKS5 mediante `:app:testDebugUnitTest`, `bash tool/compile_aura.sh` y `bash tool/compile_aura.sh --verify-artifact`.
-- Artefactos esperados: `build/app/outputs/flutter-apk/*.apk`, `build/app/outputs/bundle/release/*.aab`, `pubspec.lock`.
-
-Comandos locales:
+En una estación con la toolchain completa, sin secretos de producción:
 
 ```bash
-flutter --version
 flutter pub get
-flutter analyze
-python3 tool/test_vpn_config_template.py
-python3 tool/test_aura_sni_firewall.py
-(cd android && ./gradlew :app:testDebugUnitTest)
-flutter test --reporter expanded
-bash tool/compile_aura.sh
-bash tool/compile_aura.sh --verify-artifact
+dart format --set-exit-if-changed .
+flutter analyze --no-pub
+flutter test --no-pub
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r tool/requirements-train.txt
+python -m pytest -q -rs
+# Exige Java, javac y OpenSSL; no aceptar ocho pruebas omitidas en CI:
+python tool/test_verify_aab.py
+(cd android && AURA_ALLOW_DEBUG_SIGNING=true ./gradlew :app:testDebugUnitTest --no-daemon)
+AURA_ALLOW_DEBUG_SIGNING=true flutter build apk --debug
+sha256sum build/app/outputs/flutter-apk/app-debug.apk
 ```
 
-Con `AURA_REQUIRE_RELEASE_SIGNING=true`, Codemagic invoca `tool/compile_aura.sh --verify-artifact`: para APK utiliza `apksigner`, rechaza firmantes múltiples o DEBUG y exige que el certificado coincida con el keystore configurado. Para AAB verifica la firma JAR de cada entrada de contenido contra el certificado de carga; falta validarlo con un bundle Android real. El workflow configura por defecto `AURA_REQUIRE_RELEASE_SIGNING=false`, fuerza el fallback DEBUG y omite la verificación estricta de producción; ese artefacto es solo para pruebas y no debe distribuirse. Para release real se debe activar explícitamente el modo de producción en el workflow y configurar `AURA_KEYSTORE_PATH` o `AURA_KEYSTORE_BASE64`, `AURA_STORE_PASSWORD`, `AURA_KEY_ALIAS`, `AURA_KEY_PASSWORD` y la clave pública que valida el modelo incluido. La firma de producción real sigue pendiente de validación.
+`AURA_ALLOW_DEBUG_SIGNING=true` se limita a comandos de prueba: Gradle configura
+el tipo release incluso para tests/debug. **No autoriza distribuir con esa firma.**
+Para producción, `tool/compile_aura.sh` requiere la configuración estricta de
+firma y validación del modelo; las claves solo se configuran en el almacén seguro
+del proveedor, nunca en chat, Git ni logs. Consultar la
+[guía de release y dispositivo](docs/RELEASE_AND_DEVICE_VALIDATION.md).
 
-### Estado de pruebas conocido
+### CI/CD y evidencias
 
-- En el estado local del 2026-11-06, `flutter test --reporter expanded` pasó con 172 tests y 1 omitido por requerir dispositivo. Es un resultado local, no evidencia de CI ni de validación física.
-- Se añadieron tests Robolectric de migración v9→v10 con ESP legacy real y recuperación de backup interrumpido, pero no se pudieron ejecutar en este contenedor: falta Android SDK y Gradle falla al resolver `dev.flutter.flutter-plugin-loader` con el valor `25.0.4.1`.
-- El usuario informó en conversaciones recientes que CodeMagic volvió a compilar con éxito. Ese resultado es un reporte del usuario; para certificarlo se necesita el enlace/log del run y su commit SHA.
-- En un log anterior (30-10-2026) se informó un timeout al descargar Flutter stable 3.47.9 para macOS ARM64: curl error 28 tras 300 segundos, descarga parcial de ~961 MB de ~2.26 GB.
-- En el run de CodeMagic compartido el **2026-11-05**, el paso `Run Aura security regression checks and Flutter tests` terminó con código 1. La prueba fallida identificada al final del log fue `test/aura_transparency_ui_test.dart` — `muestra explicación, marca localmente y abre auditoría`. El log muestra una advertencia de hit-test al buscar el texto `Reportar falso positivo` y, en el fallo final, una aserción `Expected: true / Actual: <false>` en la línea 175: el estado de reporte local no quedó activado durante la prueba.
-- Para hacer la interacción determinista, en `lib/screens/aura_core_screen.dart` se añadió la clave estable `report-false-positive-${explanation.id}` al botón; la prueba ahora localiza el botón por `ValueKey('report-false-positive-verdict-1')`, lo hace visible y lo pulsa directamente. Cambio guardado en `main` mediante commit [`f0e6c32`](https://github.com/liendomaho-wq/Aura-V1.0/commit/f0e6c32cae1d8df2aa9c1d02c44ed4b990401c16), precedido por [`a2613af`](https://github.com/liendomaho-wq/Aura-V1.0/commit/a2613afa17d49d7ccc8806fbc458767b9b01fb93).
-- **Estado de esa corrección: pendiente de verificación.** Aún no hay evidencia de un run verde de CodeMagic sobre `f0e6c32`; no afirmar que la prueba está corregida hasta ejecutar el workflow de nuevo. El log mostrado también lista muchas pruebas repetidas de `aura_core_screen_test.dart`, pero no las identifica como fallidas en el resumen final de ese run. En logs previos también se mencionaron pruebas de splash/auth. Ejecutar la suite completa en el commit actual.
-- `test/aura_core_screen_test.dart` todavía prueba el canal `com.ciberdefensa.aura/shield`, el toggle VPN y la revocación del túnel. La prueba de transparencia usa canales mockeados y datos sintéticos para validar UI/estado local; no demuestra que la inspección de red real funcione.
-- Los tests de benchmark de dispositivo están omitidos por defecto; las métricas de runner Linux no representan rendimiento Android.
-- No hay porcentaje de cobertura medido y publicado.
+- **Aura Flutter Quality**: dependencias, formato, guards, suite Python con JDK
+  para AAB, análisis y tests Flutter. Conserva el código de salida real.
+- **Aura Android Debug Build**: SDK/NDK declarados, tests JVM, compilación APK
+  Kotlin/C/JNI; publica APK y metadatos de SHA/digest solo si el build termina.
+- Ambos tienen `workflow_dispatch`, PRs hacia `main`/`principal` y push en las ramas
+  configuradas; validan el SHA head, no un commit de merge sintético.
+- `codemagic.yaml`, workflow **`android-build`**: JDK 17, Flutter stable, runner
+  `mac_mini_m2`. Los patrones `main`/`principal` tienen `source: false` para PRs a
+  esas ramas. Por defecto genera un artefacto **DEBUG de prueba, no distribuible**
+  (`AURA_REQUIRE_RELEASE_SIGNING=false`). Configuración no equivale a build real.
+- El pipeline ML genera candidatos e informes, no promociona automáticamente el
+  modelo activo. No relajar sus umbrales para obtener verde.
 
-GitHub Actions incluye workflows de calidad Flutter, build Android debug, integridad/firma, entrenamiento de modelo y despliegue de model pages. Revisar `.github/workflows/` y el estado de Actions en el SHA exacto; un workflow existente no es evidencia de éxito.
+Mantener SDK, caches, datasets, secretos y artefactos grandes fuera de Git;
+`tool/reports/` está ignorado para informes locales. La evidencia física sigue
+[ANDROID_TRAFFIC_VALIDATION.md](docs/ANDROID_TRAFFIC_VALIDATION.md). Los resultados
+exactos y bloqueos están en [la auditoría interna](AURA_FINAL_AUDIT.md).
 
-### Actualización de interfaz y prueba de transparencia — 2026-11-05
+## Licencia y contribuciones
 
-- Se añadió una `ValueKey` estable al botón de reporte de falso positivo para evitar que la prueba dependa de localizar el texto interior del botón.
-- La prueba de transparencia ahora pulsa el control identificado por clave y conserva la comprobación del estado local.
-- Commits en `main`: [`a2613af`](https://github.com/liendomaho-wq/Aura-V1.0/commit/a2613afa17d49d7ccc8806fbc458767b9b01fb93) y [`f0e6c32`](https://github.com/liendomaho-wq/Aura-V1.0/commit/f0e6c32cae1d8df2aa9c1d02c44ed4b990401c16).
-- **No validado todavía:** falta repetir CodeMagic en este HEAD y confirmar que `muestra explicación, marca localmente y abre auditoría` pasa. Si vuelve a fallar, inspeccionar el callback/proveedor que persiste `reportedFalsePositive`; no debilitar la aserción ni convertir el fallo en un éxito simulado.
-
-## 8. Prioridades para la IA/desarrollador que continúe
-
-Trabajar en este orden y **no marcar una fase como terminada sin evidencia reproducible**:
-
-1. **Auditoría de estado:** clonar `main`, leer este README, `SECURITY.md`, `pubspec.yaml`, `codemagic.yaml`, Gradle, Manifest, workflows y tests. Obtener SHA actual, branches, PRs y runs. No basarse en documentación vieja o una conversación aislada.
-2. **Estabilización:** ejecutar análisis, suite completa, pruebas Python y build. Reproducir fallos con logs; arreglar la causa, no silenciar tests ni reducir aserciones.
-3. **Red/VPN:** la integración del parser SNI con el flujo TCP del TUN y el reensamblado del ClientHello están implementados. Avanzar con validación exhaustiva IPv4/IPv6, fragmentación, RST, ECH, QUIC y DoH en hardware real; decidir formalmente si mantener la VPN opcional. Resolver PR #4 solo si corresponde y después de pruebas de ciclo de vida, fugas, reconexión y revocación. No mezclar refactor grande con cambios visuales.
-4. **Auditoría Android:** comprobar permisos/runtime API, notificaciones, biometría, accesibilidad, inventario de apps, lifecycle y comportamiento sin permisos. Reportar límites por API/OEM.
-5. **IA agéntica:** allowlist, límites de argumentos, autorización/confirmación, timeouts, postcondiciones y Audit Log están implementados. Completar cancelación cooperativa/progreso de trabajo nativo y validar los límites en dispositivos. El LLM generativo sigue pendiente; si se añade, mantenerlo separado de herramientas privilegiadas y sin ejecución arbitraria.
-6. **UI/avatar:** completar coherencia visual y accesibilidad sin convertir la app en dashboard/radar/escudo. Medir rendimiento y respetar reduced motion.
-7. **Release:** el control `apksigner` rechaza certificados DEBUG cuando `AURA_REQUIRE_RELEASE_SIGNING=true`. Codemagic está temporalmente en fallback DEBUG con advertencia; recuperar credenciales, activar el modo estricto y verificar firma de producción, build reproducible, SBOM/provenance y APK/AAB antes de distribuir. Nunca distribuir DEBUG.
-8. **Prueba física:** registrar modelo del teléfono, versión Android/API, versión APK, SHA-256 APK, signer fingerprint, permisos concedidos, estado VPN y pasos/resultados de cada caso. La validación en dispositivo real debe cerrar los riesgos que CI no puede probar.
-
-### Matriz mínima de pruebas físicas
-
-- Instalación limpia, actualización desde versión anterior y desinstalación.
-- Primer inicio, biometría disponible/no disponible, credencial del dispositivo y dispositivo sin bloqueo seguro.
-- Permisos concedidos, denegados y revocados (micrófono, notificaciones, VPN).
-- Activar/detener VPN, revocar consentimiento desde Ajustes, reiniciar app/teléfono y cambiar Wi-Fi ↔ datos móviles.
-- DNS normal, DoT/853, DoQ/853, DoH por UDP/443 hacia resolutor conocido y DoH por TCP/443; registrar qué se bloquea realmente.
-- IPv4 e IPv6, QUIC/HTTP3, ECH y conexión directa por IP; verificar con capturas/servidores de prueba controlados, no inferir a partir de la UI.
-- Pérdida de red, reconexión, suspensión/reanudación, batería y estabilidad del servicio.
-- Auditoría de dispositivo y escáner de apps con permisos/visibilidad limitados.
-- Análisis de dominio benigno, malicioso de laboratorio y dominio no disponible; verificar explicación y que no haya falsos mensajes de éxito.
-- Telemetría local y remota: opt-in/opt-out, cola, cancelación, ausencia de endpoint y revisión de datos transmitidos.
-- Rendimiento, temperatura, memoria, consumo de batería, TalkBack, tamaños de fuente y reduced motion.
-
-## Fase 2 del agente ejecutor — avance 2026-11-05
-
-- El parser rechaza órdenes ejecutables concatenadas o incrustadas en texto separado por delimitadores habituales de feeds/citas; el comportamiento es fail-closed.
-- Se añadieron pruebas de regresión para prompt injection en texto de indicadores y confirmaciones incrustadas.
-- Los límites de ejecución por herramienta, resultados desconocidos al vencer el timeout, postcondiciones y bitácora cifrada ya están implementados. La Fase 2 sigue abierta: falta cancelar cooperativamente el escaneo APK/DEX desde Android, emitir progreso nativo granular y completar el planificador con checkpoints/recuperación. El timeout Dart no detiene por sí solo un escaneo Kotlin ya iniciado.
-- No declarar esta fase cerrada hasta ejecutar flutter analyze, flutter test y build Android en CodeMagic sobre el commit actual.
-
-## Endurecimiento del agente inteligente — 2026-11-05
-
-Se inició la Fase 1 del endurecimiento del agente en la rama `main`.
-
-### Controles implementados en código
-
-- Política central de allowlist: solo se despachan los diez nombres de herramientas definidos por Aura.
-- Validación estricta de argumentos por herramienta, límites de profundidad/tamaño, validación DNS y validación de identificadores de paquetes.
-- Confirmación explícita obligatoria para operaciones que cambian el estado del dispositivo o la red.
-- Confirmación en dos pasos, de un solo uso y con caducidad de 60 segundos: `CONFIRMO` repite exactamente la orden pendiente; cualquier otra instrucción invalida la autorización pendiente.
-- Límite de entrada de 2.048 caracteres y rechazo de órdenes simultáneas.
-- Token de cancelación con una frontera explícita: se permite cancelar antes de iniciar una herramienta; no se finge abortar una llamada nativa ya iniciada.
-- Plazos máximos por herramienta. Si vence el plazo, el resultado se marca como desconocido y no se reintenta automáticamente, porque la operación subyacente podría seguir ejecutándose.
-- Postcondición obligatoria: cada herramienta debe devolver `ok` booleano; la ausencia de un resultado verificable nunca se marca como éxito.
-- Correlación de operaciones mediante identificador local y reducción de datos de argumentos registrados en eventos.
-- Bitácora de operaciones cifrada en SecureVault: el registro de inicio se persiste antes de despachar una herramienta; si falla, la operación no comienza. El cierre registra éxito/error y no guarda valores de argumentos. La purga criptográfica elimina también esta bitácora.
-- Errores del límite de ejecución con códigos estables, evitando exponer mensajes internos o rutas del dispositivo.
-
-### Estado de validación
-
-El endurecimiento de herramientas está avanzado e incluye timeout, postcondiciones y Audit Log. La validación debe corresponder al SHA actual y completarse en CI. Los límites de tiempo de Dart no detienen por sí solos una llamada nativa ya iniciada; en ese caso Aura informa que el resultado es desconocido y exige comprobar el estado.
-
-## Privacidad y almacenamiento — avance 2026-11-06
-
-- SecureVault conserva `resetOnError=false` y la migración v9→v10 con AES-GCM/backup. Se añadió una prueba Robolectric que siembra preferencias ESP v9 y las lee con el plugin v10, incluida la recuperación desde backup iniciado; su ejecución queda pendiente de resolver el entorno Android/Gradle.
-- Las claves usadas por las rutas de cifrado se exponen como buffers temporales y se ponen a cero en `finally`; las claves derivadas/ciphertext también se limpian donde corresponde. Las cadenas inmutables de Dart no pueden sobrescribirse explícitamente en memoria.
-- La telemetría local y remota usa HMAC-SHA-256 con una clave protegida en SecureVault; los registros históricos locales con dominios en claro se transforman al cargarse. Revocar consentimiento limpia colas y evita nuevos envíos/registros.
-- Los logs auditados ya no imprimen dominios bloqueados, destinos SOCKS ni credenciales SOCKS. Las pruebas Flutter cubren revocación, HMAC local, migración de logs heredados y zeroing de buffers.
-
-## 9. Reglas de trabajo para otra IA
-
-- El usuario es titular o cuenta con autorización para desarrollar este repositorio. Rama de destino requerida: **`main`**, porque Codemagic compila desde ella.
-- Hacer cambios concretos y pequeños, con commits descriptivos y pruebas. Antes de escribir, comprobar SHA y contenido actual; nunca sobrescribir cambios nuevos.
-- No fusionar ramas/PR antiguas sin comparar base, head, commits, archivos y CI.
-- No borrar VPN ni sus dependencias solo para hacer pasar una prueba. Si se decide retirarla, actualizar conjuntamente Kotlin, Java, C/JNI, Manifest, Gradle, Dart, AgentController, UI, canales, scripts, tests y documentación.
-- No reemplazar pruebas fallidas por tests más débiles ni usar mocks como evidencia de integración física.
-- No declarar que la IA es generativa, que SNI inspecciona tráfico, que QUIC/DoH está bloqueado globalmente o que el dispositivo está protegido al 100%.
-- No afirmar “compiló”, “está corregido”, “commit realizado” o “APK generado” sin el resultado correspondiente.
-- Mantener cambios en español cuando sean textos de UI/documentación orientados al usuario; nombres de código en inglés según convenciones existentes.
-- Respetar la licencia propietaria del repositorio y sus atribuciones de terceros.
-
-## 10. Entrega y criterios de cierre de Aura
-
-Aura solo puede marcarse como lista cuando: (a) alcance funcional y límites estén definidos; (b) no existan herramientas/UI que prometan acciones inexistentes; (c) análisis estático, tests, scripts de seguridad y build estén verdes en el SHA de entrega; (d) APK esté firmado con el certificado de producción si se distribuirá; (e) la matriz de pruebas físicas se haya ejecutado y los fallos críticos resueltos; (f) documentación, Model Card y permisos reflejen el comportamiento real.
-
-**No se promete “máxima protección” ni “100% de seguridad”:** el objetivo responsable es la mejor protección técnicamente alcanzable dentro de las APIs públicas de Android, con límites visibles, comportamiento verificable y consentimiento del usuario. Aún faltan pruebas en dispositivos físicos del flujo TUN/SNI (incluidos IPv6, QUIC y ECH) y verificar la aplicación con la firma de producción real antes de cualquier distribución.
-
----
-
-## Referencias del repositorio
-
-- Código: [liendomaho-wq/Aura-V1.0](https://github.com/liendomaho-wq/Aura-V1.0)
-- Rama principal: [main](https://github.com/liendomaho-wq/Aura-V1.0/tree/main)
-- Pipeline Codemagic: [codemagic.yaml](codemagic.yaml)
-- Modelo: [assets/model](assets/model/)
-- Model Card: [docs/model_card.md](docs/model_card.md)
-- Seguridad: [SECURITY.md](SECURITY.md)
-- PR de reconstrucción VPN pendiente de revisión: [#4](https://github.com/liendomaho-wq/Aura-V1.0/pull/4)
-
-## Endurecimiento del SOCKS5 local de Android — 2026-11-08
-
-- El listener existente de HEV permanece en `127.0.0.1:18763`; Android ahora falla cerrado si no hay credenciales y negocia RFC 1929 (usuario/contraseña), no el método SOCKS5 `NONE`.
-- `AuraVpnService` genera una contraseña efímera de 256 bits con `SecureRandom` para el ciclo activo, la escribe junto con el usuario fijo `aura` en el YAML privado que consume HEV y verifica el handshake RFC 1929 antes de informar que el motor quedó listo. No hay contraseña fija ni secreto de producción en el APK.
-- El parser C rechaza credenciales ausentes en el listener Android, credenciales incompletas, vacías o mayores de 255 bytes; el listener limita las sesiones a 64 y aplica un timeout de 5 s por espera de E/S durante el handshake, no como deadline total. La comparación de la contraseña no termina en el primer byte distinto; buffers temporales y las copias nativas se limpian al terminar su uso cuando es posible.
-- Al detenerse o fallar el motor, Aura borra del mejor modo posible el YAML temporal y descarta la referencia Kotlin. Esto no es borrado forense garantizado: las `String` de Kotlin y las copias/bloques del sistema de archivos no pueden sobrescribirse con certeza mientras el proceso o el almacenamiento los conserven.
-- Se añadieron pruebas JVM del protocolo cliente (éxito, servidor que ofrece `NONE` y rechazo de credenciales), pruebas de credenciales aleatorias y guards de integración C. La prueba JVM todavía requiere ejecutarse en un entorno con Java/Gradle y Android SDK.
-- **Alcance de la evidencia:** la suite Python de este snapshot pasó con 112 tests, 8 omitidos y 124 subtests; los guards y la sintaxis C de host pasan. Este resultado no es una compilación Android, no ejecuta el servicio/VPN y no demuestra forwarding ni tráfico real. Flutter/Gradle/Codemagic y la validación en un dispositivo físico siguen pendientes.
-- No declarar la VPN funcional por el éxito del handshake local. Para ello se necesita un build Android del SHA exacto, pruebas de integración/CI y comprobar tráfico real en el dispositivo indicado en `docs/RELEASE_AND_DEVICE_VALIDATION.md`.
-- La PR #8 propone un relay Kotlin diferente y no se integró: añade otro listener en vez de endurecer el listener HEV existente; la revisión detectó un pool de hilos sin límite, un error de lectura en el framing UDP y credenciales que no se vuelven a sincronizar con el YAML al reanudar. Revisar el SHA/base y corregirlo antes de cualquier decisión; no combinar dos relays.
+Código propietario; consultar [LICENSE](LICENSE) y respetar las atribuciones de
+componentes de terceros. Los cambios deben preservar datos y formatos, aportar
+pruebas sin debilitar aserciones y no atribuir funciones o métricas no verificadas.
+No integrar una segunda implementación de proxy sin reconciliar autenticación,
+framing, recursos, JNI y rutas del túnel existente.

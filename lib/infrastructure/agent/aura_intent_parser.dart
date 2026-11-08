@@ -66,21 +66,21 @@ class AuraIntentParser {
       orElse: () => responseEvent,
     );
     final responseData = responseEvent.data;
-    final intentName = responseData?['protected_host'] == true ||
+    final intentName =
+        responseData?['protected_host'] == true ||
             responseData?['allowlist_check_failed'] == true
         ? 'block_domain'
         : responseEvent.kind == AgentEventKind.warning &&
-                responseData?['instruction'] is String &&
-                identical(intentEvent, responseEvent)
-            ? 'unknown'
-            : (responseData?['intent'] as String?) ?? intentEvent.message;
+              responseData?['instruction'] is String &&
+              identical(intentEvent, responseEvent)
+        ? 'unknown'
+        : (responseData?['intent'] as String?) ?? intentEvent.message;
     final intent = _intentFromName(intentName);
     final prefix = switch (responseEvent.kind) {
       AgentEventKind.success => '[OK]',
       AgentEventKind.warning ||
       AgentEventKind.thought ||
-      AgentEventKind.action =>
-        '[WARN]',
+      AgentEventKind.action => '[WARN]',
       AgentEventKind.error => '[CRIT]',
     };
 
@@ -93,18 +93,18 @@ class AuraIntentParser {
   }
 
   static AuraIntent _intentFromName(String name) => switch (name) {
-        'block_domain' => AuraIntent.blockDomain,
-        'analyze_domain' => AuraIntent.analyzeDomain,
-        'audit_device' => AuraIntent.auditDevice,
-        'isolate_app' => AuraIntent.isolateApp,
-        'panic_isolation' => AuraIntent.panicIsolation,
-        'resume_network' => AuraIntent.resumeNetwork,
-        'cryptographic_purge' => AuraIntent.cryptographicPurge,
-        'update_defenses' => AuraIntent.updateModel,
-        'toggle_defenses' => AuraIntent.toggleDefenses,
-        'help' => AuraIntent.help,
-        'status' => AuraIntent.status,
-        'unknown' => AuraIntent.unknown,
-        _ => AuraIntent.conversation,
-      };
+    'block_domain' => AuraIntent.blockDomain,
+    'analyze_domain' => AuraIntent.analyzeDomain,
+    'audit_device' => AuraIntent.auditDevice,
+    'isolate_app' => AuraIntent.isolateApp,
+    'panic_isolation' => AuraIntent.panicIsolation,
+    'resume_network' => AuraIntent.resumeNetwork,
+    'cryptographic_purge' => AuraIntent.cryptographicPurge,
+    'update_defenses' => AuraIntent.updateModel,
+    'toggle_defenses' => AuraIntent.toggleDefenses,
+    'help' => AuraIntent.help,
+    'status' => AuraIntent.status,
+    'unknown' => AuraIntent.unknown,
+    _ => AuraIntent.conversation,
+  };
 }

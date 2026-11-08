@@ -160,6 +160,7 @@ class AuraVpnService : VpnService() {
     private val blockedIps: MutableSet<String> =
         Collections.synchronizedSet(HashSet())
     private val startRequested = AtomicBoolean(false)
+    private val recoveryGate = VpnRecoveryGate()
     private val lifecycleGate = VpnLifecycleGate()
     private val notificationHandler = Handler(Looper.getMainLooper())
     private var notificationUpdatePending = false
@@ -222,16 +223,22 @@ class AuraVpnService : VpnService() {
             )
             return Service.START_STICKY
         }
-        if (tunnelStarted) {
-            if (shieldStatus()["forwarding_active"] == true) {
-                reportState(true, "El túnel VPN ya estaba activo.", requestId = requestId)
-            } else {
-                reportState(
-                    false,
-                    "El estado del motor VPN no está confirmado. Revise la protección.",
-                    requestId = requestId,
-                )
-            }
+        if (shieldStatus()["forwarding_active"] == true) {
+            reportState(true, "El túnel VPN ya estaba activo.", requestId = requestId)
+        } else if (shouldRetryTunnelRecovery()) {
+            // A stale tunnelStarted flag is not evidence of a live worker. Reuse
+            // the retained valid TUN and verify recovery for this exact request.
+            requestTunnelRecovery(requestId)
+        } else if (vpnInterface != null) {
+            reportState(
+                false,
+                if (startRequested.get()) {
+                    "Ya hay un arranque VPN en curso."
+                } else {
+                    "La interfaz VPN no está disponible para recuperar el forwarding."
+                },
+                requestId = requestId,
+            )
         } else if (startRequested.compareAndSet(false, true)) {
             try {
                 worker.execute { startTunnel(requestId) }
@@ -375,6 +382,7 @@ class AuraVpnService : VpnService() {
     private fun startTunnel(requestId: String?) {
         var established: ParcelFileDescriptor? = null
         try {
+            requireUnderlyingNetworkMonitor()
             underlyingNetwork = findUnderlyingNetwork()
                 ?: throw IOException("No se encontró una red física de salida para el túnel.")
 
@@ -415,6 +423,7 @@ class AuraVpnService : VpnService() {
                 }
             } ?: false
             if (!ready) throw IOException("El motor VPN se detuvo durante el arranque.")
+            startRequested.set(false)
             scheduleFeedRefresh()
             reportState(
                 true,
@@ -509,6 +518,7 @@ class AuraVpnService : VpnService() {
         if (!panicIsolationActive) return tunnelStarted
 
         return try {
+            requireUnderlyingNetworkMonitor()
             val tun = vpnInterface
                 ?: throw IOException("La interfaz VPN no está disponible para reanudar el forwarding.")
             val (configFile, socks5Credentials) = prepareTunnelConfiguration()
@@ -526,7 +536,7 @@ class AuraVpnService : VpnService() {
                 if (cleared) {
                     panicIsolationActive = false
                     tunnelStarted = true
-                    startRequested.set(true)
+                    startRequested.set(false)
                 }
                 cleared
             } ?: false
@@ -608,6 +618,21 @@ class AuraVpnService : VpnService() {
         .addRoute("::", 0)
         .addDnsServer("10.0.0.3")
 
+    /**
+     * Forwarding sockets are pinned to a physical Network. Without the callback
+     * that reports handovers, Aura cannot safely recover those sockets when the
+     * selected network disappears or changes; do not start or resume forwarding
+     * if Android rejected the monitor registration.
+     */
+    private fun requireUnderlyingNetworkMonitor() {
+        if (!networkCallbackRegistered) {
+            throw IOException(
+                "No se pudo registrar el seguimiento de la red física; " +
+                    "el forwarding no se iniciará sin recuperación de handover."
+            )
+        }
+    }
+
     private fun registerUnderlyingNetworkCallback() {
         val connectivity = getSystemService(ConnectivityManager::class.java) ?: return
         val request = NetworkRequest.Builder()
@@ -648,9 +673,16 @@ class AuraVpnService : VpnService() {
         if (serviceShuttingDown) return
         val previous = underlyingNetwork
         val selected = findUnderlyingNetwork(excludedNetwork)
-        if (selected == previous) return
+        if (selected == previous) {
+            // A failed recovery can leave the selected underlay unchanged while
+            // the TUN remains installed and native forwarding is stopped. A later
+            // callback on that same network is still a valid recovery trigger.
+            if (selected != null && shouldRetryTunnelRecovery()) {
+                requestTunnelRecovery()
+            }
+            return
+        }
 
-        underlyingNetwork = selected
         val underlayUpdated = try {
             // Keep Android's VPN routing metadata aligned with the physical network.
             // An empty array explicitly means there is currently no usable underlay.
@@ -661,13 +693,18 @@ class AuraVpnService : VpnService() {
         }
 
         if (!underlayUpdated) {
-            // Keep the full-route TUN installed and stop native forwarding. Traffic
-            // must not silently bypass Aura when underlay synchronization fails.
+            // Keep the full-route TUN installed and stop native forwarding. Retain
+            // the previous Network so the next callback retries this handover
+            // instead of mistaking the failed candidate for an applied underlay.
             stopTunnelForwardingForNetworkFailure(
                 "No se pudo sincronizar la red física; forwarding detenido por seguridad.",
             )
             return
         }
+
+        // Commit the selected Network only after Android confirms the metadata
+        // update. If that update failed, a later callback must try it again.
+        underlyingNetwork = selected
 
         if (selected == null) {
             Log.w("AuraVPN", "Se perdió la red física; forwarding detenido hasta recuperar salida.")
@@ -676,7 +713,7 @@ class AuraVpnService : VpnService() {
             )
         } else if (vpnInterface != null && !panicIsolationActive) {
             // Restart even when the previous underlay loss already stopped the worker.
-            recoverTunnelAfterNetworkChange()
+            requestTunnelRecovery()
         }
     }
 
@@ -693,6 +730,7 @@ class AuraVpnService : VpnService() {
         } finally {
             if (stopConfirmed) discardTunnelConfiguration()
             tunnelStarted = false
+            startRequested.set(false)
             reportState(
                 false,
                 if (stopConfirmed) {
@@ -705,21 +743,78 @@ class AuraVpnService : VpnService() {
         }
     }
 
+    private fun shouldRetryTunnelRecovery(): Boolean =
+        recoveryGate.canRetryRetainedTunnel(
+            hasValidInterface = vpnInterface?.fileDescriptor?.valid() == true,
+            panicIsolationActive = panicIsolationActive,
+            forwardingVerified = shieldStatus()["forwarding_active"] == true,
+            startInProgress = startRequested.get(),
+            closing = serviceShuttingDown || worker.isShutdown,
+        )
+
     /**
      * A running tun2socks instance may retain upstream sockets created on the
      * previous physical network. Updating Android's underlying-network metadata
      * alone does not migrate those sockets. Restart the native worker against the
      * same TUN descriptor so new protected sockets use the selected underlay.
      */
-    private fun recoverTunnelAfterNetworkChange() {
+    private fun requestTunnelRecovery(requestId: String? = null) {
+        if (worker.isShutdown) {
+            if (requestId != null) {
+                reportState(false, "El servicio VPN está cerrándose.", requestId = requestId)
+            }
+            return
+        }
+        val attempt = recoveryGate.tryBegin(requestId)
+        if (attempt == null) {
+            if (requestId != null) {
+                reportState(false, "La recuperación del túnel ya está en curso.", requestId = requestId)
+            }
+            return
+        }
+        try {
+            worker.execute {
+                try {
+                    if (serviceShuttingDown || panicIsolationActive) {
+                        if (requestId != null) {
+                            reportState(
+                                false,
+                                "La recuperación VPN no está disponible en el estado actual.",
+                                requestId = attempt.requestId,
+                            )
+                        }
+                        return@execute
+                    }
+                    recoverTunnelAfterNetworkChange(attempt.requestId)
+                } finally {
+                    recoveryGate.finish(attempt)
+                }
+            }
+        } catch (error: java.util.concurrent.RejectedExecutionException) {
+            recoveryGate.finish(attempt)
+            if (requestId != null) {
+                reportState(false, "El servicio VPN está cerrándose.", requestId = requestId)
+            }
+        }
+    }
+
+    private fun recoverTunnelAfterNetworkChange(requestId: String? = null) {
         val tun = vpnInterface
         if (tun == null || !tun.fileDescriptor.valid()) {
             tunnelStarted = false
-            reportState(false, "La red cambió, pero la interfaz VPN ya no está disponible.")
+            reportState(
+                false,
+                "La red cambió, pero la interfaz VPN ya no está disponible.",
+                requestId = requestId,
+            )
             return
         }
 
         try {
+            requireUnderlyingNetworkMonitor()
+            if (underlyingNetwork == null) {
+                throw IOException("No hay una red física disponible para recuperar el forwarding.")
+            }
             val (configFile, socks5Credentials) = prepareTunnelConfiguration()
             if (!restartNativeWorker(configFile.absolutePath, tun)) {
                 throw IOException("El motor VPN no pudo reiniciarse en la nueva red.")
@@ -743,19 +838,21 @@ class AuraVpnService : VpnService() {
             reportState(
                 true,
                 "Red física cambiada; motor VPN reiniciado y proxy SOCKS5 autenticado.",
+                requestId = requestId,
             )
             Log.i("AuraVPN", "Motor tun2socks recuperado tras cambiar la red física.")
         } catch (exception: Exception) {
-            handleNetworkRecoveryFailure(exception)
+            handleNetworkRecoveryFailure(exception, requestId)
         } catch (error: LinkageError) {
-            handleNetworkRecoveryFailure(error)
+            handleNetworkRecoveryFailure(error, requestId)
         }
     }
 
-    private fun handleNetworkRecoveryFailure(error: Throwable) {
+    private fun handleNetworkRecoveryFailure(error: Throwable, requestId: String? = null) {
         val stopConfirmed = stopNativeWorker()
         if (stopConfirmed) discardTunnelConfiguration()
         tunnelStarted = false
+        startRequested.set(false)
         Log.e("AuraVPN", "No se pudo recuperar el túnel tras cambiar de red.", error)
         reportState(
             false,
@@ -764,6 +861,7 @@ class AuraVpnService : VpnService() {
             } else {
                 "La red cambió; la recuperación y el cierre nativo no están confirmados."
             },
+            requestId = requestId,
         )
         updateForegroundNotification()
     }
@@ -798,7 +896,12 @@ class AuraVpnService : VpnService() {
         val network = underlyingNetwork ?: return false
         if (!protect(socketFd)) return false
         return try {
-            network.bindSocket(socketFd)
+            // Network.bindSocket accepts FileDescriptor, not the raw JNI int.
+            // fromFd duplicates ownership; closing this temporary wrapper must
+            // never close the original socket that the native worker owns.
+            ParcelFileDescriptor.fromFd(socketFd).use { descriptor ->
+                network.bindSocket(descriptor.fileDescriptor)
+            }
             true
         } catch (exception: Exception) {
             Log.w(

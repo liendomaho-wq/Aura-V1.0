@@ -27,8 +27,9 @@ void main() {
     const securityChannel = MethodChannel('com.ciberdefensa.aura/security');
     const biometricChannel = MethodChannel('com.aura.cyberdefense/biometrics');
     const telemetryChannel = MethodChannel('com.ciberdefensa.aura/telemetry');
-    const networkEventChannel =
-        EventChannel('com.aura.cyberdefense/network_stream');
+    const networkEventChannel = EventChannel(
+      'com.aura.cyberdefense/network_stream',
+    );
     final state = AuraStateProvider();
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -50,10 +51,7 @@ void main() {
     messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);
     messenger.setMockMethodCallHandler(telemetryChannel, (call) async {
       if (call.method == 'domainTelemetryStatus') {
-        return <String, Object>{
-          'optedIn': false,
-          'endpointConfigured': false,
-        };
+        return <String, Object>{'optedIn': false, 'endpointConfigured': false};
       }
       return true;
     });
@@ -96,9 +94,7 @@ void main() {
     // Authentication and telemetry initialization are asynchronous. Wait
     // for the authenticated console's event list instead of assuming eight
     // frames are always enough on slower CI workers.
-    final eventList = find.byKey(
-      const ValueKey<String>('aura-event-list'),
-    );
+    final eventList = find.byKey(const ValueKey<String>('aura-event-list'));
     for (var frame = 0; frame < 40 && eventList.evaluate().isEmpty; frame++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
@@ -136,11 +132,7 @@ void main() {
     // every provider update. The explanation card is the first lazy ListView
     // child, so it may not exist in the widget tree until the list is scrolled
     // back to the top. Drag the specific event list until that card is built.
-    await tester.dragUntilVisible(
-      threatCard,
-      eventList,
-      const Offset(0, 300),
-    );
+    await tester.dragUntilVisible(threatCard, eventList, const Offset(0, 300));
     await tester.pump();
     expect(threatCard, findsOneWidget);
     // Evidence belongs to the expanded content, not to the collapsed subtitle.
@@ -200,10 +192,7 @@ void main() {
     );
     expect(reportedExplanation.reportedFalsePositive, isTrue);
     expect(find.text('Reportado localmente'), findsOneWidget);
-    expect(
-      find.textContaining('no se enviará telemetría'),
-      findsNWidgets(2),
-    );
+    expect(find.textContaining('no se enviará telemetría'), findsNWidgets(2));
     tester
         .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
         .hideCurrentSnackBar();
@@ -223,17 +212,11 @@ void main() {
     final safeCard = find.byKey(
       ValueKey<String>('verdict-explanation-card-${safeExplanation.id}'),
     );
-    await tester.dragUntilVisible(
-      safeCard,
-      eventList,
-      const Offset(0, 300),
-    );
+    await tester.dragUntilVisible(safeCard, eventList, const Offset(0, 300));
     await tester.pump();
     expect(find.text('¿Por qué se consideró seguro?'), findsOneWidget);
     final safeHeader = find.byKey(
-      ValueKey<String>(
-        'verdict-explanation-title-${safeExplanation.id}',
-      ),
+      ValueKey<String>('verdict-explanation-title-${safeExplanation.id}'),
     );
     await tester.ensureVisible(safeHeader);
     await tester.pump();
@@ -257,10 +240,13 @@ void main() {
     await _pumpAuraFrames(tester);
     expect(find.text('Auditoría de cobertura'), findsOneWidget);
     expect(
-        find.textContaining('1 SNI observados, 1 bloqueo, '
-            '1 alerta DGA y 1 bloqueo de DNS cifrado y '
-            '0 paquetes QUIC descartados.'),
-        findsOneWidget);
+      find.textContaining(
+        '1 SNI observados, 1 bloqueo, '
+        '1 alerta DGA y 1 bloqueo de DNS cifrado y '
+        '0 paquetes QUIC descartados.',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('8.8.8.8'), findsOneWidget);
     final runAutotestButton = find.text('Ejecutar autotest');
     await tester.ensureVisible(runAutotestButton);
@@ -268,6 +254,8 @@ void main() {
     await tester.tap(runAutotestButton);
     await _pumpAuraFrames(tester);
     expect(
-        find.textContaining('No se generó tráfico de prueba.'), findsOneWidget);
+      find.textContaining('No se generó tráfico de prueba.'),
+      findsOneWidget,
+    );
   });
 }

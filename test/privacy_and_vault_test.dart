@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:aura_mobile_defens/secure_vault.dart';
@@ -49,6 +50,65 @@ void main() {
 
       expect(observedBuffer, everyElement(0));
     });
+
+    test('serializes key access across separate vault instances', () async {
+      final entered = Completer<void>();
+      final release = Completer<void>();
+      final events = <String>[];
+      late Uint8List firstBuffer;
+      late Uint8List secondBuffer;
+      final first = AuraSecureVault().withModelMasterKey((keyBytes) async {
+        firstBuffer = keyBytes;
+        events.add('first');
+        entered.complete();
+        await release.future;
+        events.add('first finished');
+      });
+      await entered.future;
+      final second = AuraSecureVault().withModelMasterKey((keyBytes) {
+        secondBuffer = keyBytes;
+        events.add('second');
+      });
+      await Future<void>.delayed(Duration.zero);
+      final beforeRelease = List<String>.of(events);
+      release.complete();
+      await Future.wait([first, second]);
+
+      expect(beforeRelease, <String>['first']);
+      expect(events, <String>['first', 'first finished', 'second']);
+      expect(firstBuffer, everyElement(0));
+      expect(secondBuffer, everyElement(0));
+    });
+
+    test('propagates an error without poisoning the next caller', () async {
+      final failed = AuraSecureVault().withModelMasterKey<void>((_) {
+        throw StateError('expected operation failure');
+      });
+      final recovered = AuraSecureVault().withModelMasterKey(
+        (keyBytes) => keyBytes.length,
+      );
+
+      await expectLater(failed, throwsStateError);
+      expect(await recovered, 43);
+    });
+
+    // Each widget test owns a different scheduler zone. These use the existing
+    // storage unit fixture above, not a replacement Keystore/migration result.
+    for (final boot in const [1, 2]) {
+      testWidgets('initializes the vault in boot scheduler $boot', (
+        tester,
+      ) async {
+        var initialized = false;
+        final pending = AuraSecureVault().initializeModelMasterKey().then((_) {
+          initialized = true;
+        });
+
+        await tester.pump();
+
+        expect(initialized, isTrue);
+        await pending;
+      });
+    }
 
     test('configures crash-safe legacy migration without reset-on-error', () {
       final options = AuraSecureVault.androidMigrationOptions.toMap();

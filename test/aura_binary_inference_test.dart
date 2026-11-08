@@ -76,16 +76,18 @@ void main() {
       );
     });
 
-    test('throws a controlled format exception for a corrupt magic signature',
-        () {
-      expect(
-        () => AuraAIInference.evaluateHostFromBinary(
-          'malicious-target.net',
-          corruptMockModelBytes,
-        ),
-        throwsA(isA<FormatException>()),
-      );
-    });
+    test(
+      'throws a controlled format exception for a corrupt magic signature',
+      () {
+        expect(
+          () => AuraAIInference.evaluateHostFromBinary(
+            'malicious-target.net',
+            corruptMockModelBytes,
+          ),
+          throwsA(isA<FormatException>()),
+        );
+      },
+    );
 
     test('does not whitelist malformed URL-like input', () {
       expect(
@@ -100,11 +102,9 @@ void main() {
 }
 
 Uint8List _buildForest(List<_TreeFixture> trees) {
-  final byteLength = 8 +
-      trees.fold<int>(
-        0,
-        (length, tree) => length + 8 + tree.nodes.length * 20,
-      );
+  final byteLength =
+      8 +
+      trees.fold<int>(0, (length, tree) => length + 8 + tree.nodes.length * 20);
   final bytes = Uint8List(byteLength);
   final data = ByteData.sublistView(bytes);
   data
@@ -143,11 +143,11 @@ class _TreeFixture {
 
 class _NodeFixture {
   const _NodeFixture.leaf(int classification)
-      : type = 1,
-        featureIndex = classification,
-        leftChild = -1,
-        rightChild = -1,
-        threshold = 0;
+    : type = 1,
+      featureIndex = classification,
+      leftChild = -1,
+      rightChild = -1,
+      threshold = 0;
 
   const _NodeFixture.split({
     required this.featureIndex,

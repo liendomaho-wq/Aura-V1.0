@@ -6,12 +6,15 @@ import 'package:flutter/services.dart';
 enum SystemThreatLevel { secure, warning, critical }
 
 class AuraSecurityEngine {
-  static const MethodChannel _channel =
-      MethodChannel('com.ciberdefensa.aura/telemetry');
-  static const MethodChannel _antiTamperingChannel =
-      MethodChannel('com.ciberdefensa.aura/anti_tampering');
-    static const MethodChannel _securityChannel =
-      MethodChannel('com.ciberdefensa.aura/security');
+  static const MethodChannel _channel = MethodChannel(
+    'com.ciberdefensa.aura/telemetry',
+  );
+  static const MethodChannel _antiTamperingChannel = MethodChannel(
+    'com.ciberdefensa.aura/anti_tampering',
+  );
+  static const MethodChannel _securityChannel = MethodChannel(
+    'com.ciberdefensa.aura/security',
+  );
   static const List<String> _rootBinaryPaths = [
     '/sbin/su',
     '/system/bin/su',
@@ -36,10 +39,8 @@ class AuraSecurityEngine {
     }
 
     try {
-      antiTamperingReport =
-          await _antiTamperingChannel.invokeMapMethod<dynamic, dynamic>(
-        'checkIntegrity',
-      );
+      antiTamperingReport = await _antiTamperingChannel
+          .invokeMapMethod<dynamic, dynamic>('checkIntegrity');
       nativeCheckFailed = nativeCheckFailed || antiTamperingReport == null;
     } on PlatformException {
       nativeCheckFailed = true;
@@ -48,11 +49,13 @@ class AuraSecurityEngine {
     }
 
     hostileEnvironmentReport = await checkHostileEnvironment();
-    nativeCheckFailed = nativeCheckFailed ||
+    nativeCheckFailed =
+        nativeCheckFailed ||
         hostileEnvironmentReport['environmentCheckFailed'] == true;
 
     final rootBinaryFound = await _hasRootBinary();
-    final debuggerDetected = nativeReport?['isDebuggerConnected'] == true ||
+    final debuggerDetected =
+        nativeReport?['isDebuggerConnected'] == true ||
         antiTamperingReport?['isDebuggerConnected'] == true;
     final alteredEnvironment = nativeReport?['isVirtualEnvironment'] == true;
     final fridaDetected = antiTamperingReport?['fridaDetected'] == true;
@@ -76,18 +79,18 @@ class AuraSecurityEngine {
     final level = compromised
         ? SystemThreatLevel.critical
         : nativeCheckFailed
-            ? SystemThreatLevel.warning
-            : SystemThreatLevel.secure;
+        ? SystemThreatLevel.warning
+        : SystemThreatLevel.secure;
 
     return {
       'level': level,
-        'logs': hostileEnvironment
+      'logs': hostileEnvironment
           ? 'ALERTA MÁXIMA: entorno emulado o depurador activo detectado.'
           : compromised
           ? 'ALERTA: indicador de root, debugger o entorno alterado detectado.'
           : nativeCheckFailed
-              ? 'AVISO: no se pudo completar la comprobación nativa de integridad.'
-              : 'Aura Core: comprobaciones de integridad completadas.',
+          ? 'AVISO: no se pudo completar la comprobación nativa de integridad.'
+          : 'Aura Core: comprobaciones de integridad completadas.',
       'rootBinaryFound': rootBinaryFound,
       'isDebuggerConnected': debuggerDetected,
       'debuggerBlocked': debuggerBlocked,
@@ -98,8 +101,7 @@ class AuraSecurityEngine {
       'signatureValid': signatureValid,
       'signatureCheckFailed': signatureCheckFailed,
       'antiTamperingCheckFailed': antiTamperingFailed,
-      'localDebugFallback':
-          antiTamperingReport?['localDebugFallback'] == true,
+      'localDebugFallback': antiTamperingReport?['localDebugFallback'] == true,
       'hostileEnvironment': hostileEnvironment,
       'isEmulator': hostileEnvironmentReport['isEmulator'] == true,
       'environmentDebuggerConnected':
@@ -129,7 +131,9 @@ class AuraSecurityEngine {
       'scanActiveSensitiveServices',
     );
     if (report == null) {
-      throw const FormatException('El escáner de aplicaciones devolvió un informe vacío.');
+      throw const FormatException(
+        'El escáner de aplicaciones devolvió un informe vacío.',
+      );
     }
     return report;
   }

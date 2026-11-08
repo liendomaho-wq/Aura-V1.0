@@ -5,10 +5,9 @@ void main() {
   group('AuraToolExecutionPolicy', () {
     test('accepts a well-formed read-only domain analysis', () {
       expect(
-        AuraToolExecutionPolicy.validate(
-          'analyze_domain',
-          <String, dynamic>{'domain': 'example.com'},
-        ),
+        AuraToolExecutionPolicy.validate('analyze_domain', <String, dynamic>{
+          'domain': 'example.com',
+        }),
         isNull,
       );
     });
@@ -19,53 +18,44 @@ void main() {
         'unknown_tool',
       );
       expect(
-        AuraToolExecutionPolicy.validate(
-          'scan_apps',
-          <String, dynamic>{'shell': 'id'},
-        ),
+        AuraToolExecutionPolicy.validate('scan_apps', <String, dynamic>{
+          'shell': 'id',
+        }),
         'unexpected_tool_argument',
       );
     });
 
     test('requires explicit confirmation for side-effecting tools', () {
       expect(
-        AuraToolExecutionPolicy.validate(
-          'block_domain',
-          <String, dynamic>{'domain': 'malware.example'},
-        ),
+        AuraToolExecutionPolicy.validate('block_domain', <String, dynamic>{
+          'domain': 'malware.example',
+        }),
         'user_confirmation_required',
       );
     });
 
     test('rejects malformed domains and package identifiers', () {
       expect(
-        AuraToolExecutionPolicy.validate(
-          'block_domain',
-          <String, dynamic>{
-            'domain': 'https://malware.example/path',
-            'confirmed_by_user': true,
-          },
-        ),
+        AuraToolExecutionPolicy.validate('block_domain', <String, dynamic>{
+          'domain': 'https://malware.example/path',
+          'confirmed_by_user': true,
+        }),
         'invalid_domain',
       );
       expect(
-        AuraToolExecutionPolicy.validate(
-          'isolate_app',
-          <String, dynamic>{
-            'package_name': '../../bad',
-            'confirmed_by_user': true,
-          },
-        ),
+        AuraToolExecutionPolicy.validate('isolate_app', <String, dynamic>{
+          'package_name': '../../bad',
+          'confirmed_by_user': true,
+        }),
         'invalid_package_name',
       );
     });
 
     test('rejects non-finite and deeply nested argument values', () {
       expect(
-        AuraToolExecutionPolicy.validate(
-          'analyze_domain',
-          <String, dynamic>{'domain': double.nan},
-        ),
+        AuraToolExecutionPolicy.validate('analyze_domain', <String, dynamic>{
+          'domain': double.nan,
+        }),
         'invalid_tool_argument',
       );
       Object nested = 'leaf';
@@ -73,10 +63,9 @@ void main() {
         nested = <String, Object>{'child': nested};
       }
       expect(
-        AuraToolExecutionPolicy.validate(
-          'analyze_domain',
-          <String, dynamic>{'domain': nested},
-        ),
+        AuraToolExecutionPolicy.validate('analyze_domain', <String, dynamic>{
+          'domain': nested,
+        }),
         'invalid_tool_argument',
       );
     });
@@ -103,7 +92,10 @@ void main() {
       expect(token.cancel(), isTrue);
       expect(token.isCancelled, isTrue);
       expect(token.executionStarted, isFalse);
-      expect(() => token.throwIfCancelled(), throwsA(isA<AgentOperationCancelled>()));
+      expect(
+        () => token.throwIfCancelled(),
+        throwsA(isA<AgentOperationCancelled>()),
+      );
     });
 
     test('refuses cancellation after a tool starts', () {

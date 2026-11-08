@@ -10,8 +10,9 @@ class AuraDynamicWhitelist {
 
   static final AuraDynamicWhitelist instance = AuraDynamicWhitelist._internal();
 
-  static const MethodChannel _networkChannel =
-      MethodChannel('com.aura.cyberdefense/engine');
+  static const MethodChannel _networkChannel = MethodChannel(
+    'com.aura.cyberdefense/engine',
+  );
   static const int _maximumAllowedHosts = 1000;
   static const int _maximumAllowlistBytes = 1024 * 1024;
   static const String _fileName = 'aura_dynamic_allowlist.json';
@@ -76,7 +77,9 @@ class AuraDynamicWhitelist {
 
       for (final value in decoded) {
         if (value is! String) {
-          throw const FormatException('La allowlist contiene un host no válido.');
+          throw const FormatException(
+            'La allowlist contiene un host no válido.',
+          );
         }
         final host = _normalizeHost(value);
         if (host == null) {
@@ -194,12 +197,12 @@ class AuraDynamicWhitelist {
       }
       candidate = uri.host.toLowerCase();
     } else if (candidate.contains('/') ||
-      candidate.contains('\\') ||
-      candidate.contains('?') ||
-      candidate.contains('#') ||
-      candidate.contains('@') ||
-      candidate.contains(':') ||
-      candidate.contains('%')) {
+        candidate.contains('\\') ||
+        candidate.contains('?') ||
+        candidate.contains('#') ||
+        candidate.contains('@') ||
+        candidate.contains(':') ||
+        candidate.contains('%')) {
       return null;
     }
 

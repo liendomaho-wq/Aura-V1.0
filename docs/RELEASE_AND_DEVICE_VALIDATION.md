@@ -34,6 +34,7 @@ Sobre el commit exacto del candidato:
 
 ```bash
 flutter pub get
+dart format --set-exit-if-changed .
 flutter analyze --no-pub
 flutter test --reporter expanded
 python3 tool/test_vpn_config_template.py
@@ -45,15 +46,43 @@ python3 tool/test_verify_packaged_model.py
 python3 tool/test_release_signing_policy.py
 python3 tool/test_release_signing_runtime.py
 python3 tool/test_verify_aab.py
-# En un entorno Python con tool/requirements-train.txt instalado:
-python3 -m pytest -q tool/test_aura_brain.py tool/test_adversarial.py \
-  tool/test_adversarial_split_builder.py tool/test_grouped_splits.py
+# Con tool/requirements-train.txt, JDK 17 y OpenSSL instalados:
+python3 -m pytest -q -rs
+# Las ocho pruebas AAB no pueden quedar omitidas en CI.
 bash tool/compile_aura.sh
 # Pruebas JVM de correlación y coordinación del ciclo de vida VPN:
 (cd android && AURA_ALLOW_DEBUG_SIGNING=true ./gradlew :app:testDebugUnitTest \
   --tests com.ciberdefensa.aura.VpnStartRequestGateTest \
-  --tests com.ciberdefensa.aura.VpnLifecycleGateTest)
+  --tests com.ciberdefensa.aura.VpnLifecycleGateTest \
+  --tests com.ciberdefensa.aura.VpnRecoveryGateTest \
+  --tests com.ciberdefensa.aura.AuraSocks5CredentialsTest \
+  --tests com.ciberdefensa.aura.Socks5AuthProtocolTest)
+# Compila la app/test aislados; NO ejecuta ni valida AndroidKeyStore.
+(cd android && AURA_ALLOW_DEBUG_SIGNING=true ./gradlew \
+  :app:assembleStorageMigration :app:assembleStorageMigrationAndroidTest)
+# Requiere un Android/emulador autorizado y accesible por adb (ANDROID_SERIAL).
+# Instala SOLO com.ciberdefensa.aura.vaultmigrationtest, no la app del usuario.
+(cd android && AURA_ALLOW_DEBUG_SIGNING=true ./gradlew \
+  :app:connectedStorageMigrationAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest)
+AURA_ALLOW_DEBUG_SIGNING=true flutter build apk --debug
 ```
+
+Las dos pruebas v9→v10 usan `AndroidJUnit4` y el Keystore real de Android:
+Robolectric falló con `AndroidKeyStore not found` (CI de `50349c2`). Conservan
+las aserciones de secreto, cifrado, limpieza del legado y backup interrumpido.
+La variante `storageMigration` tiene un applicationId/UID separado y las
+preferencias de prueba están namespaced. Esto aísla también el alias ESP que
+v10 aún fija globalmente dentro del UID; sólo namespacing no sería suficiente.
+La prueba rechaza el paquete de producción **antes** de borrar preferencias.
+El job separado de GitHub Actions requiere acceso KVM sin privilegios para
+Android 16/API 36. En `622b459` el runner falló ese requisito y **no ejecutó** la
+migración. El propietario debe proporcionar un runner autorizado con KVM; no se
+habilita root ni se convierte ese bloqueo en éxito. El build/APK es independiente:
+un artefacto generado no aprueba este job ni certifica migración/forwarding.
+Codemagic exige que el propietario proporcione un destino `adb` autorizado y
+falla si falta. Un emulador no demuestra migración en el Redmi ni hardware-backed
+Keystore. La ejecución y verificación física siguen **PENDIENTES**.
 
 Las pruebas JVM verifican la máquina de correlación y la exclusión entre inicio
 y destrucción; no sustituyen la prueba del diálogo, los broadcasts, JNI ni el
@@ -121,6 +150,11 @@ Cualquier `RenderFlex overflow` o excepción de render es un fallo bloqueante, n
 Para métricas ML, conservar dataset real, manifiesto, splits, semilla y reportes holdout. No utilizar datos semilla/sintéticos como evidencia de calidad de producción.
 
 ## 6. VPN y red — pruebas críticas en hardware
+
+El protocolo ejecutable, incluyendo el probe contra el listener HEV real,
+TCP/UDP/DNS, IPv6 y un fallo de recuperación por conflicto real de puerto, está
+en [ANDROID_TRAFFIC_VALIDATION.md](ANDROID_TRAFFIC_VALIDATION.md). Todos esos
+casos están **pendientes de dispositivo** hasta adjuntar sus resultados.
 
 Documentar estado inicial, acción, resultado observable y logs para cada caso:
 

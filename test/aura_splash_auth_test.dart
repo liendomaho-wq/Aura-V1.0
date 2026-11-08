@@ -14,8 +14,16 @@ void main() {
 
   const biometricChannel = MethodChannel('com.aura.cyberdefense/biometrics');
   const pathProviderChannel = MethodChannel('plugins.flutter.io/path_provider');
-  const networkEventChannel =
-      EventChannel('com.aura.cyberdefense/network_stream');
+  const networkEventChannel = EventChannel(
+    'com.aura.cyberdefense/network_stream',
+  );
+
+  setUp(() {
+    // CachingAssetBundle retains the Future, not just its string. Each widget
+    // test owns a new scheduler, so reread the real digest instead of awaiting
+    // a completed Future captured by the preceding test's disposed scheduler.
+    rootBundle.evict('assets/model/aura_brain_model.json.sha256');
+  });
 
   Future<List<String>> pumpSplash(
     WidgetTester tester, {
@@ -68,9 +76,11 @@ void main() {
   }
 
   Future<void> pumpBootToCore(WidgetTester tester) async {
-    for (var frame = 0;
-        frame < 20 && find.byType(AuraCoreScreen).evaluate().isEmpty;
-        frame++) {
+    for (
+      var frame = 0;
+      frame < 20 && find.byType(AuraCoreScreen).evaluate().isEmpty;
+      frame++
+    ) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 100)),
       );
@@ -112,11 +122,14 @@ void main() {
     await pumpBootToCore(tester);
 
     expect(calls, contains('authenticateDeviceCredential'));
+    // Authentication must finish booting, not merely reach a stalled vault.
+    expect(find.byType(AuraCoreScreen), findsOneWidget);
     expect(
       find.text('ACCESO LOCAL VALIDADO; INICIALIZANDO BÓVEDA SEGURA...'),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text('CONFIGURAR BLOQUEO DEL TELÉFONO'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('unsecured splash remains scrollable on a compact display', (
@@ -127,11 +140,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await pumpSplash(
-      tester,
-      hasStrongBiometric: false,
-      deviceSecure: false,
-    );
+    await pumpSplash(tester, hasStrongBiometric: false, deviceSecure: false);
     await tester.pump();
 
     expect(find.text('CONFIGURAR BLOQUEO DEL TELÉFONO'), findsOneWidget);
@@ -148,54 +157,66 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await pumpSplash(
-      tester,
-      hasStrongBiometric: false,
-      deviceSecure: false,
-    );
+    await pumpSplash(tester, hasStrongBiometric: false, deviceSecure: false);
     await tester.pump();
 
-    final continueButton = find.text(
-      'CONTINUAR SIN BLOQUEO LOCAL (INSEGURO)',
-    );
+    final continueButton = find.text('CONTINUAR SIN BLOQUEO LOCAL (INSEGURO)');
     await tester.ensureVisible(continueButton);
     await tester.pump();
     await tester.tap(continueButton);
     await pumpBootToCore(tester);
     await pumpCoreFrames(tester);
 
-    expect(find.byType(AuraCoreScreen), findsOneWidget);
+    final bootText = <String>[
+      for (final text in tester.widgetList<Text>(find.byType(Text)))
+        if (text.data != null) text.data!,
+    ].join(' | ');
+    expect(
+      find.byType(AuraCoreScreen),
+      findsOneWidget,
+      reason: 'Estado real al agotar la espera: $bootText',
+    );
     expect(find.text('Hola, soy Aura.'), findsOneWidget);
+    final overview = find.byKey(const ValueKey<String>('aura-overview-scroll'));
+    expect(overview, findsOneWidget);
+    await tester.drag(overview, const Offset(0, -220));
+    await tester.pump();
+    final vpnBounds = tester.getRect(
+      find.byKey(const ValueKey<String>('vpn-toggle')),
+    );
+    final inputBounds = tester.getRect(find.byType(TextField));
+    expect(vpnBounds.top, greaterThanOrEqualTo(0));
+    expect(inputBounds.bottom, lessThanOrEqualTo(568));
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('an unsecured device shows choices and keeps the splash mounted',
-      (
-    tester,
-  ) async {
-    final calls = await pumpSplash(
-      tester,
-      hasStrongBiometric: false,
-      deviceSecure: false,
-    );
+  testWidgets(
+    'an unsecured device shows choices and keeps the splash mounted',
+    (tester) async {
+      final calls = await pumpSplash(
+        tester,
+        hasStrongBiometric: false,
+        deviceSecure: false,
+      );
 
-    await tester.pump();
-    expect(find.text('CONFIGURAR BLOQUEO DEL TELÉFONO'), findsOneWidget);
-    expect(find.text('REINTENTAR'), findsOneWidget);
-    expect(
-      find.text('CONTINUAR SIN BLOQUEO LOCAL (INSEGURO)'),
-      findsOneWidget,
-    );
-    expect(
-      find.text('ALTO RIESGO: CONFIGURA UN PIN PARA PROTEGER AURA.'),
-      findsOneWidget,
-    );
-    expect(find.byType(Scaffold), findsOneWidget);
+      await tester.pump();
+      expect(find.text('CONFIGURAR BLOQUEO DEL TELÉFONO'), findsOneWidget);
+      expect(find.text('REINTENTAR'), findsOneWidget);
+      expect(
+        find.text('CONTINUAR SIN BLOQUEO LOCAL (INSEGURO)'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('ALTO RIESGO: CONFIGURA UN PIN PARA PROTEGER AURA.'),
+        findsOneWidget,
+      );
+      expect(find.byType(Scaffold), findsOneWidget);
 
-    await tester.pump(const Duration(seconds: 3));
+      await tester.pump(const Duration(seconds: 3));
 
-    expect(calls, <String>['getLocalAuthStatus']);
-    expect(find.byType(Scaffold), findsOneWidget);
-    expect(find.byType(AuraCoreScreen), findsNothing);
-  });
+      expect(calls, <String>['getLocalAuthStatus']);
+      expect(find.byType(Scaffold), findsOneWidget);
+      expect(find.byType(AuraCoreScreen), findsNothing);
+    },
+  );
 }

@@ -65,8 +65,10 @@ class AuraSignalBuilder {
     final subdomainIndex = _indexOf(featureOrder, 'subdomain_depth');
     final keywordIndex = _indexOf(featureOrder, 'suspicious_keyword_indicator');
     final digitIndex = _indexOf(featureOrder, 'digit_ratio');
-    final consecutiveDigitsIndex =
-        _indexOf(featureOrder, 'consecutive_digits_indicator');
+    final consecutiveDigitsIndex = _indexOf(
+      featureOrder,
+      'consecutive_digits_indicator',
+    );
     final bigramIndex = _indexOf(featureOrder, 'bigram_repeat_ratio');
 
     final normalizedHost = host.trim().toLowerCase();
@@ -138,8 +140,9 @@ class AuraSignalBuilder {
     }
 
     final subdomainValue = featureValues['subdomain_depth'];
-    final subdomainDepth =
-        subdomainValue == null ? 0 : (subdomainValue * 126).round();
+    final subdomainDepth = subdomainValue == null
+        ? 0
+        : (subdomainValue * 126).round();
     if (subdomainIndex >= 0 && subdomainDepth >= _suspiciousSubdomainDepth) {
       signals.add(
         AuraSignal(
@@ -213,8 +216,9 @@ class AuraSignalBuilder {
     }
 
     final maximumSignals = esThreat ? _maximumSignals : _maximumSafeSignals;
-    final selectedSignals =
-        signals.take(maximumSignals).toList(growable: false);
+    final selectedSignals = signals
+        .take(maximumSignals)
+        .toList(growable: false);
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     return AuraVerdictExplanation(
       id: '$timestamp:${_nextId++}:$normalizedHost',

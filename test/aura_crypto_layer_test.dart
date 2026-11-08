@@ -30,7 +30,8 @@ void main() {
       expect(AuraCryptoLayer.decryptModel(encrypted, key), plaintext);
 
       final lastNibble = encrypted.substring(encrypted.length - 1);
-      final tampered = encrypted.substring(0, encrypted.length - 1) +
+      final tampered =
+          encrypted.substring(0, encrypted.length - 1) +
           (lastNibble == '0' ? '1' : '0');
       expect(
         () => AuraCryptoLayer.decryptModel(tampered, key),
@@ -60,7 +61,8 @@ void main() {
     });
 
     test('rejects model plaintext larger than the 5 MiB safety limit', () {
-      final oversizedJson = '{"payload":"${List<String>.filled(5 * 1024 * 1024, 'x').join()}"}';
+      final oversizedJson =
+          '{"payload":"${List<String>.filled(5 * 1024 * 1024, 'x').join()}"}';
 
       expect(
         () => AuraCryptoLayer.encryptModel(oversizedJson, key),
@@ -152,13 +154,9 @@ void main() {
 
     test('fails closed when the model bytes are empty', () {
       expect(
-        AuraCryptoLayer.verifySignature(
-          Uint8List(0),
-          Uint8List(256),
-        ),
+        AuraCryptoLayer.verifySignature(Uint8List(0), Uint8List(256)),
         isFalse,
       );
     });
   });
-
 }
