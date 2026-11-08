@@ -23,8 +23,14 @@ workflows:
         - push
         - pull_request
       branch_patterns:
+        # PR builds must match the destination branch (main), not the
+        # temporary feature/source branch. Push events still match main.
         - pattern: 'main'
+          include: true
+          source: false
         - pattern: 'principal'
+          include: true
+          source: false
     scripts:
       - name: Resolve Codemagic keystore file variable (Optional)
         script: |
