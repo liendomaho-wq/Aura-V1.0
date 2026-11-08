@@ -529,6 +529,101 @@ previo (`23-coordinated-scroll-local-python.log`) fue 127/8 omitidos/124 subtest
 no AAB local. No se debilita el gate de formato ni se atribuyen widgets a un
 job que no llegó a ellos. La reejecución posterior se identifica en PR #11.
 
+### `029efe1`: calidad real verde, sin declarar release
+
+**Código fuente probado:** `029efe1908b151f3f3a6b588bbf525254d7e0ef7`.
+[Quality 42485347770 / job 128745883851](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42485347770/job/128745883851)
+terminó **success, 1m12s**. La API del run confirmó ese `head_sha`; checkout
+usa explícitamente el HEAD de la PR, no una mezcla no identificada.
+
+| Comando real en CI | Resultado observado |
+|---|---|
+| `flutter pub get` | Exit 0 |
+| `dart format --set-exit-if-changed .` | 58 archivos, **0 cambios** (0.17s) |
+| `python3 tool/test_verify_aab.py` | **8 tests OK** (2.611s), ninguno omitido |
+| `python3 -m pytest -q -rs` | **135 pasan + 124 subtests**, **0 omitidos** (5.75s) |
+| `flutter analyze --no-pub` | **No issues found** (5.6s) |
+| `flutter test --no-pub` | **194 pasan / 0 fallan / 1 omitido** |
+
+El omitido es la suite preexistente
+`test/aura_inference_benchmark_test.dart`, anotada literalmente
+`@Skip('requiere dispositivo/entorno local')`. No se añadió esta omisión ni se
+borró ninguna aserción para conseguir verde. **No se ejecutó el benchmark**, ni
+se deducen latencias, precisión, protección o compatibilidad de esos tests.
+La ejecución cubre el test compacto sin overflow y el test Core original con
+regreso al avatar por gesto real, estados VPN no verificables y revocación;
+son pruebas de widgets/canales, **no forwarding Android real**.
+
+Las anotaciones completas se conservaron localmente en
+`029efe1-quality-annotations.json`. `git diff --exit-code 82db8e7a8c24557f2196e0b08ab4ecb69ad92b1c HEAD -- assets pubspec.yaml pubspec.lock`
+salió 0: assets, `pubspec.yaml` y lock permanecen sin diferencias.
+`sha256sum assets/model/aura_brain_model.json` volvió a dar
+`d190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2`.
+El commit documental posterior no cambia ese código; su ejecución y artefacto
+exactos se publican en el resumen de PR #11, sin heredar el hash de otro APK.
+
+### `029efe1`: APK, instrumentación compilada y gates que siguen abiertos
+
+[Android 42485347775 / build job 128745883763](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42485347775/job/128745883763)
+terminó **success, 8m06s**, con JDK 17 / SDK 36 / NDK 28.2.13676358 reales:
+
+```text
+./gradlew :app:testDebugUnitTest --no-daemon
+BUILD SUCCESSFUL in 3m 50s
+JUnit: 19 tests / 0 failures / 0 errors / 0 skipped
+./gradlew :app:assembleStorageMigration :app:assembleStorageMigrationAndroidTest --no-daemon
+BUILD SUCCESSFUL in 1m 53s
+275 actionable tasks: 269 executed, 6 up-to-date
+flutter build apk --debug
+Running Gradle task 'assembleDebug'... 72.5s
+Built build/app/outputs/flutter-apk/app-debug.apk
+APK SHA256=3876bee5c2cbe374e4fe3230b54bf53039df74dbdece747f42f7b98a80c20fa4
+```
+
+La inspección real del APK volvió a validar ELF/clase/máquina en **armeabi-v7a,
+arm64-v8a, x86 y x86_64**. Los tamaños y SHA de las cuatro bibliotecas HEV son
+idénticos a la tabla de `3e56b23` de arriba; no se infieren de una lista de ABIs.
+Modelo/digest/firma empaquetados coinciden byte a byte con el checkout exacto.
+No es prueba de instalación, llamadas JNI en un teléfono, forwarding ni soporte
+16 KiB físico.
+
+Artefacto [13619059672](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42485347775/artifacts/13619059672):
+`aura-debug-029efe1908b151f3f3a6b588bbf525254d7e0ef7`.
+ZIP **86005108 bytes**, digest ZIP
+`942dd9b09f34d9e04b763066f74aaf76a154790cab86c33a95fe10de340a764a`.
+El hash **APK** es `3876bee5c2cbe374e4fe3230b54bf53039df74dbdece747f42f7b98a80c20fa4`;
+no confundirlo con el digest del ZIP. El archivo contiene `SOURCE_COMMIT.txt`
+y `SHA256SUMS`; la evidencia del hash se calculó **en CI**, no en una descarga
+local fingida. Es DEBUG de prueba, no actualización productiva autorizada.
+
+La [migración instrumentada / job 128747851842](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42485347775/job/128747851842)
+falló en 7s antes de ejecutar:
+
+```text
+This runner has no unprivileged KVM access. Provide a KVM-enabled runner; no root/device bypass is used.
+```
+
+El workflow Android **sigue en failure**, aunque su job de compilación sea
+verde. No se sustituye Keystore por JVM ni se omite ese gate. Los tests de
+migración están compilados, no ejecutados.
+
+[Firma 42485347773](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42485347773)
+completó sus tres jobs: guard `128745883724`, positivo con clave efímera
+`128745883795` y SBOM `128745883658`, todos **success**. Esto no acredita una
+clave de producción del propietario.
+
+[Modelo 42485347779 / job 128745883847](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42485347779/job/128745883847)
+terminó **failure, 7m46s**: candidato de 7207922 bytes frente al límite 4194304,
+todavía excedido a profundidad 8 con poda agresiva. Golden y upload de reportes
+pasaron; benchmark posterior no se ejecutó. No se ha promovido 3.1.0 ni cambiado
+el modelo base. No se extrapola este rechazo al fallo histórico de octubre cuyo
+log completo no fue recuperado.
+
+Esta última actualización es **sólo documental** y conserva la evidencia del
+código realmente probado `029efe1`. Tras publicarla se verifican otra vez los
+checks y el APK del SHA documental; ese SHA y sus resultados exactos se fijan
+en el resumen final de PR #11, sin otro ciclo de commits de resultados.
+
 ## 5. Registro local reproducible
 
 Los logs de trabajo se escriben en `tool/reports/android-closeout/`, ignorado
@@ -706,19 +801,20 @@ Actions sí está ejecutando en esta revisión. Solo si vuelve a responder
 **Aura Flutter Quality** y **Aura Android Debug Build** sobre esta rama. No se
 solicitan contraseñas, tokens, 2FA ni secretos en chat.
 
-## 8. Criterios de terminado (instantánea previa al run posterior)
+## 8. Criterios de terminado (código verificado: `029efe1`)
 
 Se separan avances reales de aceptación final; los checks del próximo SHA y su
 `SOURCE_COMMIT.txt` son la autoridad para ese candidato, no este historial.
 
-- [x] `flutter pub get`, formato 58/0 y análisis limpio en `64167f8`; no sustituye su test Flutter fallido.
-- [x] Guards y pytest/JDK de CI: `64167f8` confirmó 135 pruebas + 124 subtests y cero omisiones, incluidas ocho AAB reales.
+- [x] `flutter pub get`, formato 58/0 y análisis limpio en `029efe1`.
+- [x] Guards y pytest/JDK de CI: `029efe1` confirmó 135 pruebas + 124 subtests y cero omisiones, incluidas ocho AAB reales.
 - [x] JVM de credenciales/RFC 1929/ciclo de vida/correlación/recuperación: 19 pruebas sin migración de Keystore.
-- [x] Primer C/JNI/NDK y APK debug real `e8b2db7`, publicado y con SHA-256 registrado.
-- [x] Firma negativa/positiva con clave efímera y SBOM de `e8b2db7`.
-- [x] Arranque compacto 320×568 sin overflow, con scroll y controles fijados, ejecutado en `1844ec8` y `64167f8`.
-- [ ] `flutter test` completo del SHA posterior: falta confirmar la navegación coordinada; el único fallo `64167f8` está transcrito arriba.
-- [x] APKs de instrumentación compilados y ELF/modelo del APK real verificados en `3e56b23`; no equivale a ejecutar AndroidKeyStore.
+- [x] C/JNI/NDK y APK debug real de `029efe1`, publicado y con SHA-256 registrado; no instalado en hardware.
+- [x] Firma negativa/positiva con clave efímera y SBOM de `029efe1`; no credenciales productivas.
+- [x] Arranque compacto 320×568 sin overflow, scroll y controles fijados, revalidado en `029efe1`.
+- [x] `flutter test` de `029efe1`: 194 pasan / 0 fallan / 1 benchmark preexistente omitido; navegación coordinada ejecutada.
+- [ ] Benchmark de inferencia en dispositivo: sigue omitido, sin latencias verificadas.
+- [x] APKs de instrumentación compilados y ELF/modelo del APK real revalidados en `029efe1`; no equivale a ejecutar AndroidKeyStore.
 - [ ] Migración real Android instrumentada — **bloqueada por KVM/runner autorizado**.
 - [ ] Codemagic ejecutado sobre el SHA final — requiere propietario y destino Android.
 - [ ] APK del SHA final instalado en un dispositivo real sin pérdida de datos.
@@ -731,7 +827,7 @@ Se separan avances reales de aceptación final; los checks del próximo SHA y su
 - [x] Compatibilidad **documentada con límites**, no certificada universalmente.
 - [x] README de producto/ingeniería y auditoría interna separados.
 
-Existen APKs debug históricos identificados arriba, incluido `3e56b23`. **Funciones
+Existe el APK debug de `029efe1` identificado arriba, además de los históricos. **Funciones
 verificadas en dispositivo: ninguna.** No se atribuyen a esos artefactos los cambios posteriores
 ni una validación Flutter completa. No hacer merge, publicar ni declarar Aura
 terminada mientras los criterios pendientes no tengan evidencia del SHA correcto.
