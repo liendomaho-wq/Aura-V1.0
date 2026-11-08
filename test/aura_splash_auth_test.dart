@@ -18,6 +18,13 @@ void main() {
     'com.aura.cyberdefense/network_stream',
   );
 
+  setUp(() {
+    // CachingAssetBundle retains the Future, not just its string. Each widget
+    // test owns a new scheduler, so reread the real digest instead of awaiting
+    // a completed Future captured by the preceding test's disposed scheduler.
+    rootBundle.evict('assets/model/aura_brain_model.json.sha256');
+  });
+
   Future<List<String>> pumpSplash(
     WidgetTester tester, {
     required bool hasStrongBiometric,
