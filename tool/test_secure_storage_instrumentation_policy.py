@@ -128,5 +128,16 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
         self.assertNotIn("chmod 777", self.workflow)
 
 
+    def test_vpn_suite_is_additional_to_the_original_migration_suite(self):
+        self.assertIn(
+            "class=com.ciberdefensa.aura.SecureStorageMigrationTest,"
+            "com.ciberdefensa.aura.VpnForwardingInstrumentationTest",
+            self.workflow,
+        )
+        self.assertIn("tool/run_android_vpn_instrumentation.py", self.workflow)
+        self.assertIn("--require-vpn", self.workflow)
+        self.assertIn("build/vpn-instrumentation-fixture.log", self.workflow)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

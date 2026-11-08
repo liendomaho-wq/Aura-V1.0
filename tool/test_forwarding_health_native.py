@@ -167,3 +167,32 @@ def test_jni_failed_lookup_does_not_continue_with_pending_exception():
     assert "ExceptionClear" not in on_load
     assert "pthread_mutex_destroy" in on_load
     assert "pthread_key_delete" in on_load
+
+
+def test_actual_own_nonloopback_tcp_is_not_remote_egress(native, observation):
+    import fcntl
+    import struct
+    own_ip = None
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as query:
+        for _, name in socket.if_nameindex():
+            try:
+                data = fcntl.ioctl(query.fileno(), 0x8915, struct.pack("256s", name.encode()[:15]))
+            except OSError:
+                continue
+            candidate = socket.inet_ntoa(data[20:24])
+            if not candidate.startswith("127.") and candidate != "0.0.0.0":
+                own_ip = candidate
+                break
+    assert own_ip, "Actual nonloopback interface required for this negative regression"
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind((own_ip, 0))
+        listener.listen(1)
+        with socket.create_connection(listener.getsockname(), timeout=2) as client:
+            server, _ = listener.accept()
+            with server:
+                client.sendall(b"actual-local-request")
+                assert server.recv(128) == b"actual-local-request"
+                server.sendall(b"actual-local-response")
+                assert client.recv(128) == b"actual-local-response"
+                native.aura_egress_observe_tcp(observation, client.fileno())
+                assert native.aura_egress_recent() == 0

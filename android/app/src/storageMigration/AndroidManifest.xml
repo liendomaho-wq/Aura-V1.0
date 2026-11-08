@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Test-only foreground host: no Flutter startup, production UID,
+             storage reset, privilege grant or security-check bypass. -->
+        <activity
+            android:name="com.ciberdefensa.aura.VpnInstrumentationActivity"
+            android:exported="false" />
+    </application>
+</manifest>

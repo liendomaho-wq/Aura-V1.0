@@ -77,3 +77,39 @@ def test_rejects_another_class_using_the_required_names(tmp_path):
     path.write_bytes(ET.tostring(root))
     with pytest.raises(ValueError, match="must execute exactly once"):
         verify_results(tmp_path)
+
+
+def test_vpn_is_required_in_addition_to_original_migration_not_instead(tmp_path):
+    write_parser_fixture(tmp_path)
+    with pytest.raises(ValueError, match="must execute exactly once"):
+        verify_results(tmp_path, require_vpn=True)
+
+
+def test_accepts_all_six_required_case_identities_only_when_present(tmp_path):
+    from verify_android_instrumentation import EXPECTED_VPN_CASES, VPN_CLASS
+    write_parser_fixture(tmp_path)
+    suite = ET.Element("testsuite", tests=str(len(EXPECTED_VPN_CASES)), failures="0", errors="0", skipped="0")
+    for name in sorted(EXPECTED_VPN_CASES):
+        ET.SubElement(suite, "testcase", classname=VPN_CLASS, name=name)
+    (tmp_path / "TEST-vpn-parser-fixture.xml").write_bytes(ET.tostring(suite))
+    report = verify_results(tmp_path, require_vpn=True)
+    assert report["total_cases"] == 6
+    assert report["required_cases"] == sorted(EXPECTED_CASES)
+    assert report["required_vpn_cases"] == sorted(EXPECTED_VPN_CASES)
+
+
+def test_vault_integrity_cannot_be_satisfied_by_migration_alone(tmp_path):
+    write_parser_fixture(tmp_path)
+    with pytest.raises(ValueError, match="must execute exactly once"):
+        verify_results(tmp_path, require_vault_integrity=True)
+
+
+def test_accepts_additional_real_result_class_identity(tmp_path):
+    from verify_android_instrumentation import EXPECTED_INTEGRITY_CASES, INTEGRITY_CLASS
+    write_parser_fixture(tmp_path)
+    suite = ET.Element("testsuite", tests="1", failures="0", errors="0", skipped="0")
+    ET.SubElement(suite, "testcase", classname=INTEGRITY_CLASS, name=next(iter(EXPECTED_INTEGRITY_CASES)))
+    (tmp_path / "TEST-integrity-parser-fixture.xml").write_bytes(ET.tostring(suite))
+    report = verify_results(tmp_path, require_vault_integrity=True)
+    assert report["total_cases"] == 3
+    assert report["required_vault_integrity_cases"] == sorted(EXPECTED_INTEGRITY_CASES)

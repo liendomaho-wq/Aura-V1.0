@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: aura-android-debug-build-${{ github.workflow }}-${{ github.ref }}
+  group: aura-android-debug-build-${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -116,6 +116,7 @@ jobs:
           set -euo pipefail
           test -s build/app/outputs/flutter-apk/app-debug.apk
           git rev-parse HEAD > build/app/outputs/flutter-apk/SOURCE_COMMIT.txt
+          cp pubspec.lock build/app/outputs/flutter-apk/RESOLVED_PUBSPEC.lock
           python3 - <<'PYTHON'
           import hashlib
           from pathlib import Path
@@ -150,6 +151,7 @@ jobs:
           path: |
             build/app/outputs/flutter-apk/app-debug.apk
             build/app/outputs/flutter-apk/SOURCE_COMMIT.txt
+            build/app/outputs/flutter-apk/RESOLVED_PUBSPEC.lock
             build/app/outputs/flutter-apk/SHA256SUMS
           if-no-files-found: error
           retention-days: 14
@@ -230,10 +232,10 @@ jobs:
           working-directory: android
           script: |
             adb shell getprop ro.build.version.sdk
-            python3 ../tool/ci_run.py ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest --no-daemon
+            python3 ../tool/ci_run.py python3 ../tool/run_android_vpn_instrumentation.py --collect-logcat -- ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest,com.ciberdefensa.aura.VpnForwardingInstrumentationTest,com.ciberdefensa.aura.SecureStorageIntegrityTest --no-daemon
 
-      - name: Require nonempty passing XML for both original migration cases
-        run: python3 tool/verify_android_instrumentation.py build/app/outputs/androidTest-results
+      - name: Require passing XML for original migration and real VPN traffic cases
+        run: python3 tool/verify_android_instrumentation.py build/app/outputs/androidTest-results --require-vpn --require-vault-integrity
 
       - name: Preserve actual Android execution evidence even on failure
         if: always()
@@ -243,6 +245,8 @@ jobs:
           path: |
             build/app/outputs/androidTest-results/
             build/app/reports/androidTests/
+            build/vpn-instrumentation-fixture.log
+            build/vpn-instrumentation-logcat.txt
           if-no-files-found: warn
           retention-days: 14
 
@@ -266,3 +270,62 @@ jobs:
                       raise SystemExit(1)
           print("No failed test XML exists; inspect the preceding setup/compiler/emulator failure.")
           PYTHON
+
+  # Additional real provider coverage. This does NOT replace the mandatory
+  # Android 16 lane or assert compatibility with the reference physical phone.
+  keystore-api29:
+    name: Additional real API 29 Keystore regression (not Android 16 acceptance)
+    needs: android-debug
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Setup Android command-line tools
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install declared compilation toolchain
+        run: python3 tool/ci_run.py sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+      - name: Setup Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: python3 tool/ci_run.py flutter pub get
+      - name: Execute original migration plus integrity tests on real Android 10
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          AURA_ALLOW_DEBUG_SIGNING: 'true'
+        with:
+          api-level: 29
+          target: google_apis
+          arch: x86
+          cores: 2
+          ram-size: 1536M
+          emulator-boot-timeout: 1200
+          disable-linux-hw-accel: auto
+          working-directory: android
+          script: |
+            adb shell getprop ro.build.version.sdk
+            python3 ../tool/ci_run.py ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest,com.ciberdefensa.aura.SecureStorageIntegrityTest --no-daemon
+      - name: Require actual nonempty migration and tamper-result XML
+        run: python3 tool/verify_android_instrumentation.py build/app/outputs/androidTest-results --require-vault-integrity
+      - name: Preserve actual additional provider results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aura-keystore-api29-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            build/app/outputs/androidTest-results/
+            build/app/reports/androidTests/
+          if-no-files-found: warn
+          retention-days: 14
