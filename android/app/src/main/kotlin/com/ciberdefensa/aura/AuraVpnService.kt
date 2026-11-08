@@ -160,6 +160,7 @@ class AuraVpnService : VpnService() {
     private val blockedIps: MutableSet<String> =
         Collections.synchronizedSet(HashSet())
     private val startRequested = AtomicBoolean(false)
+    private val recoveryRequested = AtomicBoolean(false)
     private val lifecycleGate = VpnLifecycleGate()
     private val notificationHandler = Handler(Looper.getMainLooper())
     private var notificationUpdatePending = false
@@ -232,6 +233,10 @@ class AuraVpnService : VpnService() {
                     requestId = requestId,
                 )
             }
+        } else if (vpnInterface != null && !startRequested.get()) {
+            // Android retained the full-route TUN after a failed handover. Reuse
+            // that interface and restart forwarding instead of creating a second TUN.
+            requestTunnelRecovery(requestId)
         } else if (startRequested.compareAndSet(false, true)) {
             try {
                 worker.execute { startTunnel(requestId) }
@@ -416,6 +421,7 @@ class AuraVpnService : VpnService() {
                 }
             } ?: false
             if (!ready) throw IOException("El motor VPN se detuvo durante el arranque.")
+            startRequested.set(false)
             scheduleFeedRefresh()
             reportState(
                 true,
@@ -528,7 +534,7 @@ class AuraVpnService : VpnService() {
                 if (cleared) {
                     panicIsolationActive = false
                     tunnelStarted = true
-                    startRequested.set(true)
+                    startRequested.set(false)
                 }
                 cleared
             } ?: false
@@ -665,7 +671,15 @@ class AuraVpnService : VpnService() {
         if (serviceShuttingDown) return
         val previous = underlyingNetwork
         val selected = findUnderlyingNetwork(excludedNetwork)
-        if (selected == previous) return
+        if (selected == previous) {
+            // A failed recovery can leave the selected underlay unchanged while
+            // the TUN remains installed and native forwarding is stopped. A later
+            // callback on that same network is still a valid recovery trigger.
+            if (selected != null && vpnInterface != null && !panicIsolationActive && !tunnelStarted) {
+                requestTunnelRecovery()
+            }
+            return
+        }
 
         val underlayUpdated = try {
             // Keep Android's VPN routing metadata aligned with the physical network.
@@ -697,7 +711,7 @@ class AuraVpnService : VpnService() {
             )
         } else if (vpnInterface != null && !panicIsolationActive) {
             // Restart even when the previous underlay loss already stopped the worker.
-            recoverTunnelAfterNetworkChange()
+            requestTunnelRecovery()
         }
     }
 
@@ -732,16 +746,63 @@ class AuraVpnService : VpnService() {
      * alone does not migrate those sockets. Restart the native worker against the
      * same TUN descriptor so new protected sockets use the selected underlay.
      */
-    private fun recoverTunnelAfterNetworkChange() {
+    private fun requestTunnelRecovery(requestId: String? = null) {
+        if (worker.isShutdown) {
+            if (requestId != null) {
+                reportState(false, "El servicio VPN está cerrándose.", requestId = requestId)
+            }
+            return
+        }
+        if (!recoveryRequested.compareAndSet(false, true)) {
+            if (requestId != null) {
+                reportState(false, "La recuperación del túnel ya está en curso.", requestId = requestId)
+            }
+            return
+        }
+        try {
+            worker.execute {
+                try {
+                    if (serviceShuttingDown || panicIsolationActive || tunnelStarted) {
+                        if (requestId != null) {
+                            reportState(
+                                tunnelStarted,
+                                if (tunnelStarted) "El túnel VPN ya está activo."
+                                else "La recuperación VPN no está disponible en el estado actual.",
+                                requestId = requestId,
+                            )
+                        }
+                        return@execute
+                    }
+                    recoverTunnelAfterNetworkChange(requestId)
+                } finally {
+                    recoveryRequested.set(false)
+                }
+            }
+        } catch (error: java.util.concurrent.RejectedExecutionException) {
+            recoveryRequested.set(false)
+            if (requestId != null) {
+                reportState(false, "El servicio VPN está cerrándose.", requestId = requestId)
+            }
+        }
+    }
+
+    private fun recoverTunnelAfterNetworkChange(requestId: String? = null) {
         val tun = vpnInterface
         if (tun == null || !tun.fileDescriptor.valid()) {
             tunnelStarted = false
-            reportState(false, "La red cambió, pero la interfaz VPN ya no está disponible.")
+            reportState(
+                false,
+                "La red cambió, pero la interfaz VPN ya no está disponible.",
+                requestId = requestId,
+            )
             return
         }
 
         try {
             requireUnderlyingNetworkMonitor()
+            if (underlyingNetwork == null) {
+                throw IOException("No hay una red física disponible para recuperar el forwarding.")
+            }
             val (configFile, socks5Credentials) = prepareTunnelConfiguration()
             if (!restartNativeWorker(configFile.absolutePath, tun)) {
                 throw IOException("El motor VPN no pudo reiniciarse en la nueva red.")
@@ -765,19 +826,21 @@ class AuraVpnService : VpnService() {
             reportState(
                 true,
                 "Red física cambiada; motor VPN reiniciado y proxy SOCKS5 autenticado.",
+                requestId = requestId,
             )
             Log.i("AuraVPN", "Motor tun2socks recuperado tras cambiar la red física.")
         } catch (exception: Exception) {
-            handleNetworkRecoveryFailure(exception)
+            handleNetworkRecoveryFailure(exception, requestId)
         } catch (error: LinkageError) {
-            handleNetworkRecoveryFailure(error)
+            handleNetworkRecoveryFailure(error, requestId)
         }
     }
 
-    private fun handleNetworkRecoveryFailure(error: Throwable) {
+    private fun handleNetworkRecoveryFailure(error: Throwable, requestId: String? = null) {
         val stopConfirmed = stopNativeWorker()
         if (stopConfirmed) discardTunnelConfiguration()
         tunnelStarted = false
+        startRequested.set(false)
         Log.e("AuraVPN", "No se pudo recuperar el túnel tras cambiar de red.", error)
         reportState(
             false,
@@ -786,6 +849,7 @@ class AuraVpnService : VpnService() {
             } else {
                 "La red cambió; la recuperación y el cierre nativo no están confirmados."
             },
+            requestId = requestId,
         )
         updateForegroundNotification()
     }
