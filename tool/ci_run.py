@@ -6,7 +6,9 @@ Failure annotations contain the actual output tail, never a replacement result.
 The optional Dart-only diff records the formatter's changes for review.
 """
 from collections import deque
+import base64
 import hashlib
+import lzma
 import os
 import subprocess
 import sys
@@ -56,12 +58,15 @@ def main(args):
                 ["git", "diff", "--no-ext-diff", "--", "*.dart"],
                 check=True, text=True, stdout=subprocess.PIPE,
             ).stdout
-            chunks = list(annotation_chunks(diff))
+            # A step also has a ten-notice cap. Compress the exact diff, rather
+            # than silently losing later chunks of a large formatting-only patch.
+            payload = base64.b64encode(lzma.compress(diff.encode("utf-8"))).decode("ascii")
+            chunks = list(annotation_chunks(payload))
             digest = hashlib.sha256(diff.encode("utf-8")).hexdigest()
             annotate("notice", "Dart format evidence",
-                     f"SHA256={digest}; chunks={len(chunks)}; bytes={len(diff.encode('utf-8'))}")
+                     f"SHA256={digest}; chunks={len(chunks)}; bytes={len(diff.encode('utf-8'))}; encoding=xz+base64")
             for index, chunk in enumerate(chunks, 1):
-                annotate("notice", f"Dart format patch {index}", chunk)
+                annotate("notice", f"Dart format compressed patch {index}", chunk)
     return status if status >= 0 else 128 - status
 
 
