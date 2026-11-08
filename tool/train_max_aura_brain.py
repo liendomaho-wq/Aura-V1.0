@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 import os
+import platform
 import re
 import tempfile
 import time
@@ -13,6 +14,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
+import sklearn
 from rapidfuzz.distance import Levenshtein
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 from sklearn.ensemble import RandomForestClassifier
@@ -94,6 +96,9 @@ MOBILE_METRICS_JSON = REPORTS_DIR / "metrics_mobile.json"
 MOBILE_METRICS_MARKDOWN = REPORTS_DIR / "metrics_mobile.md"
 MOBILE_SIZE_TRIALS = REPORTS_DIR / "mobile_size_trials.json"
 MAX_MOBILE_MODEL_BYTES = 4 * 1024 * 1024
+# Fixed before looking at validation/test outcomes. Keep 500 trees and the
+# existing quality gates; bound training attempts rather than retry forever.
+MOBILE_TRAINING_CONFIGURATIONS = ((10, 512), (8, 1024), (6, 2048), (4, 4096))
 EXPECTED_CLASSES = {0, 1}
 MIN_TEST_ROWS_PER_CLASS = 500
 
@@ -690,13 +695,47 @@ def serialize_tree(estimator, threshold_decimals=None):
 def atomic_write(path, content):
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", dir=path.parent, delete=False
+        mode="w", encoding="utf-8", newline="\n", dir=path.parent, delete=False
     ) as temporary:
         temporary.write(content)
         temporary.flush()
         os.fsync(temporary.fileno())
         temporary_path = Path(temporary.name)
     os.replace(temporary_path, path)
+
+
+
+def serialize_mobile_model(model):
+    """The exact UTF-8 representation measured and written to the candidate."""
+    return (
+        json.dumps(model, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n"
+    ).encode("utf-8")
+
+
+def mobile_tree_stats(model):
+    def node_stats(node):
+        if node["type"] == "leaf":
+            return 1, 0
+        left_leaves, left_depth = node_stats(node["left"])
+        right_leaves, right_depth = node_stats(node["right"])
+        return left_leaves + right_leaves, 1 + max(left_depth, right_depth)
+
+    stats = [node_stats(tree["root"]) for tree in model["trees"]]
+    if not stats:
+        raise ValueError("Mobile candidate has no trees")
+    return sum(leaves for leaves, _ in stats), max(depth for _, depth in stats)
+
+
+def mobile_size_failure_message(trials):
+    attempted = "; ".join(
+        f"depth={trial['max_depth']}, min_samples_leaf={trial['min_samples_leaf']}, "
+        f"bytes={trial['bytes']}" for trial in trials
+    )
+    return (
+        f"Mobile preset exceeds {MAX_MOBILE_MODEL_BYTES} bytes after "
+        f"{len(trials)} actual training attempts ({attempted}); "
+        f"see {MOBILE_SIZE_TRIALS.relative_to(ROOT)}. No base asset was changed."
+    )
 
 
 def train_mobile_preset():
@@ -718,7 +757,7 @@ def train_mobile_preset():
         [extract_maximum_features(domain) for domain, _ in train_rows]
     )
     training_labels = np.asarray([label for _, label in train_rows], dtype=np.int64)
-    configurations = [(10, 512)]
+    configurations = MOBILE_TRAINING_CONFIGURATIONS
     trials = []
     selected = None
     for max_depth, min_samples_leaf in configurations:
@@ -765,6 +804,39 @@ def train_mobile_preset():
         }
         if len(model["trees"]) != 500:
             raise RuntimeError("El preset móvil debe conservar exactamente 500 árboles.")
+        # The conventional uncalibrated 0.5 threshold is used only to measure
+        # serialization. Oversized forests do not consume validation or test.
+        model["decision_threshold"] = 0.5
+        model["decision_rule"] = (
+            "threat if threatVotes/trees.length >= decision_threshold"
+        )
+        model_bytes = serialize_mobile_model(model)
+        leaves, observed_depth = mobile_tree_stats(model)
+        trial = {
+            "trees": len(model["trees"]),
+            "max_depth": max_depth,
+            "observed_depth": observed_depth,
+            "min_samples_leaf": min_samples_leaf,
+            "leaves": leaves,
+            "precalibration_bytes": len(model_bytes),
+            "bytes": len(model_bytes),
+            "validation_evaluated": False,
+            "status": "rejected_size_before_validation",
+        }
+        trials.append(trial)
+        # Retain each actual attempt even if a later training/evaluation fails.
+        atomic_write(MOBILE_SIZE_TRIALS, json.dumps(trials, indent=2) + "\n")
+        print(
+            f"MOBILE_TRIAL trees={len(model['trees'])} max_depth={max_depth} "
+            f"observed_depth={observed_depth} min_samples_leaf={min_samples_leaf} "
+            f"leaves={leaves} bytes={len(model_bytes)} "
+            f"stage=before_validation", flush=True,
+        )
+        del forest
+        if len(model_bytes) >= MAX_MOBILE_MODEL_BYTES:
+            del model, model_bytes
+            continue
+
         validation_scores = score_serialized_model(model, val_rows)
         decision_threshold, decision_rule, validation_threshold_metrics = (
             choose_decision_threshold(
@@ -773,49 +845,27 @@ def train_mobile_preset():
             )
         )
         model["decision_threshold"] = decision_threshold
-        model["decision_rule"] = (
-            "threat if threatVotes/trees.length >= decision_threshold"
-        )
-        model_bytes = (
-            json.dumps(model, ensure_ascii=False, separators=(",", ":")) + "\n"
-        ).encode("utf-8")
-        trees = model["trees"]
-
-        def node_stats(node):
-            if node["type"] == "leaf":
-                return 1, 0
-            left_leaves, left_depth = node_stats(node["left"])
-            right_leaves, right_depth = node_stats(node["right"])
-            return left_leaves + right_leaves, 1 + max(left_depth, right_depth)
-
-        tree_stats = [node_stats(tree["root"]) for tree in trees]
-        leaves = sum(item[0] for item in tree_stats)
-        observed_depth = max(item[1] for item in tree_stats)
-        trial = {
-            "trees": len(trees),
-            "max_depth": max_depth,
-            "observed_depth": observed_depth,
-            "min_samples_leaf": min_samples_leaf,
-            "leaves": leaves,
+        model_bytes = serialize_mobile_model(model)
+        trial.update({
             "bytes": len(model_bytes),
-        }
-        trials.append(trial)
+            "validation_evaluated": True,
+            "status": "selected" if len(model_bytes) < MAX_MOBILE_MODEL_BYTES
+                      else "rejected_size_after_calibration",
+        })
+        atomic_write(MOBILE_SIZE_TRIALS, json.dumps(trials, indent=2) + "\n")
         print(
-            f"MOBILE_TRIAL trees={len(trees)} max_depth={max_depth} "
-            f"observed_depth={observed_depth} min_samples_leaf={min_samples_leaf} "
-            f"leaves={leaves} bytes={len(model_bytes)}"
+            f"MOBILE_CALIBRATED max_depth={max_depth} "
+            f"decision_threshold={decision_threshold} bytes={len(model_bytes)} "
+            f"status={trial['status']}", flush=True,
         )
         if len(model_bytes) < MAX_MOBILE_MODEL_BYTES:
             selected = (model, model_bytes, trial, training_seconds)
             break
-        del forest, model, model_bytes
+        del model, model_bytes
 
     atomic_write(MOBILE_SIZE_TRIALS, json.dumps(trials, indent=2) + "\n")
     if selected is None:
-        raise SystemExit(
-            "Mobile preset still exceeds 4194304 bytes at max_depth=8 with aggressive pruning; "
-            f"see {MOBILE_SIZE_TRIALS.relative_to(ROOT)}. No base asset was changed."
-        )
+        raise SystemExit(mobile_size_failure_message(trials))
 
     model, model_bytes, trial, training_seconds = selected
     atomic_write(MOBILE_MODEL_OUTPUT, model_bytes.decode("utf-8"))
@@ -867,6 +917,24 @@ def train_mobile_preset():
         "training_seconds": training_seconds,
         "dataset_manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
         "metrics_model_file": str(MOBILE_MODEL_OUTPUT.relative_to(ROOT)),
+        "metrics_model_sha256": hashlib.sha256(model_bytes).hexdigest(),
+        "training_script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "feature_corpus_sha256": hashlib.sha256(COMMON_DOMAINS_PATH.read_bytes()).hexdigest(),
+        "size_limit_bytes": MAX_MOBILE_MODEL_BYTES,
+        "selection_policy": (
+            "First predefined training configuration below byte budget; "
+            "threshold calibrated on validation only; final test never selects a configuration."
+        ),
+        "threshold_selection_rule": decision_rule,
+        "runtime_versions": {
+            "python": platform.python_version(),
+            "numpy": np.__version__,
+            "scikit_learn": sklearn.__version__,
+        },
+        "split_sha256": {
+            name: hashlib.sha256((DATASET_DIR / f"splits/{name}.csv").read_bytes()).hexdigest()
+            for name in ("train_adversarial", "val", "test", "test_adversarial")
+        },
         "validation_metrics": evaluate_metrics(validation_labels, validation_predictions),
         "test_metrics": evaluate_metrics(evaluation_labels, test_predictions),
         "validation_threshold_metrics": validation_threshold_metrics,
@@ -879,6 +947,10 @@ def train_mobile_preset():
             adversarial_test_labels,
             adversarial_test_predictions,
         ),
+    }
+    metrics["quality_gate"] = {
+        "status": "rejected" if candidate_quality_gate_failures(metrics) else "passed",
+        "failures": candidate_quality_gate_failures(metrics),
     }
     write_metrics(metrics, MOBILE_METRICS_JSON, MOBILE_METRICS_MARKDOWN)
     try:

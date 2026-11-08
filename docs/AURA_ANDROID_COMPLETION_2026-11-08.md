@@ -74,3 +74,13 @@ Esta tabla describe la nueva corrección; los éxitos históricos no se transfie
 - Regresiones locales: `python -m pytest -q tool/test_secure_storage_instrumentation_policy.py tool/test_verify_android_instrumentation.py`: **23 passed**. Los XML de estas regresiones son fixtures del parser, **no resultados de Android**.
 - YAML de workflows parseado y `git diff --check` aprobados. JRE local confirmado sin `javac`, `jarsigner`, `jar` ni headers JNI; no se inventa compilación Android local.
 - **Ejecución Android de la nueva corrección todavía pendiente; añadir evidencia de CI antes de cerrar CI-01 o la migración.**
+
+### MODEL-01 — reintentos reales con presupuesto, sin promover el candidato
+
+- Plan fijado antes de evaluar: `(depth, min_samples_leaf) = (10,512), (8,1024), (6,2048), (4,4096)`, exactamente 500 árboles en cada entrenamiento real. Máximo cuatro intentos; ningún gate de calidad se rebaja.
+- Se mide el JSON UTF-8 exacto, finito y con terminador reproducible. Los candidatos sobredimensionados se rechazan **antes** de consumir la validación. Tras calibrar únicamente con validación se vuelve a comprobar el tamaño final, estrictamente menor a **4.194.304 bytes** como antes.
+- Cada intento real queda registrado inmediatamente, con profundidad, hojas, tamaño, etapa y si consumió validación. Si todos fallan, el mensaje enumera exclusivamente esos intentos; ya no inventa profundidad 8 ni poda.
+- El test holdout y su conjunto adversarial no eligen configuraciones. Las métricas se calculan sobre el modelo serializado elegido, guardan SHA del candidato, script, corpus y splits, versiones Python/NumPy/scikit-learn y resultado explícito del gate.
+- Nuevas regresiones verifican el plan acotado, el límite original, árbol completo de peor caso para el último fallback, serialización finita, estadísticas del modelo real 3.0.0 y separación de selección/holdout. **No son métricas de entrenamiento del dataset ni un benchmark del teléfono.**
+- Suite local tras estos cambios: **155 passed, 8 skipped, 124 subtests passed in 8.79s** (`python -m pytest -q -rs`). `compileall` y `git diff --check` aprobados. Las ocho omisiones AAB locales siguen pendientes.
+- **Reentrenamiento y evaluación completos pendientes de CI; el modelo 3.0.0, su digest y firma permanecen intactos.**
