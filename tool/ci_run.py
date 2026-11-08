@@ -6,6 +6,7 @@ Failure annotations contain the actual output tail, never a replacement result.
 The optional Dart-only diff records the formatter's changes for review.
 """
 from collections import deque
+import hashlib
 import os
 import subprocess
 import sys
@@ -16,6 +17,18 @@ def annotate(level, title, message):
         return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
 
     print(f"::{level} title={title}::{escape(message)}", flush=True)
+
+
+def annotation_chunks(text):
+    # Actions check messages are truncated at 4096 UTF-8 bytes. Leave room
+    # for escaped newlines and never split a multi-byte code point.
+    data = text.encode("utf-8")
+    while data:
+        end = min(3500, len(data))
+        while end < len(data) and data[end] & 0xC0 == 0x80:
+            end -= 1
+        yield data[:end].decode("utf-8")
+        data = data[end:]
 
 
 def main(args):
@@ -43,10 +56,12 @@ def main(args):
                 ["git", "diff", "--no-ext-diff", "--", "*.dart"],
                 check=True, text=True, stdout=subprocess.PIPE,
             ).stdout
-            # Keep each annotation well below GitHub's per-message size limit.
-            for offset in range(0, len(diff), 16000):
-                annotate("notice", f"Dart format patch {offset // 16000 + 1}",
-                         diff[offset:offset + 16000])
+            chunks = list(annotation_chunks(diff))
+            digest = hashlib.sha256(diff.encode("utf-8")).hexdigest()
+            annotate("notice", "Dart format evidence",
+                     f"SHA256={digest}; chunks={len(chunks)}; bytes={len(diff.encode('utf-8'))}")
+            for index, chunk in enumerate(chunks, 1):
+                annotate("notice", f"Dart format patch {index}", chunk)
     return status if status >= 0 else 128 - status
 
 

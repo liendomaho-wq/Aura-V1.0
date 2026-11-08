@@ -30,6 +30,14 @@ class CiRunTests(unittest.TestCase):
         self.assertIn("actual failure", result.stdout)
         self.assertIn("::error title=Command failed::", result.stdout)
 
+    def test_patch_chunks_are_lossless_and_below_the_real_annotation_limit(self):
+        from ci_run import annotation_chunks
+
+        diff = "línea de código 🚀\n" * 1700
+        chunks = list(annotation_chunks(diff))
+        self.assertEqual("".join(chunks), diff)
+        self.assertTrue(all(len(chunk.encode("utf-8")) <= 3500 for chunk in chunks))
+
     def test_annotation_escapes_percent_and_newlines(self):
         result = self.run_command("print('100% real'); raise SystemExit(2)")
         self.assertEqual(result.returncode, 2, result.stderr)
