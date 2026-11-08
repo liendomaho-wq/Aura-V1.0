@@ -764,18 +764,25 @@ class AuraVpnService : VpnService() {
             )
             Log.i("AuraVPN", "Motor tun2socks recuperado tras cambiar la red física.")
         } catch (exception: Exception) {
-            val stopConfirmed = stopNativeWorker()
-            tunnelStarted = false
-            Log.e("AuraVPN", "No se pudo recuperar el túnel tras cambiar de red.", exception)
-            reportState(
-                false,
-                if (stopConfirmed) {
-                    "La red cambió y el túnel no pudo recuperarse. Reactiva la protección."
-                } else {
-                    "La red cambió; la recuperación y el cierre nativo no están confirmados."
-                },
-            )
+            handleNetworkRecoveryFailure(exception)
+        } catch (error: LinkageError) {
+            handleNetworkRecoveryFailure(error)
         }
+    }
+
+    private fun handleNetworkRecoveryFailure(error: Throwable) {
+        val stopConfirmed = stopNativeWorker()
+        tunnelStarted = false
+        Log.e("AuraVPN", "No se pudo recuperar el túnel tras cambiar de red.", error)
+        reportState(
+            false,
+            if (stopConfirmed) {
+                "La red cambió y el túnel no pudo recuperarse. Reactiva la protección."
+            } else {
+                "La red cambió; la recuperación y el cierre nativo no están confirmados."
+            },
+        )
+        updateForegroundNotification()
     }
 
     private fun findUnderlyingNetwork(excludedNetwork: Network? = null): Network? {
