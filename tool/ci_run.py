@@ -73,6 +73,12 @@ def main(args):
                 # diagnostics use the separate warning quota after nine notices.
                 level = "notice" if index <= 9 else "warning"
                 annotate(level, f"Dart format compressed patch {index}", chunk)
+    if status == 0 and os.environ.get("GITHUB_ACTIONS") == "true":
+        # Keep positive evidence accessible too when log archives are blocked.
+        # These are actual final output lines, never inferred test counts.
+        evidence = " ".join(args) + "\n" + "".join(list(tail)[-5:])
+        for index, chunk in enumerate(annotation_chunks(evidence), 1):
+            annotate("notice", f"Command passed {index}", chunk)
     return status if status >= 0 else 128 - status
 
 

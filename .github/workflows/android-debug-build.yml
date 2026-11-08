@@ -58,6 +58,24 @@ jobs:
         working-directory: android
         run: AURA_ALLOW_DEBUG_SIGNING=true python3 ../tool/ci_run.py ./gradlew :app:testDebugUnitTest --no-daemon
 
+      - name: Record actual JVM result counts from JUnit XML
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          paths = sorted(Path("build/app/test-results/testDebugUnitTest").glob("TEST-*.xml"))
+          if not paths:
+              raise SystemExit("No real JVM test results were generated.")
+          suites = [ET.parse(path).getroot() for path in paths]
+          counts = {key: sum(int(suite.get(key, "0")) for suite in suites)
+                    for key in ("tests", "failures", "errors", "skipped")}
+          detail = "; ".join(f"{suite.get('name')}: {suite.get('tests')}" for suite in suites)
+          print(f"::notice title=Actual JVM results::{counts}; {detail}")
+          if counts["tests"] == 0 or any(counts[key] for key in ("failures", "errors", "skipped")):
+              raise SystemExit("JVM tests are empty, failed or skipped; not accepted.")
+          PYTHON
+
       - name: Validate generated VPN configuration template
         run: python3 tool/ci_run.py python3 tool/test_vpn_config_template.py
 
@@ -92,7 +110,31 @@ jobs:
           set -euo pipefail
           test -s build/app/outputs/flutter-apk/app-debug.apk
           git rev-parse HEAD > build/app/outputs/flutter-apk/SOURCE_COMMIT.txt
-          sha256sum build/app/outputs/flutter-apk/app-debug.apk | tee build/app/outputs/flutter-apk/SHA256SUMS
+          python3 - <<'PYTHON'
+          import hashlib
+          from pathlib import Path
+          import zipfile
+
+          apk = Path("build/app/outputs/flutter-apk/app-debug.apk")
+          targets = {"armeabi-v7a": (1, 40), "arm64-v8a": (2, 183),
+                     "x86": (1, 3), "x86_64": (2, 62)}
+          with zipfile.ZipFile(apk) as archive:
+              for abi, (elf_class, machine) in targets.items():
+                  member = f"lib/{abi}/libhev-socks5-tunnel.so"
+                  data = archive.read(member)
+                  if (len(data) < 20 or data[:4] != b"\x7fELF"
+                          or data[4] != elf_class or data[5] != 1
+                          or int.from_bytes(data[18:20], "little") != machine):
+                      raise SystemExit(f"Invalid or mismatched packaged ELF: {member}")
+                  print(f"::notice title=Packaged native ELF::{member}; bytes={len(data)}; sha256={hashlib.sha256(data).hexdigest()}")
+              model_path = "assets/model/aura_brain_model.json"
+              for relative in (model_path, model_path + ".sha256", model_path + ".sig"):
+                  if archive.read("assets/flutter_assets/" + relative) != Path(relative).read_bytes():
+                      raise SystemExit(f"Packaged model asset differs from source: {relative}")
+              digest = hashlib.sha256(archive.read("assets/flutter_assets/" + model_path)).hexdigest()
+              print(f"::notice title=Packaged model bytes::Model, digest and signature match the exact checkout byte-for-byte; model sha256={digest}")
+          PYTHON
+          (cd build/app/outputs/flutter-apk && sha256sum app-debug.apk | tee SHA256SUMS)
           printf '::notice title=Debug APK SHA-256::%s\n' "$(cat build/app/outputs/flutter-apk/SHA256SUMS)"
 
       - name: Upload debug APK and exact source identity

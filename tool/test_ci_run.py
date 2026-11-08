@@ -22,6 +22,15 @@ class CiRunTests(unittest.TestCase):
         self.assertIn("actual command output", result.stdout)
         self.assertNotIn("::error", result.stdout)
 
+    def test_success_summary_exposes_only_the_bounded_actual_output_tail(self):
+        result = self.run_command("for index in range(100): print(f'ACTUAL-LINE-{index}')")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("::error", result.stdout)
+        self.assertIn("ACTUAL-LINE-0\n", result.stdout)
+        annotation = result.stdout.split("::notice title=Command passed 1::", 1)[1]
+        self.assertIn("ACTUAL-LINE-99%0A", annotation)
+        self.assertNotIn("ACTUAL-LINE-94%0A", annotation)
+
     def test_nonzero_exit_and_actual_stderr_are_preserved(self):
         result = self.run_command(
             "import sys; print('actual failure', file=sys.stderr); sys.exit(17)"
