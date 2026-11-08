@@ -84,6 +84,14 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
             value = "false" if option == "resetOnError" else "true"
             self.assertIn(f'options.put("{option}", "{value}");', self.source)
 
+    def test_isolated_app_and_instrumentation_runner_versions_match(self):
+        for artifact in (
+            "androidx.test:runner:1.7.0",
+            "androidx.test.ext:junit:1.3.0",
+        ):
+            self.assertIn(f'storageMigrationImplementation "{artifact}"', self.gradle)
+            self.assertIn(f'androidTestImplementation "{artifact}"', self.gradle)
+
     def test_ci_requires_real_android_execution_and_never_ignores_failure(self):
         self.assertIn("reactivecircus/android-emulator-runner@v2", self.workflow)
         self.assertIn("api-level: 36", self.workflow)
