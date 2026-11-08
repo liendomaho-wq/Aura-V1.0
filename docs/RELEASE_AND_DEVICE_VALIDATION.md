@@ -56,10 +56,26 @@ bash tool/compile_aura.sh
   --tests com.ciberdefensa.aura.VpnLifecycleGateTest \
   --tests com.ciberdefensa.aura.VpnRecoveryGateTest \
   --tests com.ciberdefensa.aura.AuraSocks5CredentialsTest \
-  --tests com.ciberdefensa.aura.Socks5AuthProtocolTest \
-  --tests com.ciberdefensa.aura.SecureStorageMigrationTest)
+  --tests com.ciberdefensa.aura.Socks5AuthProtocolTest)
+# Requiere un Android/emulador autorizado y accesible por adb (ANDROID_SERIAL).
+# Instala SOLO com.ciberdefensa.aura.vaultmigrationtest, no la app del usuario.
+(cd android && AURA_ALLOW_DEBUG_SIGNING=true ./gradlew \
+  :app:connectedStorageMigrationAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest)
 AURA_ALLOW_DEBUG_SIGNING=true flutter build apk --debug
 ```
+
+Las dos pruebas v9→v10 usan `AndroidJUnit4` y el Keystore real de Android:
+Robolectric falló con `AndroidKeyStore not found` (CI de `50349c2`). Conservan
+las aserciones de secreto, cifrado, limpieza del legado y backup interrumpido.
+La variante `storageMigration` tiene un applicationId/UID separado y las
+preferencias de prueba están namespaced. Esto aísla también el alias ESP que
+v10 aún fija globalmente dentro del UID; sólo namespacing no sería suficiente.
+La prueba rechaza el paquete de producción **antes** de borrar preferencias.
+GitHub Actions requiere acceso KVM sin privilegios y ejecuta Android 16/API 36;
+Codemagic exige que el propietario proporcione un destino `adb` autorizado y
+falla si falta. Un emulador no demuestra migración en el Redmi ni hardware-backed
+Keystore. La ejecución y verificación física siguen **PENDIENTES**.
 
 Las pruebas JVM verifican la máquina de correlación y la exclusión entre inicio
 y destrucción; no sustituyen la prueba del diálogo, los broadcasts, JNI ni el

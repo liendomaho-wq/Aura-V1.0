@@ -127,7 +127,16 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
         self.assertIn('"$VENV_DIR/bin/python" -m pytest -q -rs', self.codemagic_workflow)
         self.assertIn("python3 tool/test_verify_aab.py", self.codemagic_workflow)
         self.assertIn("--tests com.ciberdefensa.aura.VpnRecoveryGateTest", self.codemagic_workflow)
-        self.assertIn("--tests com.ciberdefensa.aura.SecureStorageMigrationTest", self.codemagic_workflow)
+        # The migration needs AndroidKeyStore; a desktop --tests invocation
+        # cannot provide it. Require the real instrumentation task and class.
+        self.assertIn(":app:connectedStorageMigrationAndroidTest", self.codemagic_workflow)
+        self.assertIn(
+            "-Pandroid.testInstrumentationRunnerArguments.class="
+            "com.ciberdefensa.aura.SecureStorageMigrationTest",
+            self.codemagic_workflow,
+        )
+        self.assertIn("if ! adb get-state; then", self.codemagic_workflow)
+        self.assertNotIn("--tests com.ciberdefensa.aura.SecureStorageMigrationTest", self.codemagic_workflow)
 
     def test_release_and_privacy_guides_preserve_honest_limits(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

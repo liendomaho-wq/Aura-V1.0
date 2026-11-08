@@ -7,6 +7,8 @@ import android.security.keystore.KeyProperties;
 
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKey;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.it_nomads.fluttersecurestorage.FlutterSecureStorage;
 import com.it_nomads.fluttersecurestorage.FlutterSecureStorageConfig;
@@ -15,9 +17,6 @@ import com.it_nomads.fluttersecurestorage.SecurePreferencesCallback;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.robolectric.RobolectricTestRunner;
-import org.robolectric.RuntimeEnvironment;
-import org.robolectric.annotation.Config;
 
 import java.util.HashMap;
 import java.util.concurrent.CountDownLatch;
@@ -30,10 +29,10 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-@RunWith(RobolectricTestRunner.class)
-@Config(sdk = 34)
+@RunWith(AndroidJUnit4.class)
 public class SecureStorageMigrationTest {
-    private static final String LEGACY_VALUE = "mock-v9-secret-preserved";
+    private static final String TEST_APPLICATION_ID = "com.ciberdefensa.aura.vaultmigrationtest";
+    private static final String LEGACY_VALUE = "v9-real-keystore-secret-preserved";
     private static final String KEY_PREFIX = "aura_migration_test_secret";
     private static final String BACKUP_STATUS_KEY = "FlutterSecureStorageBackupStatus";
 
@@ -43,24 +42,28 @@ public class SecureStorageMigrationTest {
 
     @Before
     public void setUp() throws Exception {
-        context = RuntimeEnvironment.getApplication();
+        context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        // Refuse all writes/clears unless the separate test application owns the UID.
+        assertEquals("Run only :app:connectedStorageMigrationAndroidTest",
+                TEST_APPLICATION_ID, context.getPackageName());
         HashMap<String, Object> options = new HashMap<>();
+        options.put("storageNamespace", "aura_v9_v10_migration_test");
         options.put("resetOnError", "false");
         options.put("migrateOnAlgorithmChange", "true");
         options.put("migrateWithBackup", "true");
         config = new FlutterSecureStorageConfig(options);
         prefixedSecretKey = config.getSharedPreferencesKeyPrefix() + "_" + KEY_PREFIX;
 
-        context.getSharedPreferences(config.getEffectiveDataPrefsName(), Context.MODE_PRIVATE)
-                .edit().clear().commit();
-        context.getSharedPreferences(config.getEffectiveKeyStoragePrefsName(), Context.MODE_PRIVATE)
-                .edit().clear().commit();
-        context.getSharedPreferences(
+        assertTrue(context.getSharedPreferences(config.getEffectiveDataPrefsName(), Context.MODE_PRIVATE)
+                .edit().clear().commit());
+        assertTrue(context.getSharedPreferences(config.getEffectiveKeyStoragePrefsName(), Context.MODE_PRIVATE)
+                .edit().clear().commit());
+        assertTrue(context.getSharedPreferences(
                 "FlutterSecureStorageConfiguration:" + config.getEffectiveDataPrefsName(),
                 Context.MODE_PRIVATE)
-                .edit().clear().commit();
-        context.getSharedPreferences("FlutterSecureStorageConfiguration", Context.MODE_PRIVATE)
-                .edit().clear().commit();
+                .edit().clear().commit());
+        // v10 still uses the default ESP master-key alias. The separate application
+        // ID/UID isolates that Keystore alias too; namespace alone would not.
         seedVersion9EncryptedSharedPreferences();
     }
 

@@ -93,8 +93,17 @@ workflows:
             --tests com.ciberdefensa.aura.VpnLifecycleGateTest \
             --tests com.ciberdefensa.aura.VpnRecoveryGateTest \
             --tests com.ciberdefensa.aura.AuraSocks5CredentialsTest \
-            --tests com.ciberdefensa.aura.Socks5AuthProtocolTest \
-            --tests com.ciberdefensa.aura.SecureStorageMigrationTest
+            --tests com.ciberdefensa.aura.Socks5AuthProtocolTest
+      - name: Test real Keystore migration on isolated Android target
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}/android"
+          if ! adb get-state; then
+            echo "ERROR: Owner must provision an authorized Android device/emulator (ANDROID_SERIAL) for the real Keystore migration tests. No JVM substitute or skipped success."
+            exit 1
+          fi
+          AURA_ALLOW_DEBUG_SIGNING=true ./gradlew :app:connectedStorageMigrationAndroidTest \
+            -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest
       - name: Build Android Release artifact
         script: |
           set -euo pipefail

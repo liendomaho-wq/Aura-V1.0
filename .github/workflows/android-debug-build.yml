@@ -58,7 +58,29 @@ jobs:
         working-directory: android
         run: AURA_ALLOW_DEBUG_SIGNING=true python3 ../tool/ci_run.py ./gradlew :app:testDebugUnitTest --no-daemon
 
-      - name: Expose the first real JVM failure without suppressing it
+      - name: Validate generated VPN configuration template
+        run: python3 tool/ci_run.py python3 tool/test_vpn_config_template.py
+
+      - name: Require unprivileged emulator acceleration
+        run: |
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            echo '::error title=Android emulator blocked::This runner has no unprivileged KVM access. Provide a KVM-enabled runner; no root/device bypass is used.'
+            exit 1
+          fi
+
+      - name: Real v9 to v10 Keystore migration on Android 16 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          AURA_ALLOW_DEBUG_SIGNING: 'true'
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          disable-linux-hw-accel: false
+          working-directory: android
+          script: python3 ../tool/ci_run.py ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest --no-daemon
+
+      - name: Expose the first real Android test failure without suppressing it
         if: failure()
         run: |
           python3 - <<'PYTHON'
@@ -66,7 +88,7 @@ jobs:
           import xml.etree.ElementTree as ET
           from tool.ci_run import annotate, annotation_chunks
 
-          for path in sorted(Path("build/app/test-results/testDebugUnitTest").glob("TEST-*.xml")):
+          for path in sorted(Path("build/app").rglob("TEST-*.xml")):
               for case in ET.parse(path).getroot().iter("testcase"):
                   failure = case.find("failure")
                   if failure is None:
@@ -74,13 +96,10 @@ jobs:
                   if failure is not None:
                       details = f"{case.get('classname')}.{case.get('name')}\n{failure.get('message')}\n{failure.text}"
                       for index, chunk in enumerate(annotation_chunks(details), 1):
-                          annotate("error", f"JVM failure details {index}", chunk)
+                          annotate("error", f"Android test failure details {index}", chunk)
                       raise SystemExit(1)
-          print("No JVM failure XML exists; inspect the preceding setup/compiler failure.")
+          print("No failed test XML exists; inspect the preceding setup/compiler/emulator failure.")
           PYTHON
-
-      - name: Validate generated VPN configuration template
-        run: python3 tool/ci_run.py python3 tool/test_vpn_config_template.py
 
       - name: Build debug APK including native tunnel
         run: python3 tool/ci_run.py flutter build apk --debug
