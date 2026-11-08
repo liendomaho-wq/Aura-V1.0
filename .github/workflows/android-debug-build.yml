@@ -118,9 +118,21 @@ jobs:
           git rev-parse HEAD > build/app/outputs/flutter-apk/SOURCE_COMMIT.txt
           cp pubspec.lock build/app/outputs/flutter-apk/RESOLVED_PUBSPEC.lock
           python3 - <<'PYTHON'
+          import difflib
           import hashlib
+          import json
           from pathlib import Path
+          import subprocess
           import zipfile
+
+          # Public dependency provenance, not secrets/signing material. Retain
+          # the resolved lock and report its exact delta, never invent hashes.
+          resolved_lock = Path("pubspec.lock").read_text()
+          checked_in_lock = subprocess.check_output(["git", "show", "HEAD:pubspec.lock"], text=True)
+          lock_diff = "".join(difflib.unified_diff(checked_in_lock.splitlines(keepends=True), resolved_lock.splitlines(keepends=True), fromfile="a/pubspec.lock", tofile="b/pubspec.lock"))
+          payload = json.dumps({"sha256": hashlib.sha256(resolved_lock.encode()).hexdigest(), "resolved_lock_diff": lock_diff}, separators=(",", ":"))
+          payload = payload.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::notice title=Actual resolved public dependency lock::{payload}")
 
           apk = Path("build/app/outputs/flutter-apk/app-debug.apk")
           targets = {"armeabi-v7a": (1, 40), "arm64-v8a": (2, 183),
@@ -235,6 +247,7 @@ jobs:
             python3 ../tool/ci_run.py python3 ../tool/run_android_vpn_instrumentation.py --collect-logcat -- ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest,com.ciberdefensa.aura.VpnForwardingInstrumentationTest,com.ciberdefensa.aura.SecureStorageIntegrityTest --no-daemon
 
       - name: Require passing XML for original migration and real VPN traffic cases
+        if: always()
         run: python3 tool/verify_android_instrumentation.py build/app/outputs/androidTest-results --require-vpn --require-vault-integrity
 
       - name: Preserve actual Android execution evidence even on failure
@@ -318,6 +331,7 @@ jobs:
             adb shell getprop ro.build.version.sdk
             python3 ../tool/ci_run.py ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest,com.ciberdefensa.aura.SecureStorageIntegrityTest --no-daemon
       - name: Require actual nonempty migration and tamper-result XML
+        if: always()
         run: python3 tool/verify_android_instrumentation.py build/app/outputs/androidTest-results --require-vault-integrity
       - name: Preserve actual additional provider results
         if: always()

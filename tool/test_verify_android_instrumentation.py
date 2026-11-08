@@ -114,3 +114,20 @@ def test_accepts_additional_real_result_class_identity(tmp_path):
     report = verify_results(tmp_path, require_vault_integrity=True)
     assert report["total_cases"] == 6
     assert report["required_vault_integrity_cases"] == sorted(EXPECTED_INTEGRITY_CASES)
+
+
+def test_diagnostics_do_not_turn_a_failed_case_into_acceptance(tmp_path):
+    from verify_android_instrumentation import case_diagnostics
+    write_parser_fixture(tmp_path, tag="failure")
+    report = case_diagnostics(tmp_path)
+    assert report["diagnostic_only"] is True
+    assert report["files"][0]["cases"][0]["negative_result_tags"] == ["failure"]
+    with pytest.raises(ValueError):
+        verify_results(tmp_path)
+
+
+def test_empty_diagnostics_are_never_passing_instrumentation(tmp_path):
+    from verify_android_instrumentation import case_diagnostics
+    assert case_diagnostics(tmp_path)["files"] == []
+    with pytest.raises(ValueError):
+        verify_results(tmp_path)

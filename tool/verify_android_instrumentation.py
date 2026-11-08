@@ -92,6 +92,24 @@ def verify_results(directory: Path, *, require_vpn: bool = False,
     }
 
 
+
+def case_diagnostics(directory: Path) -> dict:
+    """Report individual outcomes even when another class failed; never accept."""
+    files = []
+    for path in sorted(directory.rglob("TEST-*.xml")):
+        data = path.read_bytes()
+        root = ET.fromstring(data)
+        cases = [{
+            "class": case.get("classname"), "name": case.get("name"),
+            "negative_result_tags": sorted({node.tag for node in case.iter() if node.tag in FAILURE_TAGS}),
+        } for case in root.iter("testcase")]
+        counters = [{name: suite.get(name, "0") for name in ("tests", "failures", "errors", "skipped", "disabled")}
+                    for suite in root.iter("testsuite")]
+        files.append({"path": str(path), "sha256": hashlib.sha256(data).hexdigest(),
+                      "cases": cases, "suite_counters": counters})
+    return {"diagnostic_only": True, "acceptance": "strict verifier is still mandatory", "files": files}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
@@ -99,6 +117,9 @@ def main() -> int:
     parser.add_argument("--require-vault-integrity", action="store_true")
     arguments = parser.parse_args()
     try:
+        diagnostics = json.dumps(case_diagnostics(arguments.directory), separators=(",", ":"))
+        diagnostics = diagnostics.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        print(f"::notice title=Actual Android case diagnostics::{diagnostics}", flush=True)
         report = verify_results(
             arguments.directory, require_vpn=arguments.require_vpn,
             require_vault_integrity=arguments.require_vault_integrity,
