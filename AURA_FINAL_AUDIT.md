@@ -414,6 +414,62 @@ volvió a pasar los tres jobs: guard 1m52s, positivo 3m07s, SBOM 3m30s. El model
 terminó **failure, 10m04s**, por el mismo presupuesto de 4 MiB; golden tests y
 upload de reportes pasaron. El rechazo no se silenció ni cambió el asset 3.0.0.
 
+### `3e56b23`: APKs aislados compilados y ELF/modelo verificados
+
+[Android run 42482115637 / job 128736106014](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42482115637/job/128736106014)
+terminó **success, 8m05s**. La alineación de dependencias resolvió el error real:
+
+```text
+./gradlew :app:assembleStorageMigration :app:assembleStorageMigrationAndroidTest --no-daemon
+BUILD SUCCESSFUL in 1m 53s
+275 actionable tasks: 269 executed, 6 up-to-date
+flutter build apk --debug
+Running Gradle task 'assembleDebug'... 72.2s
+Built build/app/outputs/flutter-apk/app-debug.apk
+APK SHA256=704ced641255d00e558a86ae366491afaed8ba61c96187848ecbcbed42835637
+```
+
+La compilación de AndroidJUnit4 es ahora evidencia real, **no ejecución** de
+migración. Los XML JVM volvieron a dar 19/0 fallos/0 errores/0 omitidos. La
+inspección del APK real validó encabezados ELF/clase/máquina y obtuvo:
+
+| `libhev-socks5-tunnel.so` | Bytes | SHA-256 |
+|---|---:|---|
+| armeabi-v7a | 245872 | `ff06fc993971522f91693f3de33c5d305456cf6bfaa357da96102d2447e7ebfb` |
+| arm64-v8a | 360552 | `069579db22fcfef2ba9af48080a0958efec34e941da786d93afc16d9661adfcc` |
+| x86 | 346744 | `c7a58ae0155678d66c5f3665428a326858121d156eaaa1fd57bee88258ee5f71` |
+| x86_64 | 360440 | `9b5111143384b223b85e457457e0a75f763e78e76587369caf5da62311f9a093` |
+
+Modelo, digest y firma dentro del APK coinciden **byte a byte** con el checkout;
+el SHA del modelo sigue siendo `d190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2`.
+Esto no demuestra llamadas JNI, hardware 16 KiB, tráfico ni compatibilidad Flutter
+universal en esas cuatro ABIs.
+
+Artefacto [13617898982](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42482115637/artifacts/13617898982),
+`aura-debug-3e56b23ffe360a5996cb2e242ec8074e6e4aa769`, ZIP 86006887 bytes,
+digest ZIP `8de59aecb60547a062954d4682c5fb9317a06c4b94d1c6e20f5e9c56ea00fe8d`.
+Incluye `SOURCE_COMMIT.txt` y `SHA256SUMS` portable para `app-debug.apk`. Su hash
+APK está arriba: no confundirlo con el ZIP. Su migración instrumentada volvió a
+fallar antes de ejecutar por KVM en
+[job 128737977048](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42482115637/job/128737977048).
+
+[Quality run 42482115606](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42482115606/job/128736106255)
+se detuvo correctamente en el formateador: 58 archivos, 2 cambiados. Por tanto
+**no se atribuye una ejecución de widgets a `3e56b23`**. `3f3ffa5` aplica exactamente
+su salida, con manifiesto verificado: 9153 bytes, un fragmento XZ/base64, SHA-256
+`dd803e65709cf8ee23267528ff3c2de86b9bcdd707e7c53a4b1261fc1f92b8b6`;
+`git apply --check`, guards y 24 tests locales pasaron. Es sólo formato.
+Firma/SBOM de `3e56b23` también pasó en sus tres jobs; el candidato ML volvió a
+ser rechazado por tamaño (run 42482115764, 6m47s). No se canceló ni maquilló ese
+resultado para publicar la corrección.
+
+La próxima reejecución debe validar el layout ya formateado. Para evitar atribuir
+el futuro a este documento inmutable, el resultado exacto del HEAD posterior se
+consulta en [checks de PR #11](https://github.com/liendomaho-wq/Aura-V1.0/pull/11/checks),
+sus anotaciones de comandos reales y los manifiestos del artefacto
+`aura-debug-<SHA>`. El resumen final de la PR identifica explícitamente esos
+resultados, incluido cualquier criterio todavía fallido.
+
 ## 5. Registro local reproducible
 
 Los logs de trabajo se escriben en `tool/reports/android-closeout/`, ignorado
@@ -602,7 +658,7 @@ Se separan avances reales de aceptación final; los checks del próximo SHA y su
 - [x] Primer C/JNI/NDK y APK debug real `e8b2db7`, publicado y con SHA-256 registrado.
 - [x] Firma negativa/positiva con clave efímera y SBOM de `e8b2db7`.
 - [ ] `flutter test` completo del SHA posterior con layout compacto corregido; caché/boot ya confirmados en `f1e2e1b`.
-- [ ] Compilación de APKs de instrumentación y verificación ELF/modelo del nuevo APK en su CI.
+- [x] APKs de instrumentación compilados y ELF/modelo del APK real verificados en `3e56b23`; no equivale a ejecutar AndroidKeyStore.
 - [ ] Migración real Android instrumentada — **bloqueada por KVM/runner autorizado**.
 - [ ] Codemagic ejecutado sobre el SHA final — requiere propietario y destino Android.
 - [ ] APK del SHA final instalado en un dispositivo real sin pérdida de datos.
