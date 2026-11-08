@@ -106,6 +106,27 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
         self.assertIn("Require unprivileged emulator acceleration", self.workflow)
         self.assertIn("exit 1", self.workflow)
 
+    def test_software_mode_still_runs_mandatory_real_android_and_verifies_xml(self):
+        # Software emulation changes acceleration, not the OS, provider or tests.
+        self.assertIn('if [[ -r /dev/kvm && -w /dev/kvm ]]; then', self.workflow)
+        self.assertIn("echo 'disable=true'", self.workflow)
+        self.assertIn("if: steps.acceleration.outputs.disable == 'false'", self.workflow)
+        emulator_step = self.workflow.split(
+            "      - name: Real v9 to v10 Keystore migration on Android 16 emulator", 1
+        )[1].split("\n      - name:", 1)[0]
+        self.assertNotIn("if:", emulator_step)
+        self.assertIn("api-level: 36", emulator_step)
+        self.assertIn(
+            "disable-linux-hw-accel: ${{ steps.acceleration.outputs.disable }}",
+            emulator_step,
+        )
+        self.assertIn("adb shell getprop ro.build.version.sdk", emulator_step)
+        self.assertIn("tool/verify_android_instrumentation.py", self.workflow)
+        self.assertIn("build/app/outputs/androidTest-results/", self.workflow)
+        self.assertNotIn("sudo", self.workflow)
+        self.assertNotIn("chmod 666", self.workflow)
+        self.assertNotIn("chmod 777", self.workflow)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

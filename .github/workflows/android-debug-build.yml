@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - principal
-      - arena/063013fc-aura-v1-0
+      - 'arena/**'
   pull_request:
     branches:
       - main
@@ -161,17 +161,33 @@ jobs:
     name: Real Android Keystore migration (not a JVM substitute)
     needs: android-debug
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # Full-system software emulation is slower, but still runs Android and its
+    # real Keystore. A boot/test timeout remains a failed mandatory job.
+    timeout-minutes: 65
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Require unprivileged emulator acceleration
+      - name: Select real Android emulator acceleration without changing device permissions
+        id: acceleration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -r /dev/kvm && -w /dev/kvm ]]; then
+            echo 'disable=false' >> "$GITHUB_OUTPUT"
+            echo '::notice title=Android execution mode::Real Android 16 emulator with unprivileged KVM.'
+          else
+            echo 'disable=true' >> "$GITHUB_OUTPUT"
+            echo '::notice title=Android execution mode::No unprivileged KVM. Running the same real Android 16 and Keystore tests in full-system software emulation; tests are not skipped or replaced.'
+          fi
+
+      - name: Require unprivileged emulator acceleration when KVM is selected
+        if: steps.acceleration.outputs.disable == 'false'
         run: |
           if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
-            echo '::error title=Android emulator blocked::This runner has no unprivileged KVM access. Provide a KVM-enabled runner; no root/device bypass is used.'
+            echo '::error title=Android emulator blocked::KVM access changed after selection. No root/device permission bypass is used.'
             exit 1
           fi
 
@@ -207,9 +223,28 @@ jobs:
           api-level: 36
           target: google_apis
           arch: x86_64
-          disable-linux-hw-accel: false
+          cores: 2
+          ram-size: 2048M
+          emulator-boot-timeout: 1800
+          disable-linux-hw-accel: ${{ steps.acceleration.outputs.disable }}
           working-directory: android
-          script: python3 ../tool/ci_run.py ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest --no-daemon
+          script: |
+            adb shell getprop ro.build.version.sdk
+            python3 ../tool/ci_run.py ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest --no-daemon
+
+      - name: Require nonempty passing XML for both original migration cases
+        run: python3 tool/verify_android_instrumentation.py build/app/outputs/androidTest-results
+
+      - name: Preserve actual Android execution evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aura-keystore-migration-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            build/app/outputs/androidTest-results/
+            build/app/reports/androidTests/
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Expose the first real Android test failure without suppressing it
         if: failure()

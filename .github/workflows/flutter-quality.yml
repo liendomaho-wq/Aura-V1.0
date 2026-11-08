@@ -9,7 +9,7 @@ on:
     branches:
       - main
       - principal
-      - arena/063013fc-aura-v1-0
+      - 'arena/**'
   workflow_dispatch:
 
 permissions:
