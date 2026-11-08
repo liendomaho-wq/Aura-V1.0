@@ -516,6 +516,19 @@ verificados al escribir este punto (`22-coordinated-scroll-vpn-guards.log`).
 Su formateo y ejecución Flutter reales aún deben confirmarse en el siguiente CI;
 la excepción anterior no se convierte retroactivamente en éxito.
 
+### Formato genuino de la navegación coordinada (`bd1dcef`)
+
+El [quality 42484627880 / job 128743686193](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42484627880/job/128743686193)
+falló en 39s por formato de **un** archivo; los widgets no se ejecutaron.
+Se aplica su parche íntegro, no un formateador sustituto: 3823 bytes,
+SHA-256 `fcc5ae8f048c5830b499dbe1a0e96e2217fc34d2f0203985f5bff26c369f77f5`,
+un fragmento XZ/base64, ruta única `lib/screens/aura_core_screen.dart`.
+Se verificaron manifiesto, longitud, SHA, ruta y `git apply --check` antes de
+aplicarlo. Guards y 25 tests locales pasan después del parche; el full local
+previo (`23-coordinated-scroll-local-python.log`) fue 127/8 omitidos/124 subtests,
+no AAB local. No se debilita el gate de formato ni se atribuyen widgets a un
+job que no llegó a ellos. La reejecución posterior se identifica en PR #11.
+
 ## 5. Registro local reproducible
 
 Los logs de trabajo se escriben en `tool/reports/android-closeout/`, ignorado

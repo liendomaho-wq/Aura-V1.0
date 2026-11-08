@@ -1238,23 +1238,17 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                         ? StreamBuilder<AgentEvent>(
                             stream: AgentController.instance.events,
                             builder: (context, snapshot) {
-                              final events =
-                                  AgentController.instance.history;
+                              final events = AgentController.instance.history;
                               final explanationCount =
                                   state.explanationHistory.length;
                               final leadingCardCount =
-                                  (_showCoverageAudit ||
-                                          explanationCount > 0
+                                  (_showCoverageAudit || explanationCount > 0
                                       ? 1
                                       : 0) +
                                   (!_telemetryEndpointConfigured ? 1 : 0);
-                              _scrollToLatest(
-                                events.length + leadingCardCount,
-                              );
+                              _scrollToLatest(events.length + leadingCardCount);
                               return ListView(
-                                key: const ValueKey<String>(
-                                  'aura-event-list',
-                                ),
+                                key: const ValueKey<String>('aura-event-list'),
                                 primary: true,
                                 padding: const EdgeInsets.fromLTRB(
                                   14,
@@ -1267,8 +1261,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                                     _CoverageAuditCard(
                                       isVpnActive: state.isVpnActive,
                                       sniObserved: state.sniObservedEvents,
-                                      encryptedSni:
-                                          state.encryptedSniEvents,
+                                      encryptedSni: state.encryptedSniEvents,
                                       directIp: state.directIpEvents,
                                       blocked: state.blockedEvents,
                                       dgaAlerts: state.dgaAlertEvents,
@@ -1279,16 +1272,14 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                                           state.activeDecisionThreshold,
                                       observedResolvers:
                                           state.observedPublicDnsResolvers,
-                                      autotestStatus:
-                                          _coverageAutotestStatus,
+                                      autotestStatus: _coverageAutotestStatus,
                                       onRunAutotest: _runCoverageAutotest,
                                     )
                                   else if (explanationCount > 0)
                                     _ExplanationCard(
                                       explanation:
                                           state.explanationHistory.last,
-                                      onVerifyIntegrity:
-                                          _verifyModelIntegrity,
+                                      onVerifyIntegrity: _verifyModelIntegrity,
                                       onReportFalsePositive:
                                           _reportFalsePositive,
                                       onOpenModelCard: _openModelCard,
