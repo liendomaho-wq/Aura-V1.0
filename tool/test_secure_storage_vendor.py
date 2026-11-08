@@ -93,3 +93,13 @@ def test_real_alias_regression_uses_the_original_public_provider_factory():
     assert "new StorageCipherFactory(" in source
     assert "requested.getCurrentKeyCipher(context)" in source
     assert "import com.it_nomads.fluttersecurestorage.ciphers.KeyCipherImplementationAES23" not in source
+
+
+def test_legacy_tamper_is_cross_checked_against_original_crypto_provider():
+    source = (ROOT / "android/app/src/androidTest/java/com/ciberdefensa/aura/SecureStorageIntegrityTest.java").read_text()
+    assert 'old.getString(key, null)' in source
+    assert '"decryption failed".equals(root.getMessage())' in source
+    assert 'root.getClass() == java.security.GeneralSecurityException.class' in source
+    assert 'legacyRoot.getClass(), actualRoot.getClass()' in source
+    assert 'legacyRoot.getMessage(), actualRoot.getMessage()' in source
+    assert 'assertEquals("Failure must not remove, overwrite or add data records", before, raw.getAll())' in source

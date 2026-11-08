@@ -77,6 +77,20 @@ public final class SecureStorageIntegrityTest {
         return storage;
     }
 
+    private static Throwable legacyAuthenticationFailure(Throwable failure) {
+        assertNotNull("The genuine provider must reject corrupted authenticated ciphertext", failure);
+        Throwable root = failure;
+        while (root.getCause() != null) root = root.getCause();
+        // Tink 1.21 WrappedAead deliberately discards individual primitive
+        // exceptions and throws this exact GeneralSecurityException. Do not
+        // accept an unrelated error, missing key or arbitrary exception.
+        assertTrue("Expected actual AEAD/Tink authentication failure, got " + root,
+                root instanceof AEADBadTagException ||
+                (root.getClass() == java.security.GeneralSecurityException.class &&
+                        "decryption failed".equals(root.getMessage())));
+        return root;
+    }
+
     private SharedPreferences legacy(Context context, FlutterSecureStorageConfig config) throws Exception {
         MasterKey master = new MasterKey.Builder(context)
                 .setKeyGenParameterSpec(new KeyGenParameterSpec.Builder(MasterKey.DEFAULT_MASTER_KEY_ALIAS,
@@ -141,6 +155,7 @@ public final class SecureStorageIntegrityTest {
         String key = config.getSharedPreferencesKeyPrefix() + "_legacy_integrity";
         SharedPreferences old = legacy(context, config);
         assertTrue(old.edit().putString(key, "legacy-secret-retained").commit());
+        assertEquals("legacy-secret-retained", old.getString(key, null));
         SharedPreferences raw = context.getSharedPreferences(config.getEffectiveDataPrefsName(), Context.MODE_PRIVATE);
         String encryptedKey = null;
         for (String candidate : raw.getAll().keySet()) {
@@ -157,10 +172,22 @@ public final class SecureStorageIntegrityTest {
         Map<String, ?> before = raw.getAll();
         Throwable primaryFailure = null;
         try {
+            // Cross-check the damaged record with the ORIGINAL AndroidX
+            // provider, independently of Aura's migration implementation.
+            Exception referenceFailure = null;
+            try {
+                old.getString(key, null);
+                fail("Original AndroidX provider accepted a corrupted GCM tag");
+            } catch (SecurityException error) {
+                referenceFailure = error;
+            }
+            Throwable legacyRoot = legacyAuthenticationFailure(referenceFailure);
             initialize(context, config, true);
-            Throwable cause = lastInitializationFailure;
-            while (cause != null && !(cause instanceof AEADBadTagException)) cause = cause.getCause();
-            assertNotNull("Legacy failure must be real GCM authentication, not an unrelated error", cause);
+            Throwable actualRoot = legacyAuthenticationFailure(lastInitializationFailure);
+            assertEquals("Migration must report the same genuine crypto failure class",
+                    legacyRoot.getClass(), actualRoot.getClass());
+            assertEquals("Migration must report the same genuine crypto failure reason",
+                    legacyRoot.getMessage(), actualRoot.getMessage());
             assertEquals("Failure must not remove, overwrite or add data records", before, raw.getAll());
         } catch (Exception | AssertionError error) {
             primaryFailure = error;
