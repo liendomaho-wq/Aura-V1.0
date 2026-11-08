@@ -326,16 +326,25 @@ class AuraVpnService : VpnService() {
         }
     }
 
-    private fun restartNativeWorker(configPath: String, tun: ParcelFileDescriptor): Boolean =
-        lifecycleGate.runIfOpen {
-            if (vpnInterface !== tun || !tun.fileDescriptor.valid() || !stopNativeWorkerUnchecked()) {
-                false
-            } else {
-                tunnelStarted = false
-                TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
-                TProxyService.TProxyStartService(configPath, tun.fd)
-            }
-        } ?: false
+    private fun restartNativeWorker(configPath: String, tun: ParcelFileDescriptor): Boolean {
+        return try {
+            lifecycleGate.runIfOpen {
+                if (vpnInterface !== tun || !tun.fileDescriptor.valid() || !stopNativeWorkerUnchecked()) {
+                    false
+                } else {
+                    tunnelStarted = false
+                    TProxyService.TProxySetBlockedIps(blockedIpSnapshot())
+                    TProxyService.TProxyStartService(configPath, tun.fd)
+                }
+            } ?: false
+        } catch (exception: Exception) {
+            Log.e("AuraVPN", "No se pudo reanudar el worker VPN nativo.", exception)
+            false
+        } catch (error: LinkageError) {
+            Log.e("AuraVPN", "El motor VPN nativo no está disponible para reanudarse.", error)
+            false
+        }
+    }
 
     private fun verifyIntegrityOrStop(): Boolean {
         val report = try {
@@ -976,6 +985,12 @@ class AuraVpnService : VpnService() {
                     "Túnel activo con cobertura reducida: feed de reputación IP no disponible.",
                 )
             }
+        } catch (error: LinkageError) {
+            Log.e(
+                "AuraVPN",
+                "El motor nativo no está disponible para aplicar el feed IP; se conserva la lista anterior.",
+                error,
+            )
         }
     }
 
