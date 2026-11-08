@@ -15,7 +15,12 @@ EXPECTED_CASES = frozenset({
     "restartsAnInterruptedBackupAndStillMigratesVersion9Secret",
 })
 INTEGRITY_CLASS = "com.ciberdefensa.aura.SecureStorageIntegrityTest"
-EXPECTED_INTEGRITY_CASES = frozenset({"rejectsTamperedGcmValueWithoutResettingOtherSecrets"})
+EXPECTED_INTEGRITY_CASES = frozenset({
+    "rejectsTamperedGcmValueWithoutResettingOtherSecrets",
+    "corruptedLegacyFailsWithoutResetAndCanRetryAfterExactRestoration",
+    "conflictingLegacyAndCurrentSecretsFailWithoutOverwritingEither",
+    "identicalAlreadyMigratedSecretRecoversWithoutRekeying",
+})
 VPN_CLASS = "com.ciberdefensa.aura.VpnForwardingInstrumentationTest"
 EXPECTED_VPN_CASES = frozenset({
     "forwardsRealTcpUdpIpv4AndRejectsUnauthenticatedProxyClients",

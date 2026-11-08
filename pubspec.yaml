@@ -24,6 +24,9 @@ dependencies:
   url_launcher: 6.3.2
 
 dependency_overrides:
+  # Exact upstream v10.3.4 runtime + reviewed ESP migration fix; see UPSTREAM.json.
+  flutter_secure_storage:
+    path: third_party/flutter_secure_storage
   # Conserva el mínimo de Flutter del lockfile.
   url_launcher_android: 6.3.30
 

@@ -1,0 +1,192 @@
+{
+  "upstream": "https://github.com/juliansteenbakker/flutter_secure_storage",
+  "tag": "v10.3.4",
+  "commit": "692a374a5071c0b60939f624ede58d666b6b645c",
+  "archive_sha256": "f4c884791eabd98356713b6b71655ac10ba4732f4d48275904ca14e6868d8f77",
+  "scope": "Unmodified v10.3.4 published runtime and original license/docs, except explicitly listed Aura Android fixes. Upstream example apps, dev analyzer config and test helpers/tests are not copied or counted as executed; all original Aura real-Android migration assertions remain unchanged.",
+  "files": [
+    {
+      "path": "CHANGELOG.md",
+      "upstream_sha256": "55a8b39667ed851906bf6d422655b7c76b970c20015bb327fc9837f43105d2e5",
+      "local_sha256": "3e98f7aa4b7e26b6bf26dbb48cb75d735a1587191fc57da61be1b8e5d16a12f0",
+      "whitespace_only": true,
+      "change": "Trailing-whitespace normalization only; no functional change."
+    },
+    {
+      "path": "LICENSE",
+      "upstream_sha256": "55dafb084270616f95b9bea53654adda8bdcad95c022a83c4cf8769073f829fa"
+    },
+    {
+      "path": "README.md",
+      "upstream_sha256": "ed389e61659e959af64263e6acd92f784123abf5879db078a4bf94ff2cbdd269",
+      "local_sha256": "8300dbe31000d5e8c399c7506aff5692505c690c5fed5a86a624249c6d70e6cd",
+      "whitespace_only": true,
+      "change": "Trailing-whitespace normalization only; no functional change."
+    },
+    {
+      "path": "android/.gitignore",
+      "upstream_sha256": "6718c10081add053293a43c8a7be024ec8956702d2c20899a4c4a6e0a4c32a9c"
+    },
+    {
+      "path": "android/build.gradle",
+      "upstream_sha256": "5c4a6b3dee00a19ae77083ded682324b1fd7a62dfb25e1146051d926c0c5b995"
+    },
+    {
+      "path": "android/gradle.properties",
+      "upstream_sha256": "034fd3f15ac7a699cf7393150e318cd3e0afb51826b0decc69a548db53fa1116"
+    },
+    {
+      "path": "android/gradle/wrapper/gradle-wrapper.properties",
+      "upstream_sha256": "c363ca43e87761f5de17c603d9aa3d555b217fc544b41d7af28b5e3e6fbea5ea"
+    },
+    {
+      "path": "android/settings.gradle",
+      "upstream_sha256": "b5fb1df0485dcc39fb62a5d323d02af51a27ba387ba7d297fcbb12594a271e14"
+    },
+    {
+      "path": "android/src/main/AndroidManifest.xml",
+      "upstream_sha256": "21058c692532098e42afc39cf09de946c38229ec414bb7ac32f4fc90ba9a5f45"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/FlutterSecureStorage.java",
+      "upstream_sha256": "15319336c69dfcfe10b359ea01f317bf7a0f51882c19de61baeb2b073fb0ab47",
+      "local_sha256": "a3cb943f8f4a4abeffdb4dccdb1e458a3d83b1be1bd795b21eadfbe1605bdace",
+      "change": "Detect encrypted-name ESP entries before markerless fast path; validate before mutation; atomic ESP migration/recovery; retain both conflicting records; fail closed on corrupt metadata/data; no double success after auth error."
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/FlutterSecureStorageConfig.java",
+      "upstream_sha256": "fd73496fcd71120ed29895ab75fe24cf3ab8de3b655b2dd6c206795644498b25"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/FlutterSecureStoragePlugin.java",
+      "upstream_sha256": "2e1b4f116a00343133dec7b9c1ce64c232d9cb8e8df9085c9303740232f23301"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/MigrationBackup.java",
+      "upstream_sha256": "4056700281183d57526c4fe5e0c3c1fa0ebe23bdc56f055b5dec5025de177b0a"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/NamespacedConfigSource.java",
+      "upstream_sha256": "efee7d10515b89c4818b675a6fc53dc9fc13a2f702f4c6988e6e5a92e33d40e6",
+      "local_sha256": "139fea61b1dd93e5bb6d03f7e2926e1d096a61f94fa86f01e6499cdbb8836896",
+      "whitespace_only": true,
+      "change": "Trailing-whitespace normalization only; no functional change."
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/SecurePreferencesCallback.java",
+      "upstream_sha256": "69eb5e1b4352cb8a95aaf21771dfd11dc61454318c5022d65ca06b0c9b44bfcd"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/BiometricNamespaceKeyRecovery.java",
+      "upstream_sha256": "be4a3e20e6c3c18e746ca36f68f503c34c243fc2fb2908d136f0acdbd2a19986"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/KeyCipher.java",
+      "upstream_sha256": "93bacae5ab581d30ee021f236b4d012a3a2a6f4d2bae57dd14959b3d0d0822e6"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/KeyCipherAlgorithm.java",
+      "upstream_sha256": "5c0f7ed8a65997945b50651e1d24436c95cbf9659264728bd0c063bbbca86649"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/KeyCipherFunction.java",
+      "upstream_sha256": "78b0ef9bb0822d467f98775f80e02445bbc85b033c0b0c794e12d398750982f2"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/KeyCipherImplementationAES23.java",
+      "upstream_sha256": "993142f3c218b48dbddf9259f8da4fd8b74977d88412794dd725aa4e4f32deed"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/KeyCipherImplementationRSA18.java",
+      "upstream_sha256": "846cf0176c8ad8531648114bffbe2cf02caf638a75c26fa2960903b4f60cc393"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/KeyCipherImplementationRSAOAEP.java",
+      "upstream_sha256": "4b9a921c528ba576dc40c42ff597ea7ada57fee199aefefc23e672fbeb88efdd"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/LegacyNamespaceKeyRecovery.java",
+      "upstream_sha256": "565a0f0ecbb8be88c5d968babc1b730dc28c48b3194de2a2752bde4c3610cb39"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/StorageCipher.java",
+      "upstream_sha256": "ad98553e18024ec390feaf6b6a2afdaa4c3f932a01cb83a3dd7788d93a49a7c0"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/StorageCipherAlgorithm.java",
+      "upstream_sha256": "e68a1999a0d7004457f7b751bfdc804a3aa0d65d1eb63945912ca6ff858cba3d"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/StorageCipherFactory.java",
+      "upstream_sha256": "21307a7ec1c941bd43d36a816882e923ef686e971a6d553254d16fbef8a855f0"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/StorageCipherFunction.java",
+      "upstream_sha256": "b9dfdc1f68617b5f01439fe142749d575dbebbf2c04410fddd4cb2e10520ec39"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/StorageCipherImplementationAES18.java",
+      "upstream_sha256": "779441ef51cefd7c5f7835b04bf4387f082a2fdbfdf64dd57c522719d76fc72c"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/StorageCipherImplementationAES23.java",
+      "upstream_sha256": "ec52d0d9ec4e2e6343d8aa9368f3a98bf76a2bbdd5d012e14f6f3727c9824a40"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/StorageCipherImplementationGCM.java",
+      "upstream_sha256": "8b1d4f051dd5f14ebfccd375b235de1aaab9e4854aa800832cef94833aa3585b",
+      "local_sha256": "26fb4c9853a643189fc5fecd9671a00db1540d6942b960f1278665b1975c075b",
+      "change": "Check synchronous wrapped-AES-key persistence before committing migrated ciphertext."
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/crypto/EncryptedSharedPreferences.java",
+      "upstream_sha256": "57c8e656a735ab4dffde2144e11afd9e84ba9541a93f34ce57d4122825057852",
+      "local_sha256": "c0f2bb70985441d1fb70b7d95498e90659a42e66d08d1b9d864e359a6aea23e9",
+      "change": "Read legacy entries separately from existing target entries; commit all target ciphertext and corresponding source removals in ONE real SharedPreferences transaction."
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/crypto/MasterKey.java",
+      "upstream_sha256": "d931ade8ec9fb9d27877b41a2d9b04d479d7b7702f26a3c5a238fb2d87ff151a"
+    },
+    {
+      "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/crypto/MasterKeys.java",
+      "upstream_sha256": "2a291ca072e656d8f50e5f9414cea624761234d7c77ce4f60c2c2998eeadc7f3"
+    },
+    {
+      "path": "lib/flutter_secure_storage.dart",
+      "upstream_sha256": "62b49aecbef5849d5f5fc234c279f5dbd6296418230ecc568e92800c1bf11951"
+    },
+    {
+      "path": "lib/options/android_options.dart",
+      "upstream_sha256": "269ec3bca33beb5e6a38090a801ae57558688d993016d4c1dce20914ebc8eb07"
+    },
+    {
+      "path": "lib/options/apple_options.dart",
+      "upstream_sha256": "6a2b6e1b9f7e601d56a102ab1e7de298f24606111047b2e67bdfca472c382576"
+    },
+    {
+      "path": "lib/options/ios_options.dart",
+      "upstream_sha256": "7d000d8210524f98dc6d93c4b52f53d7655bf6e443026c2d3350227b79767f2e"
+    },
+    {
+      "path": "lib/options/linux_options.dart",
+      "upstream_sha256": "bc48c7ac492f7ac60879d03ddffcf822740b94b999fb69ed3668f90d7ee58c65"
+    },
+    {
+      "path": "lib/options/macos_options.dart",
+      "upstream_sha256": "e033f9fea3dea5dba1c29e847d7e0aaade01cb2a3fb3419e11b2672da5f30498"
+    },
+    {
+      "path": "lib/options/web_options.dart",
+      "upstream_sha256": "261ffb9dd5873802b587fbc16c27ef13b82dd748a163db5905c1014cae05df38"
+    },
+    {
+      "path": "lib/options/windows_options.dart",
+      "upstream_sha256": "0e92ae5044f9496b0850df5fd28cd5c4f2e8b8438cf8495dae1af6f712b4d142"
+    },
+    {
+      "path": "pubspec.yaml",
+      "upstream_sha256": "4552a62bdb0d27915279be6d99edc02a0248052c387f96406ce343a3f74fb965"
+    }
+  ]
+}

@@ -107,9 +107,10 @@ def test_vault_integrity_cannot_be_satisfied_by_migration_alone(tmp_path):
 def test_accepts_additional_real_result_class_identity(tmp_path):
     from verify_android_instrumentation import EXPECTED_INTEGRITY_CASES, INTEGRITY_CLASS
     write_parser_fixture(tmp_path)
-    suite = ET.Element("testsuite", tests="1", failures="0", errors="0", skipped="0")
-    ET.SubElement(suite, "testcase", classname=INTEGRITY_CLASS, name=next(iter(EXPECTED_INTEGRITY_CASES)))
+    suite = ET.Element("testsuite", tests=str(len(EXPECTED_INTEGRITY_CASES)), failures="0", errors="0", skipped="0")
+    for name in sorted(EXPECTED_INTEGRITY_CASES):
+        ET.SubElement(suite, "testcase", classname=INTEGRITY_CLASS, name=name)
     (tmp_path / "TEST-integrity-parser-fixture.xml").write_bytes(ET.tostring(suite))
     report = verify_results(tmp_path, require_vault_integrity=True)
-    assert report["total_cases"] == 3
+    assert report["total_cases"] == 6
     assert report["required_vault_integrity_cases"] == sorted(EXPECTED_INTEGRITY_CASES)
