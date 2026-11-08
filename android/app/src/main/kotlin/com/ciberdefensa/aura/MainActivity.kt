@@ -346,14 +346,18 @@ class MainActivity: FlutterFragmentActivity() {
                 }
 
                 "getTunnelStats" -> {
-                    if (!TProxyService.TProxyIsRunning()) {
-                        result.success(longArrayOf(0, 0, 0, 0))
-                    } else {
-                        try {
+                    try {
+                        if (!TProxyService.TProxyIsRunning()) {
+                            result.success(longArrayOf(0, 0, 0, 0))
+                        } else {
                             result.success(TProxyService.TProxyGetStats())
-                        } catch (_: Exception) {
-                            result.error("TUN_STATS", "No se pudieron leer las métricas TUN.", null)
                         }
+                    } catch (exception: Exception) {
+                        android.util.Log.e("AuraVPN", "No se pudieron leer las métricas TUN.", exception)
+                        result.error("TUN_STATS", "No se pudieron leer las métricas TUN.", null)
+                    } catch (error: LinkageError) {
+                        android.util.Log.e("AuraVPN", "El motor nativo de métricas no está disponible.", error)
+                        result.error("TUN_STATS_UNAVAILABLE", "El motor nativo de métricas no está disponible.", null)
                     }
                 }
 
@@ -362,13 +366,15 @@ class MainActivity: FlutterFragmentActivity() {
                     val domain = normalizeThreatDomain(arguments?.get("domain") as? String)
                     if (domain == null) {
                         result.success(false)
-                    } else if (!TProxyService.TProxyIsRunning()) {
-                        result.success(false)
                     } else {
                         try {
-                            val dnsRuleAdded = TProxyService.TProxyBlockDomain(domain)
-                            val sniRuleAdded = addDnsBlockRuleNative(domain)
-                            result.success(sniRuleAdded && dnsRuleAdded)
+                            if (!TProxyService.TProxyIsRunning()) {
+                                result.success(false)
+                            } else {
+                                val dnsRuleAdded = TProxyService.TProxyBlockDomain(domain)
+                                val sniRuleAdded = addDnsBlockRuleNative(domain)
+                                result.success(sniRuleAdded && dnsRuleAdded)
+                            }
                         } catch (exception: Exception) {
                             android.util.Log.e(
                                 "AuraSniFirewall",
@@ -376,6 +382,13 @@ class MainActivity: FlutterFragmentActivity() {
                                 exception,
                             )
                             result.success(false)
+                        } catch (error: LinkageError) {
+                            android.util.Log.e(
+                                "AuraSniFirewall",
+                                "The native firewall is unavailable.",
+                                error,
+                            )
+                            result.error("FIREWALL_UNAVAILABLE", "El firewall nativo no está disponible.", null)
                         }
                     }
                 }
@@ -383,10 +396,18 @@ class MainActivity: FlutterFragmentActivity() {
                 "isDnsBlockRuleActive" -> {
                     val arguments = call.arguments as? Map<*, *>
                     val domain = normalizeThreatDomain(arguments?.get("domain") as? String)
-                    result.success(
-                        domain != null &&
-                            TProxyService.TProxyIsDomainBlocked(domain),
-                    )
+                    try {
+                        result.success(
+                            domain != null &&
+                                TProxyService.TProxyIsDomainBlocked(domain),
+                        )
+                    } catch (exception: Exception) {
+                        android.util.Log.e("AuraSniFirewall", "Could not query the native domain rule.", exception)
+                        result.error("FIREWALL_QUERY_FAILED", "No se pudo consultar la regla DNS nativa.", null)
+                    } catch (error: LinkageError) {
+                        android.util.Log.e("AuraSniFirewall", "The native firewall is unavailable.", error)
+                        result.error("FIREWALL_UNAVAILABLE", "El firewall nativo no está disponible.", null)
+                    }
                 }
 
                 "addDynamicSniRule" -> {
@@ -398,15 +419,17 @@ class MainActivity: FlutterFragmentActivity() {
                             "Se requiere un dominio válido para la regla SNI.",
                             null,
                         )
-                    } else if (!TProxyService.TProxyIsRunning()) {
-                        result.error(
-                            "TUNNEL_NOT_RUNNING",
-                            "El túnel Aura no está activo.",
-                            null,
-                        )
                     } else {
                         try {
-                            result.success(TProxyService.TProxyAddDynamicSniRule(domain))
+                            if (!TProxyService.TProxyIsRunning()) {
+                                result.error(
+                                    "TUNNEL_NOT_RUNNING",
+                                    "El túnel Aura no está activo.",
+                                    null,
+                                )
+                            } else {
+                                result.success(TProxyService.TProxyAddDynamicSniRule(domain))
+                            }
                         } catch (exception: Exception) {
                             android.util.Log.e(
                                 "AuraSniFirewall",
@@ -416,6 +439,17 @@ class MainActivity: FlutterFragmentActivity() {
                             result.error(
                                 "SNI_RULE_FAILED",
                                 "No se pudo instalar la regla dinámica SNI.",
+                                null,
+                            )
+                        } catch (error: LinkageError) {
+                            android.util.Log.e(
+                                "AuraSniFirewall",
+                                "The native firewall is unavailable.",
+                                error,
+                            )
+                            result.error(
+                                "FIREWALL_UNAVAILABLE",
+                                "El firewall nativo no está disponible.",
                                 null,
                             )
                         }
