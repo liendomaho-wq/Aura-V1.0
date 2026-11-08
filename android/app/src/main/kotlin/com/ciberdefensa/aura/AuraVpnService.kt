@@ -762,12 +762,11 @@ class AuraVpnService : VpnService() {
         try {
             worker.execute {
                 try {
-                    if (serviceShuttingDown || panicIsolationActive || tunnelStarted) {
+                    if (serviceShuttingDown || panicIsolationActive) {
                         if (requestId != null) {
                             reportState(
-                                tunnelStarted,
-                                if (tunnelStarted) "El túnel VPN ya está activo."
-                                else "La recuperación VPN no está disponible en el estado actual.",
+                                false,
+                                "La recuperación VPN no está disponible en el estado actual.",
                                 requestId = requestId,
                             )
                         }
