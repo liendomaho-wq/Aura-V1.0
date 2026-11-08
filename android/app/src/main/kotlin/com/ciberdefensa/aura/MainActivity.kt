@@ -495,6 +495,17 @@ class MainActivity: FlutterFragmentActivity() {
                                 "No se pudo sincronizar la allowlist con el firewall nativo.",
                                 null,
                             )
+                        } catch (error: LinkageError) {
+                            android.util.Log.e(
+                                "AuraSniFirewall",
+                                "The native firewall is unavailable.",
+                                error,
+                            )
+                            result.error(
+                                "FIREWALL_UNAVAILABLE",
+                                "El firewall nativo no está disponible.",
+                                null,
+                            )
                         }
                     }
                 }
@@ -731,6 +742,19 @@ class MainActivity: FlutterFragmentActivity() {
                                     "ok" to false,
                                     "error" to (exception.message
                                         ?: "No se pudo aplicar la regla DNS."),
+                                    "enforcement_scope" to "device-wide",
+                                ),
+                            )
+                        } catch (error: LinkageError) {
+                            android.util.Log.e(
+                                "AuraSniFirewall",
+                                "The native firewall is unavailable.",
+                                error,
+                            )
+                            result.success(
+                                mapOf(
+                                    "ok" to false,
+                                    "error" to "El firewall nativo no está disponible.",
                                     "enforcement_scope" to "device-wide",
                                 ),
                             )
