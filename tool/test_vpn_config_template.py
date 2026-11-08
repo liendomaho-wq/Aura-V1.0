@@ -547,7 +547,7 @@ print("PASS: shield diagnostics return bounded active IP threat-feed rules witho
 # A physical-network handover must restart the native worker: merely updating
 # Android's underlay metadata does not migrate sockets opened on the old network.
 recovery = re.search(
-    r"private fun recoverTunnelAfterNetworkChange\(\) \{(.*?)\n    \}",
+    r"private fun recoverTunnelAfterNetworkChange\(requestId: String\\? = null\) \{(.*?)\n    \}",
     text,
     re.DOTALL,
 )
@@ -563,10 +563,10 @@ for required_recovery_step in (
 ):
     if required_recovery_step not in recovery_body:
         sys.exit("FAIL: VPN handover recovery is missing " + required_recovery_step)
-if "recoverTunnelAfterNetworkChange()" not in text:
-    sys.exit("FAIL: selected physical-network changes do not invoke tunnel recovery")
+if "requestTunnelRecovery()" not in text:
+    sys.exit("FAIL: selected physical-network changes do not schedule tunnel recovery")
 failure_handler = re.search(
-    r"private fun handleNetworkRecoveryFailure\(error: Throwable\) \{(.*?)\n    \}",
+    r"private fun handleNetworkRecoveryFailure\(error: Throwable, requestId: String\\? = null\) \{(.*?)\n    \}",
     text,
     re.DOTALL,
 )
@@ -581,6 +581,57 @@ if (
     sys.exit("FAIL: failed network recovery must report the tunnel as inactive")
 
 print("PASS: physical-network handover restarts and verifies tun2socks before reporting protection active.")
+
+# Failed handovers retain the TUN but must remain explicitly recoverable.
+# A dedicated single-flight gate prevents duplicate worker restarts; the same
+# selected Network and an explicit user start both retry without creating a
+# second Android TUN interface.
+recovery_request = re.search(
+    r"private fun requestTunnelRecovery\(requestId: String\? = null\) \{(.*?)\n    \}",
+    text,
+    re.DOTALL,
+)
+if not recovery_request:
+    sys.exit("FAIL: retained TUN recovery request gate is missing")
+recovery_request_body = recovery_request.group(1)
+for required in (
+    "recoveryRequested.compareAndSet(false, true)",
+    "worker.execute",
+    "recoverTunnelAfterNetworkChange(requestId)",
+    "recoveryRequested.set(false)",
+):
+    if required not in recovery_request_body:
+        sys.exit("FAIL: VPN recovery gate is missing " + required)
+
+start_command = re.search(
+    r"override fun onStartCommand\(.*?\) \{(.*?)\n    \}\n\n    override fun onDestroy",
+    text,
+    re.DOTALL,
+)
+if not start_command or (
+    "vpnInterface != null && !startRequested.get()" not in start_command.group(1)
+    or "requestTunnelRecovery(requestId)" not in start_command.group(1)
+):
+    sys.exit("FAIL: explicit VPN activation must recover forwarding on the retained TUN")
+
+same_network_retry = re.search(
+    r"private fun refreshUnderlyingNetwork\(excludedNetwork: Network\? = null\) \{(.*?)\n    \}",
+    text,
+    re.DOTALL,
+)
+if not same_network_retry or (
+    "selected == previous" not in same_network_retry.group(1)
+    or "requestTunnelRecovery()" not in same_network_retry.group(1)
+    or "!tunnelStarted" not in same_network_retry.group(1)
+):
+    sys.exit("FAIL: a later callback on the same physical network must retry failed forwarding")
+
+if "startRequested.set(false)" not in failure_body:
+    sys.exit("FAIL: failed network recovery must release the start gate for a later retry")
+if "startRequested.set(false)" not in start_tunnel_region:
+    sys.exit("FAIL: successful initial startup must release the in-progress gate")
+
+print("PASS: failed VPN handovers can be retried on the retained TUN without duplicate starts.")
 
 # App-risk findings must be based on confirmed access, not permission declarations.
 APP_SCANNER = Path(
