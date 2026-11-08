@@ -157,7 +157,15 @@ void main() {
     await pumpBootToCore(tester);
     await pumpCoreFrames(tester);
 
-    expect(find.byType(AuraCoreScreen), findsOneWidget);
+    final bootText = <String>[
+      for (final text in tester.widgetList<Text>(find.byType(Text)))
+        if (text.data != null) text.data!,
+    ].join(' | ');
+    expect(
+      find.byType(AuraCoreScreen),
+      findsOneWidget,
+      reason: 'Estado real al agotar la espera: $bootText',
+    );
     expect(find.text('Hola, soy Aura.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
