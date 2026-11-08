@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: aura-model-pipeline-${{ github.ref }}
+  group: aura-model-pipeline-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 jobs:

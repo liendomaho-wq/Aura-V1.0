@@ -240,3 +240,36 @@ tool/vpn_echo_fixture.py
 - `f64d1db`, Flutter `42496260438` / `128779157011`: **201 Python + 124 subtests, sin skips**, 8 AAB reales aprobadas y Dart format **66 archivos / 0 cambios**. Static analysis falló con `uri_does_not_exist` en `flutter_secure_storage.dart:7` y `undefined_method` en `:399`.
 - Causa: al seleccionar runtime se omitió el helper de compatibilidad publicado `lib/test/test_flutter_secure_storage_platform.dart`, pero la librería de producción lo importa. Se restaura **exactamente desde el mismo commit upstream** y se comprueba su hash y el inventario completo Dart. No se deshabilita analyze ni se elimina la API.
 - Ese helper original del SDK no es un mock inventado por Aura ni evidencia Android; ninguna prueba de migración lo usa. Los tests reales siguen con Keystore del sistema y todos sus asserts. Se requiere nueva CI del SHA con esta reparación; los tests Flutter aún no llegaron a ejecutarse en el run fallido.
+
+
+## Evidencia posterior y regresiones adicionales — código `b2eb802` / `db91722` / `1315929`
+
+### CI real de `1195e46`, sin transferirla al código cambiado después
+
+- Flutter `42496511614` / `128779903086` **SUCCESS**: `dart format` **67 archivos / 0 cambios**; analyze **sin issues**; Python **202 passed + 124 subtests, sin skips**; los **8 AAB reales** ejecutados/aprobados. Flutter **194 tests passed, 1 skipped** (benchmark que requiere dispositivo; sigue sin aprobación física).
+- Android `42496511706` / build `128779903412` **SUCCESS**: **26 JVM, 0 failures/errors/skips**, incluidas **7 LocalAuthRequestGate**; APKs de instrumentación compilados; 4 ELF HEV de ABI correcta empaquetados; modelo/digest/firma idénticos al checkout. APK debug SHA-256 **`ab628fcfde335df43dbea3820efe7e1435c3ad2f283db42f395fc48ed1b7c162`**. No es firma de distribución.
+- Los jobs reales Android 16 `128781731430` y API 29 arrancaron después del build; su resultado final aún no se conoce en esta actualización. Compilar los APKs instrumentados NO aprueba Keystore/tráfico.
+- `f64d1db` tuvo firma/SBOM CI **SUCCESS** (`42496260415`); modelo `42496260496` fue **cancelado** al llegar otra corrección, no aprobado ni evaluado completamente. La concurrencia del modelo pasa a agruparse por SHA, igual que Android, para que futuras correcciones no cancelen una evaluación distinta ya en curso. No se cambia ningún gate ni se evita el trigger.
+
+### VPN-02 — SYN/FIN contados como payload: reproducción real y corrección
+
+- Probe Linux real a `github.com:443`, **sin enviar TLS ni payload de aplicación**, observando primero el peer conectado y después el FIN: `bytes_acked=2`, `bytes_received=1`, `data_segs_out=0`, `data_segs_in=0`. El C anterior devolvió evidencia **true**. Es un falso positivo; la prueba anterior que sólo observaba después de cerrar no lo había encontrado porque `getpeername()` ya fallaba.
+- `b2eb802`: se exigen segmentos TCP de datos en ambas direcciones, además de ACK/payload y avance real de los contadores de segmentos. FIN/control sin datos no renueva evidencia vieja. Si un kernel devuelve TCP_INFO demasiado corto, se mantiene sin confirmar; no se inventa compatibilidad de kernels antiguos.
+- **27 casos locales** del componente C/guards, incluidos ocho inputs unitarios del predicado TCP; dichos inputs son unidad, no tráfico Android.
+- Repetición real tras compilar C con GCC/Werror: el mismo cierre control-only queda **false**; TLS con certificado/hostname verificados + HEAD real 200 da `[714,1439,3,3]` y evidencia **true**; después de **60,100436 s** caduca a **false**. Informe `tool/reports/completion/native-egress-after-fin-fix.json`, con SHA exacto del C/header compilados. **Esto no es TUN/Android/Redmi.** Requiere repetir CI nativa del código nuevo.
+
+### VAULT-03 — impedir destrucción del alias RSA al solicitar AES
+
+- Auditoría del runtime publicado: `KeyCipherImplementationAES23.ensureSymmetricKeyAtAlias()` borraba un PrivateKey RSA existente y generaba AES en el mismo alias. Los backups del ciphertext no recuperan una clave privada destruida.
+- `db91722` sustituye ese borrado implícito por un error explícito. Exigir un algoritmo distinto no autoriza rekey/reset ni borrar el alias que protege datos anteriores. Se añade un quinto caso real de integridad: certificado/PrivateKey intactos, ciphertext intacto y secreto descifrado desde una **instancia nueva**, sin valerse de la clave cacheada.
+- La ruta normal actual de Aura sigue RSA-OAEP/AES-GCM; no se habilita a ciegas una migración biométrica. CryptoObject real requiere alias distinto, autorización criptográfica y recuperación verificada. **VAULT-01 sigue abierta**, y la nueva regresión del alias aún espera Android.
+- Manifiesto del proveedor: **43 archivos, 4 cambios Android funcionales y 3 de whitespace**; helper publicado intacto para compatibilidad. Android 16 exige ahora **11 casos** (2 migración originales + 5 integridad + 4 VPN); API 29 añade los siete de almacenamiento, sin sustituir la aceptación Android 16.
+
+### Lock resuelto realmente, sin hashes/versiones inventados
+
+- `1315929` aplica el delta público del lock emitido por el job Android `128779903412`, con verificación del SHA-256 completo **`9958a5fa02a610e113d4be0c3061e9c6eee2667a39af066c60aa22ef8c80bb99`**. Se actualizan las dependencias federadas reales de v10, se elimina macOS antiguo y se conserva el runtime Android corregido por path. No se descarga un artefacto desde un host prohibido ni se inventa la resolución local.
+- El build siguiente debe resolver sin deriva; el lock real se sigue guardando junto al APK. El problema del lock v9 vs declaración v10 queda corregido; la reproducibilidad completa de toolchain/firmas no se infiere de este único dato.
+
+### Suite local más reciente
+
+`python -m pytest -q -rs`: **203 passed, 8 skipped, 124 subtests passed in 11.03s**. Los ocho skips siguen siendo sólo AAB por falta de JDK completo local; CI `1195e46` sí ejecutó sus ocho casos, pero el código nuevo necesita su propia CI. Guards, procedencia y diff-check aprobados; modelo activo y fixture original de migración siguen intactos. Ningún éxito anterior se transfiere a los cambios nuevos sin repetir la verificación pertinente.
