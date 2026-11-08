@@ -1,185 +1,395 @@
-# Aura Android — auditoría técnica y estado de cierre
+# Aura Android — auditoría interna y evidencia de cierre
 
-**Fecha:** 2026-11-08 (UTC)
-**Repositorio:** `liendomaho-wq/Aura-V1.0`
-**Rama de la PR #10:** `arena/623642b7-aura-v1-0` (actualizada mediante fast-forward desde `fix/vpn-recovery-and-security-closeout`)
-**`main` verificado al inicio:** `77617f32a016608e3869fd7144e153005c9e3b38` — merge de la PR #9
-**Estado:** correcciones adicionales en rama aislada; no integradas en `main`.
-**Dictamen:** **no listo para release**. Las pruebas Python disponibles pasan, y en esta pasada se endureció el manejo de cambios de red. No se pudo ejecutar Flutter, Gradle/JVM, NDK, Codemagic ni una prueba en teléfono; por tanto, no se afirma que este SHA compile Android, que exista un APK verificable o que la VPN transporte tráfico real.
+**Fecha:** 2026-11-08 UTC. **Dictamen: NO CERRADO / NO LISTO PARA RELEASE.**
+No se certifica protección, ausencia de fugas ni compatibilidad universal. Las
+comprobaciones de código, los tests aislados, CI y un teléfono son evidencias
+separadas. Ninguna prueba física fue ejecutada en esta sesión.
 
-## 1. Alcance y resumen ejecutivo
+## 1. Identidad, punto de partida y permisos
 
-La base auditada ya contiene el listener local HEV/SOCKS5 con autenticación RFC 1929 integrada por la PR #9. El usuario y la contraseña son efímeros y se comprueba el handshake antes de anunciar el forwarding como activo. Esto reduce el riesgo de que otra app local use el listener sin credenciales; **no demuestra forwarding ni protección de red**.
+- Repositorio: `liendomaho-wq/Aura-V1.0`.
+- Rama fija de esta sesión: **`arena/063013fc-aura-v1-0`**. No se creó/cambió a
+  otra rama ni se hizo merge o push a `main`.
+- HEAD local inicial: `92b6fcce0127d4b2520858f36dcaa9a080188ba8`, checkout limpio.
+- [PR #10](https://github.com/liendomaho-wq/Aura-V1.0/pull/10), consultada antes de
+  editar: **OPEN**, head `arena/623642b7-aura-v1-0`,
+  **`82db8e7a8c24557f2196e0b08ab4ecb69ad92b1c`**, no el `09876be56b4c1beca4c2ef16a7cd6557e701e7b6` proporcionado
+  como antecedente. La rama de sesión se adelantó a ese HEAD mediante
+  `git fetch --unshallow origin arena/623642b7-aura-v1-0` y
+  `git merge --ff-only FETCH_HEAD`. No se partió de `main`.
+- `git ls-remote origin refs/heads/main` confirmó
+  **`77617f32a016608e3869fd7144e153005c9e3b38`**, también en la comprobación
+  posterior a las correcciones.
+- Continuación publicada: [PR #11, DRAFT](https://github.com/liendomaho-wq/Aura-V1.0/pull/11),
+  destino `main`. No autoriza merge; siguen pendientes criterios de esta auditoría.
+- Último código local de esta revisión: `cfbbfbe9db12207e7a54b7b15e350f4f406c5d0a` (identidad completa registrada
+  con los commits y checks). La evidencia remota que sigue identifica siempre
+  el SHA efectivamente ejecutado; no se atribuye a un descendiente sin reejecución.
 
-En la revisión del ciclo de vida se encontraron dos huecos en la supervisión de la red física y se corrigieron en esta rama:
+Comandos de identidad:
 
-1. Si Android rechazaba el registro del `NetworkCallback`, el servicio solo escribía un log y todavía podía iniciar el túnel. Ahora el inicio, la reanudación y la recuperación exigen que el callback esté registrado; si no, la operación falla cerrada.
-2. `refreshUnderlyingNetwork` guardaba el `Network` candidato antes de que `setUnderlyingNetworks` confirmara el cambio. Si Android rechazaba el cambio, la siguiente notificación con el mismo candidato podía quedar descartada como si ya estuviera aplicado. Ahora el candidato se guarda solo tras una actualización confirmada, para que una notificación posterior pueda reintentarla.
+```bash
+git status --short
+git branch --show-current
+git rev-parse HEAD
+gh pr view 10 --repo liendomaho-wq/Aura-V1.0 \
+  --json state,headRefName,headRefOid,baseRefName,statusCheckRollup
+git ls-remote origin refs/heads/main refs/heads/arena/623642b7-aura-v1-0
+```
 
-Se añadieron guards de regresión en `tool/test_vpn_config_template.py`. Son verificaciones estáticas de flujo fuente; no simulan Android ni sustituyen una prueba del ciclo de vida en dispositivo. El forwarding, las fugas, la recuperación real y la parada nativa siguen sin validación física.
+La consulta administrativa `gh api repos/liendomaho-wq/Aura-V1.0/actions/permissions` respondió **HTTP 403:
+Resource not accessible by integration**. No se cambió la política ni se intentó
+sortear ese permiso. Ello **no demuestra Actions deshabilitado**: los pushes de
+esta sesión sí generaron ejecuciones reales. La referencia anterior a HTTP 422
+por Actions deshabilitado era histórica, no el estado observado hoy.
 
-## 2. GitHub, CI y regresiones anteriores
+## 2. Entorno local y frontera de lo ejecutable
 
-### SHA actual de `main`
+Inicialmente no había `flutter`, `dart`, `java`, `javac`, `sdkmanager`, `adb`, SDK
+36 ni NDK `28.2.13676358`. Sí había Python 3.11.2 y GCC. La red permite
+GitHub/PyPI/npm, pero las comprobaciones reales de los distribuidores oficiales:
 
-La API de GitHub confirma `main` en `77617f32a016608e3869fd7144e153005c9e3b38`. Para ese SHA, `check-runs` está vacío y el estado de commit es `pending` sin statuses. La ejecución GitHub más reciente consultada que pasó el build Android y Flutter Quality es la `40601644781` / `40601644887`, en `d9a5d2994f1062afd90bfb465c3d6a15bea138d9`, **anterior** al cambio SOCKS5 de la PR #9. No valida `main` actual ni esta rama.
+```text
+https://api.github.com/repos/liendomaho-wq/Aura-V1.0 -> HTTP 200
+https://storage.googleapis.com/flutter_infra_release/flutter/releases/releases_linux.json
+  -> URLError: TLS/SSL connection has been closed (EOF)
+https://dl.google.com/android/repository/repository2-1.xml
+  -> URLError: TLS/SSL connection has been closed (EOF)
+```
 
-La PR #9 está fusionada en `main`. En la última consulta permanecían abiertas la #8 (conflictiva), la #4 (draft/conflictiva) y la #1 (conflictiva); no se integró ninguna alternativa de proxy de esas PRs. No se deben combinar dos relays VPN sin reconciliar sus diffs y pruebas.
+No se instalaron SDK falsos, headers JNI sustitutos ni mocks para simular builds.
+Se instaló fuera del repositorio, sin root:
 
-La PR de esta pasada es la [#10](https://github.com/liendomaho-wq/Aura-V1.0/pull/10). Su `statusCheckRollup` está vacío. Se intentó despachar manualmente `Aura Android Debug Build`, `Aura Flutter Quality`, `Aura Model Dataset, Training and Benchmark` y `Release signing integrity`; GitHub rechazó las cuatro solicitudes con HTTP 422: **“Actions has been disabled for this repository.”** Por tanto, no hay validación remota del commit de la PR. No se intentó el workflow de release firmado con credenciales de producción. Rehabilitar Actions requiere un cambio de configuración del repositorio fuera de este checkout.
+```bash
+python -m venv /home/user/.cache/aura-closeout-venv
+/home/user/.cache/aura-closeout-venv/bin/python -m pip install \
+  -r tool/requirements-train.txt jdk4py==17.0.9.2 pyyaml
+npm pack kotlin-compiler@2.2.20 --ignore-scripts \
+  --pack-destination /home/user/.cache/aura-kotlin
+```
 
-La revisión adicional de `codemagic.yaml` encontró otro bloqueo de automatización: los patrones `main`/`principal` no indicaban `source: false`, por lo que Codemagic los interpretaba como ramas de origen para eventos `pull_request`; la PR #10 sale de `arena/623642b7-aura-v1-0`, no de `main`. Se corrigió en el commit `ce82a49`: los patrones ahora seleccionan explícitamente la rama destino `main`/`principal` para PRs, manteniendo el build por push a `main`. Esto corrige la configuración versionada, pero no prueba que el webhook esté instalado/activo ni que Codemagic haya iniciado un build. Tras el push, verificar `Apps → Webhooks → Recent Deliveries` en Codemagic y ejecutar manualmente el workflow si no hay entrega automática. Referencia de sintaxis: [documentación oficial de patrones source/target de Codemagic](https://docs.codemagic.io/yaml-running-builds/starting-builds-automatically/).
+`jdk4py` suministró **JRE Temurin 17.0.9+9**, no un JDK completo: no hay `javac`
+y `java -m jdk.compiler/com.sun.tools.javac.Main -version` respondió
+`Module jdk.compiler not found`. Por eso las ocho pruebas AAB locales siguen
+omitidas. No se presentan como éxito ni se las acepta omitidas en CI. El
+compilador Kotlin real sí compiló las clases puras de VPN con ese JRE.
+Flutter/Gradle/Android/JNI completos se delegan a CI con la toolchain real.
 
-### Fallo del build Android del 27 de octubre
+## 3. Defectos corregidos y justificación
 
-- En el commit `41f4a77e6390278fb4098a6405880dffa7b69ded`, el workflow Android llegó a `Build debug APK including native tunnel` y falló; el validador de configuración VPN anterior pasó.
-- El siguiente cambio de código (`d9a5d2994f1062afd90bfb465c3d6a15bea138d9`) añadió únicamente los imports `java.net.Inet6Address` y `java.net.InetAddress` a `AuraVpnService.kt`, donde se usan para validar direcciones IP. El build Android volvió a ejecutarse y pasó en ese commit.
-- **Conclusión con evidencia disponible:** la causa raíz más probable y directamente corregida fue la ausencia de esos imports. Los logs originales del compilador no se pudieron descargar en esta sesión, así que no se presenta una línea de error textual inventada ni se asegura que esa fuera la única causa.
-- El run Codemagic del mismo periodo falló en `Build Android Release artifact` y también en la verificación posterior del artefacto. Sus logs completos no estuvieron disponibles; el fallo es consistente con el problema de compilación del commit anterior, pero no basta para afirmarlo como causa exclusiva.
+### Guards VPN que impedían validar la PR
 
-Referencias: [Android Debug fallido](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/40599010770), [Codemagic fallido en build del 27 de octubre](https://codemagic.io/app/6ad56a4e398d916a89605bb1/build/6ae12fe2206ce93970c6a881), [Android Debug exitoso en `d9a5d29`](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/40601644781), [PR #9](https://github.com/liendomaho-wq/Aura-V1.0/pull/9).
+En la base `82db8e7a8c24557f2196e0b08ab4ecb69ad92b1c`, `python3 tool/test_vpn_config_template.py` reprodujo:
 
-### Pipeline de modelo
+```text
+File "tool/test_vpn_config_template.py", line 512
+  text.split("private fun recoverTunnelAfterNetworkChange()", 1)[1]
+IndexError: list index out of range
+```
 
-El run `40599010820` del commit `41f4a77...` completó la instalación de dependencias, la construcción del dataset y la generación de splits adversariales, pero falló en `Train model and write held-out metrics`; el paso de golden tests también terminó fallando y el benchmark se omitió. El resumen de GitHub no aporta la excepción concreta. El artefacto de informes registrado tiene solo 263 bytes y no se pudo descargar desde este entorno, por lo que no hay métricas utilizables que atribuir a esa ejecución.
+Después apareció `FAIL: VPN underlay fail-closed lifecycle is missing
+recoverTunnelAfterNetworkChange()`. El método ya recibía `requestId`.
+`d303ec8252ff622241bf0033c0f4b3e82e5a6540` actualiza ambas referencias y limita la extracción de
+`onStartCommand` a su firma Kotlin real. **No elimina aserciones.** El guard
+completo pasa localmente; su resultado no prueba tráfico Android.
 
-No se han bajado los umbrales de calidad ni se han creado métricas sustitutas. En este checkout no existe `data/` (los datasets están ignorados) y no se ejecutó un nuevo pipeline con fuentes externas. La causa precisa de ese fallo sigue **pendiente de logs**.
+### A. Recuperación con TUN retenido y worker detenido
 
-Referencia: [run de entrenamiento fallido](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/40599010820).
+La PR #10 ya incorporaba una corrección parcial (`025a4e8fd4e58b2bac91a3d150fd0ad46e462c13`, `2fff4bb7d1e0af96fd60e8777b6eded3db3cd150`): reintento
+con TUN retenido y callback de la misma red. Se completó en **`7acedb5437b843240e1e7c77e6ec6a235c4db4cd`**:
 
-### Regresión de la prueba de transparencia UI
+- `stopTunnelForwardingForNetworkFailure` también libera `startRequested`.
+  `handleNetworkRecoveryFailure` conserva el reset y el estado inactivo.
+- Inicio explícito y callback de la misma red usan estado nativo observado mediante
+  `shieldStatus`, no solo el flag `tunnelStarted`, que puede quedar obsoleto.
+- Se exige descriptor válido, ausencia de aislamiento de pánico, ningún arranque
+  inicial en curso y ciclo de vida abierto; nunca se crea un segundo TUN para
+  recuperar una interfaz válida retenida.
+- `VpnRecoveryGate` conserva la propiedad single-flight y el `requestId` capturado;
+  una finalización vieja no libera una operación nueva. Éxito y error siguen la
+  ruta real de reinicio JNI, handshake RFC 1929 y `VpnLifecycleGate` existente.
+- Se prepararon **siete tests JVM** de política, concurrencia real de hilos,
+  correlación, cierre y liberación en `finally`. Se añadieron a Codemagic y al
+  comando documentado. No simulan Android ni sustituyen HEV.
+- Se preservaron y ampliaron los guards: resets de ambas rutas, descriptor válido,
+  estado nativo, aislamiento, correlación y propiedad del intento.
 
-El historial/documentación del run Codemagic del 5 de noviembre describe un fallo de `test/aura_transparency_ui_test.dart`: el estado local de falso positivo quedó en `false` (`Expected true / Actual false`) y apareció una advertencia de hit-test al pulsar el texto del botón. Después se añadieron una clave estable y desplazamiento hasta el control visible; la prueba actual pulsa el botón por clave y el callback local llama a `markExplanationAsFalsePositive`.
+Evidencia local: guard completo PASS y compilación Kotlin pura exitosa, detallados
+abajo. **Recuperación del servicio Android y fail-closed físico siguen pendientes.**
 
-Esto apunta a una interacción de widget/visibilidad no determinista, no demuestra un defecto del callback de producción. Los cambios posteriores no tienen un run verde verificable sobre `main` actual, y Flutter no está instalado en este entorno; la regresión se considera **corregida en código, pendiente de verificación**. Referencia: [run Codemagic del 5 de noviembre](https://codemagic.io/app/6ad56a4e398d916a89605bb1/build/6aec4375004ce28f20ee1577).
+### B. ADB informativo sin romper el mapa Dart
 
-### Antecedente NDK / Android
+La PR #10 (`9a2b7f34bc618eb4e407d8824e4ba04c7625bfdc`) ya retiraba ADB del veto de integridad, pero también quitaba
+la clave `adbBlocked`. Se comprobó antes de cambiar que `lib/security_engine.dart`
+continúa consumiendo/devolviendo **ambas** claves.
 
-El cambio de noviembre `adc0bd1` incluyó ajustes del código nativo (entre ellos, restringir a Android un normalizador usado por HEV) y se tituló como corrección de NDK. El proyecto actual declara NDK `28.2.13676358`, usa `ndk-build` y configura alineación de páginas de 16 KiB. No hay evidencia de una compilación NDK del SHA actual. Una nota anterior sobre resolución local del plugin Flutter/Gradle tampoco se pudo reproducir: aquí faltan Flutter, Java y Android SDK, así que no se puede atribuir ese antecedente a una regresión vigente.
+**`f94c61de44e94832d5c6d33f06164c761844f6f0`** restaura `adbBlocked=false` y conserva `adbEnabled`. Se mantienen
+firma válida, depurador adjunto en builds no debug, instrumentación y fallo de
+inspección de mapas; el guard exige todas esas señales y prohíbe ADB en el veredicto.
+`SECURITY.md` documenta que las comprobaciones del cliente son **esquivables, no
+un límite de seguridad**. No se tocaron datos, políticas biométricas ni cifrado.
+La conducta real con ADB habilitado en release sigue pendiente de teléfono.
 
-Referencia histórica: [cambio NDK/privacidad `adc0bd1`](https://github.com/liendomaho-wq/Aura-V1.0/commit/adc0bd17463a7d80a1bc05c2d16ee276c4a6b3d7).
+### Error real de compilación Android: descriptor de socket
 
-### Toolchain declarada (no compilada en este entorno)
+El run de `f96bba05f07b89f4708241b62aa7dfe768b601a6` llegó a Gradle y falló:
 
-`pubspec.yaml` requiere Dart `>=3.12.0` y Flutter `>=3.44.0`. El proyecto declara Gradle Wrapper `8.14.3`, Android Gradle Plugin `8.13.0`, Kotlin `2.2.20`, JDK `17`, `compileSdk 36`, `minSdk 24`, `targetSdk 36` y NDK `28.2.13676358`; incluye ABIs `armeabi-v7a`, `arm64-v8a`, `x86` y `x86_64`. Codemagic declara Flutter stable/JDK 17 en `mac_mini_m2`, pero `AURA_REQUIRE_RELEASE_SIGNING=false` y firma DEBUG para builds de prueba. Estas versiones/configuraciones se inspeccionaron, no se validaron mediante build aquí.
+```text
+COMMAND: ./gradlew :app:testDebugUnitTest --no-daemon
+> Task :app:compileDebugKotlin FAILED
+AuraVpnService.kt:899:21 None of the following candidates is applicable:
+fun bindSocket(p0: FileDescriptor!): Unit
+fun bindSocket(p0: DatagramSocket!): Unit
+fun bindSocket(p0: Socket!): Unit
+BUILD FAILED in 3m 28s
+184 actionable tasks: 183 executed, 1 up-to-date
+```
 
-## 3. Cambios de esta pasada
+Fuente: [run 42457981878 / job 128661033462](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42457981878/job/128661033462).
+La anotación de `tool/ci_run.py` contiene esa salida real; no es una inferencia.
 
-### Recuperación de la red física
+**`cfbbfbe9db12207e7a54b7b15e350f4f406c5d0a`** usa `ParcelFileDescriptor.fromFd(socketFd).use` y pasa
+`descriptor.fileDescriptor` a `Network.bindSocket`. `fromFd` duplica el descriptor;
+`use` cierra solo esa copia, **no el socket que pertenece a JNI**. No se usa
+`adoptFd`. Se conserva `protect` previo al bind y el retorno falso ante fallo.
+El guard exige tanto la sobrecarga válida como la propiedad correcta. La
+compilación Android posterior aún debe confirmar la corrección.
 
-En `android/app/src/main/kotlin/com/ciberdefensa/aura/AuraVpnService.kt`:
+## 4. CI, formato y errores secundarios
 
-- `requireUnderlyingNetworkMonitor()` lanza `IOException` si Android no confirmó el registro del callback de red física. Se aplica al inicio, a la reanudación desde aislamiento y a la recuperación de handover; un fallo no debe presentarse como forwarding activo sin mecanismo de recuperación.
-- `underlyingNetwork = selected` se mueve después de la confirmación de `setUnderlyingNetworks`. Si la sincronización falla, se conserva el valor anterior, se detiene el forwarding y un callback posterior puede volver a intentar la selección.
+### Checks de la PR #10 al inicio
 
-En `tool/test_vpn_config_template.py`:
+El SHA `82db8e7a8c24557f2196e0b08ab4ecb69ad92b1c` tenía tres checks, todos **cancelled**, no vacíos:
 
-- Se comprueba que inicio, reanudación y recuperación exijan el monitor.
-- Se comprueba el orden de sincronización y commit del `Network`, incluido que el retorno por fallo suceda antes de guardar el candidato.
+- [Flutter Quality 42456931744](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42456931744).
+- [Android Debug 42456931730](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42456931730).
+- [Model 42456931731](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42456931731).
 
-En `docs/RELEASE_AND_DEVICE_VALIDATION.md`:
+El run Flutter anterior de `e395f556d02b6e97ecda46dcb921bd8526762d69` fallaba en `Static security regression
+checks`; la anotación solo decía exit 1. El `IndexError` de la sección 3 se
+reprodujo localmente, no se inventó como una línea descargada de ese log.
 
-- El comando JVM documentado incluye los cuatro tests existentes: correlación de inicio, lifecycle, credenciales SOCKS5 y autenticación RFC 1929.
+### Cambios de automatización
 
-### Implementación existente que se conserva
+- `e4261fa7b32aa4f061161bf6e88bb6cc4accd31e`: push explícito de la rama fija, checkout del SHA head en vez del merge
+  sintético, JDK 17 en Flutter Quality, dependencias Python y pytest completo,
+  formato obligatorio, instalación SDK 36/NDK requerido y publicación de APK,
+  identidad fuente y SHA-256 **solo si el build realmente termina**.
+- El primer comando de instalación `sdkmanager` terminó con **exit 127** en
+  [42457485266](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42457485266)
+  (`e4261fa7b32aa4f061161bf6e88bb6cc4accd31e`). `c69183b2c70a9d3c3c7615775072de6a1719d8a0` introduce setup-android. Ese bootstrap también falló en
+  [42457646823](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42457646823)
+  (`c69183b2c70a9d3c3c7615775072de6a1719d8a0`); su log completo no fue descargable y no se atribuye una excepción
+  no vista. Se verificó que v3 pide por defecto `tools platform-tools`, y que
+  `tools` está retirado. `69a8a8f418bbf33f4f19b87e67e09a192cab0665` pide solo `platform-tools`: setup e instalación
+  de SDK/NDK posteriores constan **success** en
+  [42457799390](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42457799390).
+- Los archivos de log de Actions redirigen a
+  `results-receiver.actions.githubusercontent.com`, fuera de la red permitida:
+  `gh run view ... --log-failed` termina en **EOF**. `tool/ci_run.py` conserva
+  stdout/stderr y el código real; publica la cola del fallo en anotaciones,
+  accesibles con `gh api repos/liendomaho-wq/Aura-V1.0/check-runs/128661033462/annotations`. Sus cuatro tests ejecutan
+  subprocesos reales y verifican que un exit 17 sigue siendo exit 17.
 
-- `AuraVpnService` instala rutas IPv4 e IPv6 de ruta completa, protege los sockets upstream y los enlaza a la red física seleccionada. El arranque del motor HEV se verifica con el estado JNI y con el handshake SOCKS5 local autenticado.
-- El parser C SNI está conectado a las sesiones TCP HEV y dispone de pruebas host para ClientHello normal, fragmentado, ECH y reglas. Esas pruebas ejercitan el parser y guards de integración; no equivalen a una captura de tráfico real del teléfono.
-- El servicio trata la disponibilidad del feed de reputación IP como cobertura opcional: el arranque no debe depender de una descarga. El servicio puede funcionar con cobertura reducida cuando la fuente remota falla.
-- SecureVault usa el puente de migración v9→v10 con `resetOnError=false` y backup; existen tests Robolectric de migración, pero no se ejecutaron aquí.
-- El modelo empaquetado vigente es `3.0.0`, con seis características y 500 árboles; mide 3,004,068 bytes. El SHA-256 comprobado es `d190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2`. El verificador de paquete comprueba digest y firma del archivo incluido. Esto no mide calidad predictiva. El candidato de entrenamiento `3.1.0` no se promocionó ni se evaluó en esta sesión.
-- `RECORD_AUDIO` se solicita al invocar reconocimiento de voz en Android; `flutter_tts` por sí solo no usa micrófono. `QUERY_ALL_PACKAGES` respalda inventario/escaneo de aplicaciones y debe seguir documentado para el canal de distribución elegido. No se inspeccionaron permisos concedidos en un dispositivo.
+### Formato Dart sin reimplementar el formateador
 
-## 4. Validación ejecutada en esta rama
+El formateador real de CI en `e4261fa7b32aa4f061161bf6e88bb6cc4accd31e` y `f96bba05f07b89f4708241b62aa7dfe768b601a6` informó:
 
-| Validación | Resultado | Qué demuestra / qué no demuestra |
+```text
+COMMAND: dart format --set-exit-if-changed .
+Formatted 58 files (33 changed)
+exit 1
+```
+
+La salida del diff no cabía en las anotaciones: primero se detectó truncamiento a
+4096 bytes y después el límite de diez avisos por paso. Las reconstrucciones
+incompletas se rechazaron (`git apply --check` o manifiesto) **y no se aplicaron**.
+Los commits `0315fc5b1f45931503bb520f284cbca8b00209bc`, `7e49fc18864dccdd6cb492d65d9f5017e369de1d` y `f96bba05f07b89f4708241b62aa7dfe768b601a6` corrigen la observabilidad mediante
+fragmentación UTF-8 y compresión XZ/base64, sin cambiar el resultado del comando.
+
+En [42457981882 / job 128660976437](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42457981882/job/128660976437)
+(`f96bba05f07b89f4708241b62aa7dfe768b601a6`) se recuperaron los **13 fragmentos completos**, con manifiesto:
+
+```text
+bytes=216731
+SHA256=303b013b3931ca891e131063a193444946a313ca483dc3bd01ec0fba4d55c324
+encoding=xz+base64
+```
+
+`96d35d77647feb8801fc03d6551b920b15ce29eb` aplica exactamente ese patch tras verificar hash, bytes y
+`git apply --check`: 33 archivos, solo formato. No se quitaron aserciones ni se
+rediseñó la UI. Falta exigir formato sin cambios en un run del nuevo SHA.
+
+### Regresión documental detectada, no prueba debilitada
+
+La reorganización del README (`1904390b53af0d8412ccc0bbe2f5637c99ccb61a`) retiró accidentalmente la tabla de
+características que valida `tool/test_aura_brain.py:225`:
+
+```text
+assert readme_order == FEATURE_ORDER
+AssertionError: assert [] == ['length', ...]
+1 failed, 117 passed, 8 skipped, 124 subtests passed
+```
+
+`45be3a80d8ff0008b814e299e926389fd5403556` restaura la tabla ordenada original y mantiene el test íntegro. Explica
+que solo los primeros seis campos pertenecen al modelo activo 3.0.0. La siguiente
+suite local pasó con 118 tests y ocho omisiones AAB conocidas, no con un falso
+verde completo.
+
+## 5. Registro local reproducible
+
+Los logs completos de trabajo están en `tool/reports/android-closeout/` (ignorado
+por Git; no se suben toolchains, datasets, secretos ni artefactos grandes).
+
+| Código / alcance | Comando real | Salida / límite |
 |---|---|---|
-| `/tmp/aura-audit-venv/bin/python -m pytest -q -rs` | **112 passed, 8 skipped, 124 subtests passed** | Los ocho omitidos son las pruebas AAB que requieren JDK (`java` y `javac`). No cubre Flutter, JVM Android ni red física. |
-| `python3 tool/test_vpn_config_template.py` | **Pass**, incluidos los dos nuevos guards | Comprobaciones de configuración y orden del código fuente; no ejecuta `AuraVpnService` en Android. |
-| `tool/test_aura_sni_firewall.py`, `test_mapped_dns.py`, `test_tun_packet_filter.py`, `test_lwip_fragment_policy.py` | **Pass** | Pruebas host/harness nativo disponibles; no es una compilación NDK ni un test de tráfico del teléfono. |
-| `tool/test_verify_packaged_model.py` | **Pass** | Verificación del SHA y de la firma del modelo empaquetado con la clave configurada; no es una evaluación ML. |
-| `tool/test_release_signing_policy.py`, `test_release_signing_runtime.py` | **Pass** | Guards de política y casos de verificación con fixtures; no verifica un APK/AAB Android real. |
-| `python3 tool/test_verify_aab.py` | **Bloqueado por entorno** | Sale con código 1 y exige JDK 17 (`java`, `javac`) y OpenSSL. OpenSSL sí está disponible; falta JDK. En `pytest` las ocho pruebas se reportan explícitamente como omitidas. |
-| `bash -n` sobre scripts de build/setup | **Pass** | Sintaxis Bash; no ejecuta Flutter, Gradle ni NDK. |
-| `git diff --check` | **Pass** | Sin errores de whitespace en el diff actual. |
-| Flutter/Dart, Gradle/JVM/Robolectric, APK/AAB, NDK | **No ejecutados** | No están instalados `flutter`, `dart`, Java/JDK, Gradle, Android SDK/NDK, `clang` ni `sdkmanager`; `ANDROID_HOME`, `ANDROID_SDK_ROOT` y `JAVA_HOME` están vacíos. |
-| GitHub Actions para la PR #10 / commit candidato | **No ejecutado: Actions deshabilitado** | La PR no tiene checks; los cuatro `workflow_dispatch` devolvieron HTTP 422 `Actions has been disabled for this repository`. Tampoco aparece un check nuevo de Codemagic en la PR. |
-| GitHub CI para `77617f3` | **Sin evidencia actual** | No hay check-runs en ese SHA. Los resultados anteriores corresponden a otros commits. |
-| Redmi Note 15 Pro Plus 5G / Android 16, túnel y tráfico real | **No ejecutados** | No hubo dispositivo conectado ni evidencia de TCP, UDP, DNS, IPv4/IPv6, handover, aislamiento o ausencia de fugas. |
+| `82db8e7a8c24557f2196e0b08ab4ecb69ad92b1c` | `python3 tool/test_vpn_config_template.py` | `IndexError` en línea 512; log `01-vpn-guard-before.log`. |
+| `d303ec8252ff622241bf0033c0f4b3e82e5a6540` y posteriores | `python3 tool/test_vpn_config_template.py` | Todos los guards PASS; sigue siendo inspección de fuente. |
+| Clases de `7acedb5437b843240e1e7c77e6ec6a235c4db4cd` | Comando Kotlin completo bajo esta tabla | Kotlin 2.2.20, JRE 17.0.9+9, exit 0, JAR real de 12 KiB; **no** APK/JNI ni ejecución de JUnit. |
+| `45be3a80d8ff0008b814e299e926389fd5403556` | `/home/user/.cache/aura-closeout-venv/bin/python -m pytest -q -rs` | **118 passed, 8 skipped, 124 subtests passed in 6.74s**; ocho AAB requieren javac. Log `12-pytest-45be3a8.log`. |
+| `dce217bbecdad54aeafb715f109498e8ab5be149` | `python -m pytest -q tool/test_release_signing_policy.py` | **12 passed**; YAML `android-build` parseado y JDK/targets/DEBUG comprobados. No ejecuta Codemagic. |
+| `b3a3bfb2b33b073390c6b6cc4d6cbfb121b4a79a` | `python3 -m py_compile tool/device_socks5_probe.py`; `python3 tool/device_socks5_probe.py --help` | Exit 0. Solo sintaxis/CLI: **no se ejecutó el probe en teléfono**. |
+| Asset sin cambios | Inspección JSON + SHA-256 con Python | **3.0.0, 500 árboles, 6 campos**, digest `d190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2`. No son métricas ML. |
+| `cfbbfbe9db12207e7a54b7b15e350f4f406c5d0a` | `python3 tool/test_vpn_config_template.py`; `git diff --check` | PASS / exit 0 después del cambio FileDescriptor; Android pendiente de siguiente run. |
 
-## 5. Límites de seguridad y afirmaciones permitidas
+Comando exacto de la compilación Kotlin pura (cinco clases reales, sin Android):
 
-- RFC 1929 no cifra el transporte. Aquí limita el listener SOCKS5 de loopback al secreto efímero; no protege frente a root, un proceso comprometido o extracción de memoria.
-- El secreto existe en memoria Kotlin/JNI y en el YAML privado durante el ciclo del túnel. La limpieza es de mejor esfuerzo; ni sobrescritura de arrays ni `File.delete()` garantizan borrado forense del heap, allocator o almacenamiento.
-- El parser SNI no descifra TLS. ECH puede ocultar el nombre interior; DoH, QUIC/DoQ, protocolos no observables, fragmentos y resolvedores externos limitan la cobertura. Reglas cargadas o contadores no son prueba de tráfico bloqueado.
-- La comprobación del estado local, el handshake, las pruebas estáticas y los harnesses C **no autorizan** afirmar “VPN activa/funcional”, “forwarding confirmado”, “sin fugas” o “tráfico inspeccionado” sin una compilación del SHA y observación en dispositivo.
-- `codemagic.yaml` selecciona modo de artefacto DEBUG para pruebas (`AURA_REQUIRE_RELEASE_SIGNING=false`). No se han usado credenciales de producción ni generado un APK/AAB en esta sesión. Ese artefacto no se debe distribuir.
+```bash
+export JAVA_HOME="$(/home/user/.cache/aura-closeout-venv/bin/python -c 'import jdk4py; print(jdk4py.JAVA_HOME)')"
+/home/user/.cache/aura-kotlin/package/bin/kotlinc -jvm-target 17 \
+  -d tool/reports/android-closeout/vpn-core.jar \
+  android/app/src/main/kotlin/com/ciberdefensa/aura/{VpnRecoveryGate,VpnLifecycleGate,VpnStartRequestGate,AuraSocks5Credentials,Socks5AuthProtocol}.kt
+```
 
-## 6. Cierre y siguientes pasos necesarios
+La suite incluye pruebas C reales que compilan filtros de host con GCC y pruebas
+de decisiones del script de firma con herramientas sustitutas **preexistentes**.
+Estas últimas son tests aislados del flujo shell: **no verifican la firma de un
+APK real**, ni se usan como evidencia de integración. No se introdujeron mocks
+que sustituyan funciones de producción. Las ocho pruebas AAB usan JARs firmados
+realmente, pero faltan en el resultado local por ausencia de javac.
 
-**Estado: cambios de ciclo de vida preparados en la rama Arena; revisión técnica y release aún abiertos.** Para cerrar:
+## 6. Auditorías de alcance, sin refactor especulativo
 
-1. Ejecutar sobre el commit candidato Flutter `pub get`, `flutter analyze`, toda la suite `flutter test`, las regresiones Python y los cuatro tests JVM; compilar APK Debug con Flutter/Gradle y NDK. Conservar logs del SHA exacto y corregir cualquier fallo sin reducir aserciones.
-2. Ejecutar o inspeccionar una nueva corrida del pipeline ML con dataset real, manifiesto, splits, métricas holdout y logs de entrenamiento. Si el candidato no pasa gates, no publicarlo ni alterar los umbrales para obtener verde.
-3. Obtener la excepción completa del Codemagic fallido del 27 de octubre y confirmar si era el mismo error de imports; ejecutar Codemagic en el commit candidato si el workflow está disponible.
-4. Probar en dispositivo: permiso VPN, inicio/parada/revocación, pérdida y recuperación de red, cambio Wi‑Fi/datos, aislamiento, SOCKS5, DNS y tráfico TCP/UDP IPv4/IPv6 mediante destinos controlados. Registrar fugas y estado JNI/TUN observado, no solo la UI.
-5. Ejecutar SecureVault v9→v10 y pruebas de firma AAB/APK con JDK/Android SDK; para distribución, configurar firma de producción en el almacén seguro y verificar certificado/SHA. Nunca publicar un fallback DEBUG.
+### VPN / C / JNI
 
-No se declara que la tarea esté “terminada”, que se haya generado un APK instalable o que Aura VPN esté validada hasta que esas evidencias existan.
+Inspección: el YAML privado comparte credenciales efímeras con el cliente y el
+listener HEV; Android exige RFC 1929, no NONE; el worker verifica readiness antes
+de anunciar arranque. El listener limita sesiones a 64 y espera de handshake a
+5 s por E/S. JNI conserva `thread_joinable` si falla `pthread_join`, libera datos
+de arranque en errores y limpia credenciales nativas al terminar; Kotlin retiene
+estado de cierre no confirmado y desregistra callbacks en destrucción.
 
+**No demostrado:** transporte TUN extremo a extremo, parada de todos los sockets/
+workers en hardware, TCP/UDP/DNS/IPv4/IPv6 reales y ausencia de fugas. La política
+`udp: 'tcp'`, fragmentación y cadenas IPv6 no inspeccionables requieren medidas
+reales de compatibilidad. SNI no descifra ECH; listas DNS/IP/puertos no son bloqueo
+universal de DoH o QUIC. No se atribuye protección a contenido cifrado invisible.
 
-## Correcciones adicionales de recuperación VPN y política ADB — 2026-11-08
+Se añadió [ANDROID_TRAFFIC_VALIDATION.md](docs/ANDROID_TRAFFIC_VALIDATION.md) y
+`tool/device_socks5_probe.py`: probe contra **HEV real** con autenticación,
+CONNECT, TLS válido y digest independiente; no imprime secretos ni necesita root.
+El protocolo incluye tráfico desde una app normal, fallo real por reserva de
+puerto, reactivación sin stopShield, callback de la misma red, aislamiento y ciclos.
+**Todos esos casos permanecen pendientes de dispositivo.**
 
-### Recuperación de forwarding sobre la interfaz TUN retenida
+### IA y pipeline histórico
 
-Se corrigió el caso que dejaba el servicio sin forwarding después de un handover fallido:
+Se separan: ML local 3.0.0 (seis campos), reglas concretas, heurísticas y parser
+de intenciones por reglas (**no LLM**). Assets/modelo no se modificaron. No se
+promueve 3.1.0 ni se inventan métricas, datasets o evaluaciones independientes.
 
-- Se añadió un gate atómico independiente `recoveryRequested` para serializar solicitudes de recuperación y evitar reinicios nativos duplicados.
-- Si el usuario vuelve a activar Aura y Android conserva la interfaz TUN pero el forwarding está detenido, `onStartCommand` solicita recuperación sobre esa misma interfaz en lugar de establecer una segunda TUN.
-- Una notificación posterior de la misma red física también puede volver a solicitar recuperación cuando el forwarding sigue inactivo.
-- El ID de solicitud de inicio se propaga a la recuperación y a su respuesta, para conservar la correlación del canal Flutter.
-- `startRequested` ahora representa el arranque inicial en curso: se libera cuando el inicio o la reanudación concluyen, y tras un fallo de recuperación. El estado activo se determina por `tunnelStarted` y la verificación del worker, no por mantener ese gate ocupado.
-- La recuperación exige que el monitor de red siga registrado y que exista una red física seleccionada; no informa forwarding activo si no puede confirmar el worker y el handshake SOCKS5.
+Del run [40599010820](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/40599010820),
+SHA `41f4a77e6390278fb4098a6405880dffa7b69ded`, la API confirma que el 27-oct falló
+`Train model and write held-out metrics` y después golden tests; benchmark
+omitido. `gh run view 40599010820 --repo liendomaho-wq/Aura-V1.0 --log-failed` **no descargó el log** (EOF en
+results-receiver). La anotación solo contiene `Process completed with exit code 1`.
+**La causa precisa sigue desconocida; no se opina sobre ella sin el log real.**
+El propietario debe descargar y facilitar el log de ese paso, redactando secretos.
+Un nuevo entrenamiento no sustituye la evidencia del fallo histórico.
 
-Se añadieron guards estáticos para el gate single-flight, el reintento sobre la misma red, la reactivación explícita con TUN retenida y la liberación de `startRequested`. Los guards no han sido ejecutados en este entorno y no sustituyen los tests JVM ni el handover real en Android.
+No existe aquí dataset externo verificable ni una evaluación independiente del
+modelo activo. Un candidato que pase CI no queda automáticamente aprobado.
 
-### Depuración USB como señal informativa
+### SecureVault y formatos
 
-`ADB_ENABLED` se conserva como dato de diagnóstico, pero ya no forma parte de `integrityFailed`. Tener depuración USB activada no demuestra por sí solo que el APK esté manipulado y no debe apagar la VPN de un usuario que utiliza ADB legítimamente. Se mantienen como condiciones de integridad el certificado permitido, la inspección de mapas, la detección de Frida/Gadget y el depurador adjunto en builds no debug. Se añadió un guard estático para evitar que ADB vuelva a convertirse accidentalmente en bloqueo.
+`lib/secure_vault.dart` mantiene v9→v10, backup y `resetOnError=false`; conserva
+secretos inválidos para evitar pérdida silenciosa. v10 usa RSA-OAEP/AES-GCM del
+plugin. Los tests Robolectric siembran EncryptedSharedPreferences v9 con
+AES256-SIV/AES256-GCM y verifican lectura v10 y backup interrumpido: ejecución
+Android pendiente, no prueba de Keystore físico.
 
-### Commits de esta corrección
+No confundir con el sobre de modelo v2: **AES-256-CBC + HMAC**. El código valida
+estructura/tamaños y etiqueta antes de descifrar, incluida la ruta JNI. El JSON
+empaquetado tiene digest y firma **RSA-2048 PKCS#1 v1.5/SHA-256** separados.
+Validación de firma del modelo y firma del APK son contratos distintos.
+No se alteraron algoritmos, claves, datos ni formatos para hacer pasar tests.
 
-- `025a4e8`: recuperación single-flight y reintento del forwarding sobre TUN retenida.
-- `1b7e9b7` y `fc6295b`: guards de regresión y corrección de sus patrones.
-- `9a2b7f3`: ADB como señal informativa.
-- `e4c0428`: guard de política ADB.
+**Observación sin cambio autorizado:** BiometricPrompt no usa CryptoObject; es
+puerta de UI, no autorización criptográfica de cada lectura. Documentado en
+SECURITY.md/README; no se cambió sin autorización ni migración diseñada.
 
-### Bloqueos que siguen abiertos
+### Android y compatibilidad
 
-- No hay ejecución CI sobre esta rama. La auditoría anterior documenta GitHub Actions deshabilitado; no hay evidencia de que se haya habilitado desde entonces.
-- No se ha ejecutado Codemagic sobre estos commits; no existe APK de este HEAD ni resultado de compilación Android.
-- Los guards Python añadidos/modificados, Flutter analyze/tests, Gradle/JVM, NDK y las pruebas nativas siguen pendientes de ejecución.
-- El vínculo criptográfico entre biometría y clave de SecureVault sigue pendiente. El `BiometricPrompt` actual devuelve éxito de autenticación para desbloquear la interfaz y no usa `CryptoObject`; no se debe presentar como protección biométrica de la clave de cifrado.
-- El pipeline del modelo sigue sin una nueva ejecución verificable ni métricas holdout. No se promocionó el candidato 3.1.0.
-- La cancelación cooperativa/progreso nativo del escáner APK/DEX y la validación del planificador del agente siguen pendientes.
-- El modo de firma de producción, el keystore/credenciales, la verificación de APK/AAB reales y la matriz física en Redmi Note 15 Pro Plus 5G / Android 16 siguen pendientes.
+Inventario, provenance, permisos y AppOps están limitados por APIs públicas,
+visibilidad y concesiones reales. Declarar un permiso no demuestra uso activo;
+los estados desconocidos se conservan como tales. No se añadió ejecución root,
+Shizuku, Superuser ni capacidad de aislamiento arbitrario de otras apps.
 
-**Dictamen actualizado:** la recuperación manual y automática sobre TUN retenida tiene una corrección de código y guards añadidos, pero no está validada por ejecución. Aura continúa **no lista para release** hasta que CI, Codemagic, firma y pruebas en dispositivo aporten evidencia sobre el SHA exacto.
+Contrato declarado: minSdk 24 → target/compileSdk 36 (Android 16), JDK 17,
+Gradle 8.14.3, AGP 8.13.0, Kotlin 2.2.20, NDK 28.2.13676358 y cuatro ABIs.
+**Configuración no equivale a compatibilidad universal.** Redmi Note 15 Pro Plus
+5G/8 GB/Android 16 y versiones intermedias/API 24 necesitan validación física.
 
+## 7. Codemagic y acciones exactas del propietario
 
-### Revisión de concurrencia de recuperación — 2026-11-08
+`codemagic.yaml` define **`android-build`**, nombre Aura Android Release Pipeline,
+Flutter stable, Java 17, mac_mini_m2. Se conserva el arreglo `ce82a4918d424c10e03234dfb29d1626be7efd79`: patrones
+`main`/`principal` con **`source: false`** para PRs destino. `dce217bbecdad54aeafb715f109498e8ab5be149` exige formato,
+pytest completo y tests de recuperación/migración. Por defecto:
+`AURA_REQUIRE_RELEASE_SIGNING=false`, artefacto **DEBUG de prueba, NO DISTRIBUIR**.
 
-Una segunda revisión del helper single-flight detectó que el gate no debía rechazar `tunnelStarted == true`: durante un handover normal el worker está activo, pero sus sockets upstream pertenecen a la red física anterior y deben reiniciarse. Se corrigió para que:
+Arena informó que no ofrece conector Codemagic; no hay sesión/API/build real
+accesible en este trabajo. **No se afirma ejecución ni éxito de Codemagic.**
+El propietario debe:
 
-- un cambio real de red física pueda reiniciar el worker incluso si el túnel estaba activo;
-- el reintento sobre la misma red solo ocurra cuando el forwarding esté detenido;
-- aislamiento de emergencia y destrucción sigan bloqueando la recuperación;
-- el gate atómico impida que dos callbacks ejecuten reinicios simultáneos.
+1. Abrir la app correcta en Codemagic y elegir el workflow `android-build` sobre
+   el SHA final de `arena/063013fc-aura-v1-0` / PR #11, no un main distinto.
+2. Verificar que el grupo `production_keys` declarado existe; los valores se
+   configuran solo en su almacén seguro. El comentario antiguo que garantizaba
+   que un grupo ausente no fallaría se retiró por no estar verificado.
+3. Revisar **Webhooks → Recent Deliveries**: repo correcto, evento PR/push,
+   destino main, head/SHA correctos, respuesta HTTP y mensaje de rechazo si lo
+   hubo. Un 2xx no prueba que un build haya terminado. Si no hay entrega/build,
+   lanzar manualmente y conservar el enlace y logs completos.
+4. Comprobar toolchain, formato, análisis, tests sin omisiones AAB, migración,
+   JNI, APK y su hash; comparar el SHA real del build antes de instalar.
+5. Proporcionar dispositivo autorizado y servidor controlado para la matriz de
+   tráfico; no se puede reemplazar ese acceso desde este sandbox.
 
-Se añadió un guard que falla si el helper vuelve a descartar una recuperación únicamente porque `tunnelStarted` está activo.
+Actions sí está ejecutando en esta revisión. Solo si vuelve a responder
+`Actions has been disabled for this repository`, el propietario debe ir a
+**Settings → Actions → General → Allow all actions** y ejecutar manualmente
+**Aura Flutter Quality** y **Aura Android Debug Build** sobre esta rama. No se
+solicitan contraseñas, tokens, 2FA ni secretos en chat.
 
-Commits adicionales:
-- `2fff4bb`: permite recuperar el worker activo después de un handover.
-- `e395f55`: añade regresión para handovers con worker previamente activo.
+## 8. Criterios de terminado (situación antes del siguiente run)
 
-La corrección continúa pendiente de ejecución de los workflows sobre el SHA final y de pruebas de handover en Android real.
+- [ ] `flutter analyze` limpio en el SHA final.
+- [ ] `flutter test` en el SHA final.
+- [ ] pytest completo con **cero AAB omitidos en CI**.
+- [ ] JVM: credenciales, RFC 1929, ciclo de vida, correlación, recuperación y migración.
+- [ ] C/JNI compilado por NDK para el candidato.
+- [ ] APK debug generado desde el SHA final, publicado y con SHA-256.
+- [ ] APK instalado en dispositivo real — requiere propietario.
+- [ ] VPN inicia/detiene y libera recursos en hardware.
+- [ ] SOCKS5 autenticado conectado al forwarding TUN real.
+- [ ] TCP/UDP/DNS/IPv4/IPv6 y fugas.
+- [ ] Cambio de red y reactivación tras fallo, incluido callback de la misma red.
+- [ ] IA con dataset/métricas reproducibles y evaluación independiente.
+- [ ] SecureVault/migración preserva datos en hardware y suites requeridas.
+- [x] Compatibilidad **documentada con límites**, no certificada universalmente.
+- [x] README de producto/ingeniería y auditoría interna separados y actualizados.
+
+No hay APK ni SHA-256 de APK atribuible aún a esta revisión. **Funciones
+verificadas en dispositivo: ninguna.** No hacer merge, publicar ni declarar Aura
+terminada mientras los criterios pendientes no tengan evidencia del SHA correcto.
