@@ -19,6 +19,8 @@ import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.content.pm.PackageInfo
 import android.content.pm.ApplicationInfo
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
@@ -125,7 +127,6 @@ class MainActivity: FlutterFragmentActivity() {
         const val VOICE_REQUEST = 1082
         const val VOICE_PERMISSION_REQUEST = 1083
         const val NOTIFICATION_PERMISSION_REQUEST = 1084
-        const val AURA_CONFIRM_CREDENTIAL_REQUEST = 4711
     }
 
     private val SHIELD_CHANNEL = "com.ciberdefensa.aura/shield"
@@ -147,7 +148,9 @@ class MainActivity: FlutterFragmentActivity() {
     private val shieldStartHandler = Handler(Looper.getMainLooper())
     private var shieldStartTimeout: Runnable? = null
     private var pendingVoiceResult: MethodChannel.Result? = null
-    private var pendingCredentialResult: MethodChannel.Result? = null
+    private val localAuthRequests = LocalAuthRequestGate<MethodChannel.Result>()
+    private var biometricPrompt: BiometricPrompt? = null
+    private var credentialLauncher: ActivityResultLauncher<Intent>? = null
     private var pendingNotificationResult: MethodChannel.Result? = null
     private var pendingNotificationPayload: Pair<String, String>? = null
     private var vpnReceiverRegistered = false
@@ -1045,11 +1048,6 @@ class MainActivity: FlutterFragmentActivity() {
                 pendingVoiceResult?.success(transcript)
                 pendingVoiceResult = null
             }
-
-            AURA_CONFIRM_CREDENTIAL_REQUEST -> {
-                pendingCredentialResult?.success(resultCode == RESULT_OK)
-                pendingCredentialResult = null
-            }
         }
     }
 
@@ -1221,37 +1219,66 @@ class MainActivity: FlutterFragmentActivity() {
         }
     }
 
-    private fun authenticateFingerprint(result: MethodChannel.Result) {
-        val manager = BiometricManager.from(this)
-        if (manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) !=
-            BiometricManager.BIOMETRIC_SUCCESS
-        ) {
-            result.success(false)
-            return
+    private fun beginLocalAuthentication(
+        result: MethodChannel.Result,
+    ): LocalAuthRequestGate.Ticket<MethodChannel.Result>? {
+        val ticket = localAuthRequests.begin(result)
+        if (ticket == null) {
+            result.error("AUTH_IN_PROGRESS", "Ya hay una autenticación en curso o la Activity está cerrada.", null)
         }
+        return ticket
+    }
 
-        val prompt = BiometricPrompt(
-            this,
-            ContextCompat.getMainExecutor(this),
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(
-                    authenticationResult: BiometricPrompt.AuthenticationResult,
-                ) {
-                    result.success(true)
-                }
+    private fun completeLocalAuthentication(
+        ticket: LocalAuthRequestGate.Ticket<MethodChannel.Result>,
+        authenticated: Boolean,
+    ) {
+        val result = localAuthRequests.complete(ticket) ?: return
+        biometricPrompt = null
+        credentialLauncher?.unregister()
+        credentialLauncher = null
+        result.success(authenticated)
+    }
 
-                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    result.success(false)
-                }
-            },
-        )
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Desbloquear Aura Mobile Defens")
-            .setSubtitle("Autentique su huella para abrir la consola")
-            .setNegativeButtonText("Cancelar")
-            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-            .build()
-        prompt.authenticate(promptInfo)
+    private fun authenticateFingerprint(result: MethodChannel.Result) {
+        val ticket = beginLocalAuthentication(result) ?: return
+        try {
+            val manager = BiometricManager.from(this)
+            if (manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) !=
+                BiometricManager.BIOMETRIC_SUCCESS
+            ) {
+                completeLocalAuthentication(ticket, false)
+                return
+            }
+            val prompt = BiometricPrompt(
+                this,
+                ContextCompat.getMainExecutor(this),
+                object : BiometricPrompt.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(
+                        authenticationResult: BiometricPrompt.AuthenticationResult,
+                    ) {
+                        // UI authentication only. Do not pretend this binds
+                        // existing vault material to a CryptoObject.
+                        completeLocalAuthentication(ticket, true)
+                    }
+
+                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                        completeLocalAuthentication(ticket, false)
+                    }
+                },
+            )
+            biometricPrompt = prompt
+            val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                .setTitle("Desbloquear Aura Mobile Defens")
+                .setSubtitle("Autentique su huella para abrir la consola")
+                .setNegativeButtonText("Cancelar")
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                .build()
+            prompt.authenticate(promptInfo)
+        } catch (exception: Exception) {
+            android.util.Log.e("AuraAuth", "No se pudo abrir la autenticación biométrica.", exception)
+            completeLocalAuthentication(ticket, false)
+        }
     }
 
     private fun getLocalAuthStatus(result: MethodChannel.Result) {
@@ -1268,20 +1295,38 @@ class MainActivity: FlutterFragmentActivity() {
         )
     }
 
-    // API obsoleta desde Android 10, pero compatible con el mínimo Android 7.
+    // Retain the platform credential screen for minSdk 24. A unique registry
+    // key and ticket prevent a late/recreated Activity result unlocking a newer
+    // request, unlike one shared onActivityResult request code.
     @Suppress("DEPRECATION")
     private fun authenticateWithDeviceCredential(result: MethodChannel.Result) {
-        val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-        if (!keyguardManager.isDeviceSecure) {
-            result.success(false)
-            return
+        val ticket = beginLocalAuthentication(result) ?: return
+        try {
+            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+            if (!keyguardManager.isDeviceSecure) {
+                completeLocalAuthentication(ticket, false)
+                return
+            }
+            val intent = keyguardManager.createConfirmDeviceCredentialIntent(
+                "Desbloquear Aura Mobile Defens",
+                "Confirme el bloqueo del teléfono para abrir la consola",
+            )
+            if (intent == null) {
+                completeLocalAuthentication(ticket, false)
+                return
+            }
+            val launcher = activityResultRegistry.register(
+                "aura-credential-${UUID.randomUUID()}",
+                ActivityResultContracts.StartActivityForResult(),
+            ) { outcome ->
+                completeLocalAuthentication(ticket, outcome.resultCode == RESULT_OK)
+            }
+            credentialLauncher = launcher
+            launcher.launch(intent)
+        } catch (exception: Exception) {
+            android.util.Log.e("AuraAuth", "No se pudo abrir el bloqueo del teléfono.", exception)
+            completeLocalAuthentication(ticket, false)
         }
-        pendingCredentialResult = result
-        val intent = keyguardManager.createConfirmDeviceCredentialIntent(
-            "Desbloquear Aura Mobile Defens",
-            "Confirme el bloqueo del teléfono para abrir la consola",
-        )
-        startActivityForResult(intent, AURA_CONFIRM_CREDENTIAL_REQUEST)
     }
 
     private fun openSecuritySettings(result: MethodChannel.Result) {
@@ -1307,6 +1352,13 @@ class MainActivity: FlutterFragmentActivity() {
     }
 
     override fun onDestroy() {
+        // Close ownership before cancelAuthentication can issue a late callback.
+        val pendingAuthentication = localAuthRequests.close()
+        biometricPrompt?.cancelAuthentication()
+        biometricPrompt = null
+        credentialLauncher?.unregister()
+        credentialLauncher = null
+        pendingAuthentication?.success(false)
         genomeScannerExecutor.shutdownNow()
         blocklistExecutor.shutdownNow()
         if (vpnReceiverRegistered) {
