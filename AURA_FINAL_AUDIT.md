@@ -26,6 +26,8 @@ La API de GitHub confirma `main` en `77617f32a016608e3869fd7144e153005c9e3b38`. 
 
 La PR #9 está fusionada en `main`. En la última consulta permanecían abiertas la #8 (conflictiva), la #4 (draft/conflictiva) y la #1 (conflictiva); no se integró ninguna alternativa de proxy de esas PRs. No se deben combinar dos relays VPN sin reconciliar sus diffs y pruebas.
 
+La PR de esta pasada es la [#10](https://github.com/liendomaho-wq/Aura-V1.0/pull/10). Su `statusCheckRollup` está vacío. Se intentó despachar manualmente `Aura Android Debug Build`, `Aura Flutter Quality`, `Aura Model Dataset, Training and Benchmark` y `Release signing integrity`; GitHub rechazó las cuatro solicitudes con HTTP 422: **“Actions has been disabled for this repository.”** Por tanto, no hay validación remota del commit de la PR. No se intentó el workflow de release firmado con credenciales de producción. Rehabilitar Actions requiere un cambio de configuración del repositorio fuera de este checkout.
+
 ### Fallo del build Android del 27 de octubre
 
 - En el commit `41f4a77e6390278fb4098a6405880dffa7b69ded`, el workflow Android llegó a `Build debug APK including native tunnel` y falló; el validador de configuración VPN anterior pasó.
@@ -99,7 +101,8 @@ En `docs/RELEASE_AND_DEVICE_VALIDATION.md`:
 | `bash -n` sobre scripts de build/setup | **Pass** | Sintaxis Bash; no ejecuta Flutter, Gradle ni NDK. |
 | `git diff --check` | **Pass** | Sin errores de whitespace en el diff actual. |
 | Flutter/Dart, Gradle/JVM/Robolectric, APK/AAB, NDK | **No ejecutados** | No están instalados `flutter`, `dart`, Java/JDK, Gradle, Android SDK/NDK, `clang` ni `sdkmanager`; `ANDROID_HOME`, `ANDROID_SDK_ROOT` y `JAVA_HOME` están vacíos. |
-| Codemagic / GitHub CI para `77617f3` | **Sin evidencia actual** | No hay check-runs en ese SHA. Los resultados anteriores corresponden a otros commits. |
+| GitHub Actions para la PR #10 / commit candidato | **No ejecutado: Actions deshabilitado** | La PR no tiene checks; los cuatro `workflow_dispatch` devolvieron HTTP 422 `Actions has been disabled for this repository`. Tampoco aparece un check nuevo de Codemagic en la PR. |
+| GitHub CI para `77617f3` | **Sin evidencia actual** | No hay check-runs en ese SHA. Los resultados anteriores corresponden a otros commits. |
 | Redmi Note 15 Pro Plus 5G / Android 16, túnel y tráfico real | **No ejecutados** | No hubo dispositivo conectado ni evidencia de TCP, UDP, DNS, IPv4/IPv6, handover, aislamiento o ausencia de fugas. |
 
 ## 5. Límites de seguridad y afirmaciones permitidas
