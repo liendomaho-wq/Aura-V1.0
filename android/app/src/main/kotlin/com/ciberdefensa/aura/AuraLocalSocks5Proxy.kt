@@ -71,7 +71,9 @@ internal class AuraLocalSocks5Proxy(
 
     @Synchronized
     fun stop() {
-        if (!running.getAndSet(false)) return
+        // Cleanup is deliberately idempotent: the accept loop may already have
+        // exited after an I/O failure while worker or relay sockets still exist.
+        running.set(false)
         try { listener?.close() } catch (_: Exception) { }
         listener = null
         clients.toList().forEach { try { it.close() } catch (_: Exception) { } }
