@@ -52,6 +52,11 @@ struct _HevSocks5
     unsigned int type : 2;
     unsigned int udp_associated : 1;
     HevSocks5AddrFamily addr_family;
+
+    /* Optional server-only observer. No change to packet forwarding semantics. */
+    void (*traffic_observer) (HevSocks5 *self, int event,
+                              const struct sockaddr *peer, socklen_t peer_len,
+                              size_t delivered_payload_bytes);
 };
 
 struct _HevSocks5Class

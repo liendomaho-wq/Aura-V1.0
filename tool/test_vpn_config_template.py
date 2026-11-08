@@ -108,7 +108,10 @@ if not shield_status or any(
     for required in (
         "TProxyService.TProxyIsRunning()",
         "fileDescriptor?.valid()",
-        '"status_verified" to (nativeRunning != null && !service.serviceShuttingDown)',
+        '"status_verified" to (nativeRunning != null && egressObserved != null &&',
+        '"forwarding_ready" to forwardingReady',
+        '"forwarding_active" to (forwardingReady && egressObserved == true)',
+        "TProxyService.TProxyHasRecentEgress()",
         "nativeRunning == true",
         "!service.serviceShuttingDown",
     )
@@ -126,6 +129,21 @@ if any(
 ):
     sys.exit("FAIL: VPN UI must refresh verified status and distinguish unknown forwarding")
 print("PASS: VPN status requires a live native worker and is refreshed in the console.")
+
+# Readiness and recent remote payload are distinct. The source guard only
+# verifies wiring; actual kernel/socket and Android traffic tests are separate.
+if any(required not in text for required in (
+    '"forwarding_active" to (forwardingReady && egressObserved == true)',
+    'if (started && shieldStatus()["forwarding_active"] != true)',
+    'pendingForwardingRequestId = requestId',
+    'requestId == latestForwardingRequestId',
+    'integrityMonitor.scheduleWithFixedDelay(',
+    '{ checkForwardingHealth() }, 1, 2, TimeUnit.SECONDS',
+    '"Motor listo · sin salida bidireccional reciente observada"',
+)):
+    sys.exit("FAIL: readiness must not acknowledge active forwarding without observed egress")
+print("PASS: ready/observed egress are distinct and worker-loss monitoring is installed.")
+
 
 # Static integration guards complement the executable Kotlin gate tests; they
 # cannot simulate Android broadcast ordering, permissions or service lifecycle.
@@ -637,7 +655,7 @@ start_command = re.search(
 )
 if not start_command or (
     "shouldRetryTunnelRecovery()" not in start_command.group(1)
-    or 'shieldStatus()["forwarding_active"] == true' not in start_command.group(1)
+    or 'shieldStatus()["forwarding_ready"] == true' not in start_command.group(1)
     or "requestTunnelRecovery(requestId)" not in start_command.group(1)
 ):
     sys.exit("FAIL: explicit VPN activation must recover forwarding on the retained TUN")
@@ -663,7 +681,7 @@ if not retry_policy or any(part not in retry_policy.group(1) for part in (
     "recoveryGate.canRetryRetainedTunnel(",
     "hasValidInterface = vpnInterface?.fileDescriptor?.valid() == true",
     "panicIsolationActive = panicIsolationActive",
-    'forwardingVerified = shieldStatus()["forwarding_active"] == true',
+    'forwardingVerified = shieldStatus()["forwarding_ready"] == true',
     "startInProgress = startRequested.get()",
     "closing = serviceShuttingDown || worker.isShutdown",
 )):

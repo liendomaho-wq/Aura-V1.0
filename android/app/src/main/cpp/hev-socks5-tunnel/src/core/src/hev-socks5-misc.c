@@ -43,6 +43,9 @@ hev_socks5_task_io_yielder (HevTaskYieldType type, void *data)
 {
     HevSocks5 *self = data;
 
+    if (self->traffic_observer)
+        self->traffic_observer (self, 0, NULL, 0, 0);
+
     if (type == HEV_TASK_YIELD) {
         hev_task_yield (HEV_TASK_YIELD);
         return 0;

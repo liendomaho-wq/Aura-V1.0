@@ -382,6 +382,12 @@ hev_socks5_udp_fwd_f (HevSocks5UDP *self, int fd, void *buf, unsigned int num,
 
         res = hev_task_io_socket_sendmmsg (fd, dvec, res, MSG_WAITALL,
                                            task_io_yielder, self);
+        if (HEV_SOCKS5 (self)->traffic_observer) {
+            for (i = 0; i < res; i++)
+                HEV_SOCKS5 (self)->traffic_observer (
+                    HEV_SOCKS5 (self), 1, dvec[i].msg_hdr.msg_name,
+                    dvec[i].msg_hdr.msg_namelen, dvec[i].msg_len);
+        }
     }
     if (res <= 0) {
         if (res == -1 && errno == EAGAIN)
@@ -413,6 +419,12 @@ hev_socks5_udp_fwd_b (HevSocks5UDP *self, int fd, struct mmsghdr *svec,
                                             svec[i].msg_hdr.msg_name);
         }
         res = hev_socks5_udp_sendmmsg (self, dvec, res);
+        if (HEV_SOCKS5 (self)->traffic_observer) {
+            for (i = 0; i < res; i++)
+                HEV_SOCKS5 (self)->traffic_observer (
+                    HEV_SOCKS5 (self), 2, svec[i].msg_hdr.msg_name,
+                    svec[i].msg_hdr.msg_namelen, svec[i].msg_len);
+        }
     }
     if (res <= 0) {
         if (res == -1 && errno == EAGAIN)

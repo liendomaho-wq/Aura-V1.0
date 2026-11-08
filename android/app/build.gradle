@@ -248,6 +248,8 @@ tasks.register("buildHevSocks5Tunnel", Exec) {
         file("src/main/cpp/aura_crypto_secure.c"),
         file("src/main/cpp/aura_sni_firewall.c"),
         file("src/main/cpp/aura_sni_firewall.h"),
+        file("src/main/cpp/aura_forwarding_health.c"),
+        file("src/main/cpp/aura_forwarding_health.h"),
     )
     outputs.dir(hevJniLibsDir)
 

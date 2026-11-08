@@ -22,6 +22,7 @@
 #include "hev-main.h"
 #include "hev-socks5-tunnel.h"
 #include "aura_sni_firewall.h"
+#include "aura_forwarding_health.h"
 
 #include "hev-jni.h"
 
@@ -47,6 +48,7 @@ struct _ThreadData
 };
 
 static atomic_int is_running;
+static atomic_uint worker_generation;
 static int thread_joinable;
 static JavaVM *java_vm;
 static jclass tproxy_class;
@@ -63,6 +65,8 @@ static jboolean native_start_service (JNIEnv *env, jobject thiz,
                                       jstring conig_path, jint fd);
 static jboolean native_stop_service (JNIEnv *env, jobject thiz);
 static jboolean native_is_running (JNIEnv *env, jobject thiz);
+static jboolean native_has_recent_egress (JNIEnv *env, jobject thiz);
+static jlong native_worker_generation (JNIEnv *env, jobject thiz);
 static jboolean native_is_domain_blocked (JNIEnv *env, jobject thiz,
                                          jstring domain);
 static jlongArray native_get_stats (JNIEnv *env, jobject thiz);
@@ -80,6 +84,8 @@ static JNINativeMethod native_methods[] = {
       (void *)native_start_service },
     { "TProxyStopService", "()Z", (void *)native_stop_service },
     { "TProxyIsRunning", "()Z", (void *)native_is_running },
+    { "TProxyHasRecentEgress", "()Z", (void *)native_has_recent_egress },
+    { "TProxyWorkerGeneration", "()J", (void *)native_worker_generation },
         { "TProxyIsDomainBlocked", "(Ljava/lang/String;)Z",
             (void *)native_is_domain_blocked },
     { "TProxyGetStats", "()[J", (void *)native_get_stats },
@@ -98,48 +104,79 @@ detach_current_thread (void *env)
     (*java_vm)->DetachCurrentThread (java_vm);
 }
 
-jint
+JNIEXPORT jint JNICALL
 JNI_OnLoad (JavaVM *vm, void *reserved)
 {
     JNIEnv *env = NULL;
-    jclass klass;
-    jint res;
+    jclass klass = NULL;
+    int key_ready = 0;
+    int mutex_ready = 0;
 
-    java_vm = vm;
-    res = (*vm)->GetEnv (vm, (void **)&env, JNI_VERSION_1_4);
-    if (res != JNI_OK)
+    if ((*vm)->GetEnv (vm, (void **)&env, JNI_VERSION_1_4) != JNI_OK)
         return JNI_ERR;
-
     klass = (*env)->FindClass (env, STR (PKGNAME) "/" STR (CLSNAME));
     if (!klass)
-        return JNI_ERR;
+        goto failure;
     tproxy_class = (*env)->NewGlobalRef (env, klass);
+    if (!tproxy_class)
+        goto failure;
     dns_event_method = (*env)->GetStaticMethodID (
         env, klass, "dispatchDnsEvent",
         "(Ljava/lang/String;ILjava/lang/String;I)V");
+    if (!dns_event_method)
+        goto failure;
     sni_event_method = (*env)->GetStaticMethodID (
         env, klass, "dispatchSniEvent",
         "(Ljava/lang/String;Ljava/lang/String;I)V");
+    if (!sni_event_method)
+        goto failure;
     encrypted_dns_event_method = (*env)->GetStaticMethodID (
         env, klass, "dispatchEncryptedDnsEvent",
         "(Ljava/lang/String;ILjava/lang/String;)V");
+    if (!encrypted_dns_event_method)
+        goto failure;
     protect_socket_method = (*env)->GetStaticMethodID (
         env, klass, "protectSocket", "(I)Z");
+    if (!protect_socket_method)
+        goto failure;
     resolve_host_method = (*env)->GetStaticMethodID (
         env, klass, "resolveHostForTunnel",
         "(Ljava/lang/String;)Ljava/lang/String;");
-    res = (*env)->RegisterNatives (env, klass, native_methods,
-                                   N_ELEMENTS (native_methods));
+    if (!resolve_host_method)
+        goto failure;
+
+    if (pthread_key_create (&current_jni_env, detach_current_thread) != 0)
+        goto failure;
+    key_ready = 1;
+    if (pthread_mutex_init (&mutex, NULL) != 0)
+        goto failure;
+    mutex_ready = 1;
+    if ((*env)->RegisterNatives (env, klass, native_methods,
+                                N_ELEMENTS (native_methods)) < 0)
+        goto failure;
     (*env)->DeleteLocalRef (env, klass);
-    if (res < 0 || !tproxy_class || !dns_event_method || !sni_event_method ||
-        !encrypted_dns_event_method || !protect_socket_method ||
-        !resolve_host_method)
-        return JNI_ERR;
-
-    pthread_key_create (&current_jni_env, detach_current_thread);
-    pthread_mutex_init (&mutex, NULL);
-
+    java_vm = vm; /* Publish callbacks only after complete initialization. */
     return JNI_VERSION_1_4;
+
+failure:
+    /* Ref deletion is allowed with a pending JNI exception. Preserve it and
+     * never perform another lookup/registration after a failed JNI operation. */
+    if (mutex_ready)
+        pthread_mutex_destroy (&mutex);
+    if (key_ready)
+        pthread_key_delete (current_jni_env);
+    if (klass)
+        (*env)->DeleteLocalRef (env, klass);
+    if (tproxy_class)
+        (*env)->DeleteGlobalRef (env, tproxy_class);
+    tproxy_class = NULL;
+    dns_event_method = NULL;
+    sni_event_method = NULL;
+    encrypted_dns_event_method = NULL;
+    protect_socket_method = NULL;
+    resolve_host_method = NULL;
+    java_vm = NULL;
+    return JNI_ERR;
 }
 
 int
@@ -402,6 +439,7 @@ native_start_service (JNIEnv *env, jobject thiz, jstring config_path, jint fd)
         goto exit;
     }
 
+    aura_egress_reset ();
     atomic_store_explicit (&is_running, 1, memory_order_release);
     res = pthread_create (&work_thread, NULL, thread_handler, tdata);
     if (res != 0) {
@@ -411,6 +449,7 @@ native_start_service (JNIEnv *env, jobject thiz, jstring config_path, jint fd)
         goto exit;
     }
 
+    atomic_fetch_add_explicit (&worker_generation, 1, memory_order_release);
     thread_joinable = 1;
     result = JNI_TRUE;
 exit:
@@ -450,6 +489,19 @@ native_is_running (JNIEnv *env, jobject thiz)
                                                                       JNI_FALSE;
 }
 
+static jboolean
+native_has_recent_egress (JNIEnv *env, jobject thiz)
+{
+    return atomic_load_explicit (&is_running, memory_order_acquire) &&
+                   aura_egress_recent () ? JNI_TRUE : JNI_FALSE;
+}
+
+static jlong
+native_worker_generation (JNIEnv *env, jobject thiz)
+{
+    return (jlong)atomic_load_explicit (&worker_generation, memory_order_acquire);
+}
+
 static jlongArray
 native_get_stats (JNIEnv *env, jobject thiz)
 {
@@ -464,6 +516,8 @@ native_get_stats (JNIEnv *env, jobject thiz)
     array[3] = rx_bytes;
 
     res = (*env)->NewLongArray (env, 4);
+    if (!res)
+        return NULL; /* Preserve the pending OOM; never pass NULL into JNI. */
     (*env)->SetLongArrayRegion (env, res, 0, 4, array);
 
     return res;

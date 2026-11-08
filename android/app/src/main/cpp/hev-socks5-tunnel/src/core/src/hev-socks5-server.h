@@ -17,6 +17,9 @@
 #include "hev-socks5-udp.h"
 #include "hev-socks5-user.h"
 #include "hev-socks5-authenticator.h"
+#ifdef __ANDROID__
+#include "aura_forwarding_health.h"
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,6 +37,10 @@ struct _HevSocks5Server
     HevSocks5 base;
 
     int fds[2];
+
+#ifdef __ANDROID__
+    AuraEgressObservation egress_observation;
+#endif
 
     union
     {

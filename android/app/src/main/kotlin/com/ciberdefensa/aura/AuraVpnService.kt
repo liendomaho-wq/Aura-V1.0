@@ -83,6 +83,8 @@ class AuraVpnService : VpnService() {
                 "service_active" to false,
                 "vpn_interface_active" to false,
                 "forwarding_active" to false,
+                "forwarding_ready" to false,
+                "egress_observed" to false,
                 "isolation_active" to false,
                 // A failed native stop or TUN close is not proof of shutdown.
                 "status_verified" to lastShutdownConfirmed,
@@ -97,17 +99,30 @@ class AuraVpnService : VpnService() {
                 Log.e("AuraVPN", "El motor VPN nativo no está disponible.", error)
                 null
             }
+            val egressObserved = try {
+                if (nativeRunning == true) TProxyService.TProxyHasRecentEgress() else false
+            } catch (error: Exception) {
+                Log.e("AuraVPN", "No se pudo verificar la salida del tráfico VPN.", error)
+                null
+            } catch (error: LinkageError) {
+                Log.e("AuraVPN", "La evidencia nativa de salida no está disponible.", error)
+                null
+            }
+            val forwardingReady = service.tunnelStarted && interfaceActive &&
+                nativeRunning == true && !service.panicIsolationActive &&
+                !service.serviceShuttingDown
             if (service.tunnelStarted && (!interfaceActive || nativeRunning != true)) {
                 service.scheduleNotificationUpdate()
             }
             return mapOf(
                 "service_active" to true,
                 "vpn_interface_active" to interfaceActive,
-                "forwarding_active" to (service.tunnelStarted && interfaceActive &&
-                    nativeRunning == true && !service.panicIsolationActive &&
-                    !service.serviceShuttingDown),
+                "forwarding_ready" to forwardingReady,
+                "egress_observed" to (egressObserved == true),
+                "forwarding_active" to (forwardingReady && egressObserved == true),
                 "isolation_active" to service.panicIsolationActive,
-                "status_verified" to (nativeRunning != null && !service.serviceShuttingDown),
+                "status_verified" to (nativeRunning != null && egressObserved != null &&
+                    !service.serviceShuttingDown),
             )
         }
 
@@ -170,6 +185,10 @@ class AuraVpnService : VpnService() {
     @Volatile private var panicIsolationActive = false
     @Volatile private var tunnelStarted = false
     @Volatile private var localSocks5Credentials: AuraSocks5Credentials? = null
+    private val forwardingReplyLock = Any()
+    private var latestForwardingRequestId: String? = null
+    private var pendingForwardingRequestId: String? = null
+    @Volatile private var lastObservedForwarding = false
 
     override fun onCreate() {
         super.onCreate()
@@ -188,6 +207,10 @@ class AuraVpnService : VpnService() {
         startId: Int,
     ): Int {
         val requestId = intent?.getStringExtra(EXTRA_START_REQUEST_ID)
+        if (requestId != null) synchronized(forwardingReplyLock) {
+            latestForwardingRequestId = requestId
+            pendingForwardingRequestId = null
+        }
         ensureNotificationChannel()
         val notification = createNotification()
         startForeground(NOTIFICATION_ID, notification)
@@ -211,6 +234,11 @@ class AuraVpnService : VpnService() {
                 30,
                 TimeUnit.SECONDS,
             )
+            // A stopped native worker must not wait for an unrelated network
+            // callback to recover. This shares the bounded integrity executor.
+            integrityMonitor.scheduleWithFixedDelay(
+                { checkForwardingHealth() }, 1, 2, TimeUnit.SECONDS,
+            )
         }
         if (panicIsolationActive) {
             if (vpnInterface == null && startRequested.compareAndSet(false, true)) {
@@ -223,8 +251,8 @@ class AuraVpnService : VpnService() {
             )
             return Service.START_STICKY
         }
-        if (shieldStatus()["forwarding_active"] == true) {
-            reportState(true, "El túnel VPN ya estaba activo.", requestId = requestId)
+        if (shieldStatus()["forwarding_ready"] == true) {
+            reportState(true, "El motor VPN ya está listo; verificando salida reciente.", requestId = requestId)
         } else if (shouldRetryTunnelRecovery()) {
             // A stale tunnelStarted flag is not evidence of a live worker. Reuse
             // the retained valid TUN and verify recovery for this exact request.
@@ -747,7 +775,9 @@ class AuraVpnService : VpnService() {
         recoveryGate.canRetryRetainedTunnel(
             hasValidInterface = vpnInterface?.fileDescriptor?.valid() == true,
             panicIsolationActive = panicIsolationActive,
-            forwardingVerified = shieldStatus()["forwarding_active"] == true,
+            // Idle traffic is not a failed worker. Recovery checks readiness,
+            // while the UI's active state additionally requires recent egress.
+            forwardingVerified = shieldStatus()["forwarding_ready"] == true,
             startInProgress = startRequested.get(),
             closing = serviceShuttingDown || worker.isShutdown,
         )
@@ -1134,12 +1164,61 @@ class AuraVpnService : VpnService() {
         }
     }
 
+    private fun checkForwardingHealth() {
+        if (serviceShuttingDown) return
+        try {
+            val status = shieldStatus()
+            val observed = status["forwarding_active"] == true
+            if (lastObservedForwarding != observed) {
+                lastObservedForwarding = observed
+                scheduleNotificationUpdate()
+            }
+            if (observed) {
+                val requestId = synchronized(forwardingReplyLock) {
+                    pendingForwardingRequestId?.takeIf {
+                        it == latestForwardingRequestId
+                    }?.also { pendingForwardingRequestId = null }
+                }
+                if (requestId != null) {
+                    reportState(
+                        true, "Salida bidireccional observada en la red física.",
+                        requestId = requestId,
+                    )
+                }
+            } else if (tunnelStarted && !panicIsolationActive && underlyingNetwork != null &&
+                status["status_verified"] == true && shouldRetryTunnelRecovery()
+            ) {
+                // RecoveryGate coalesces concurrent callbacks/watchdog ticks.
+                // A failed attempt clears tunnelStarted; do not spin indefinitely.
+                requestTunnelRecovery()
+            }
+        } catch (exception: Exception) {
+            Log.e("AuraVPN", "No se pudo completar la vigilancia del worker VPN.", exception)
+        } catch (error: LinkageError) {
+            Log.e("AuraVPN", "La vigilancia JNI del worker VPN no está disponible.", error)
+        }
+    }
+
     private fun reportState(
         started: Boolean,
         message: String,
         revoked: Boolean = false,
         requestId: String? = null,
     ) {
+        if (started && shieldStatus()["forwarding_active"] != true) {
+            // A live TUN, worker and RFC1929 handshake mean ready, not egress.
+            // Retain only the current request; never acknowledge an old one.
+            synchronized(forwardingReplyLock) {
+                if (requestId != null && requestId == latestForwardingRequestId) {
+                    pendingForwardingRequestId = requestId
+                }
+            }
+            scheduleNotificationUpdate()
+            return
+        }
+        if (requestId != null) synchronized(forwardingReplyLock) {
+            if (pendingForwardingRequestId == requestId) pendingForwardingRequestId = null
+        }
         val stateIntent = android.content.Intent(ACTION_STATE)
             .setPackage(packageName)
             .putExtra("started", started)
@@ -1162,21 +1241,17 @@ class AuraVpnService : VpnService() {
     }
 
     private fun currentDnsSummary(): String = synchronized(dnsMetricsLock) {
-        val nativeRunning = try {
-            TProxyService.TProxyIsRunning()
-        } catch (_: Exception) {
-            false
-        } catch (_: LinkageError) {
-            false
-        }
+        val status = shieldStatus()
         if (panicIsolationActive) {
             "AISLAMIENTO ACTIVO · forwarding detenido"
-        } else if (!tunnelStarted || !nativeRunning ||
-            vpnInterface?.fileDescriptor?.valid() != true
-        ) {
+        } else if (status["status_verified"] != true) {
+            "Estado del motor y de salida no verificado"
+        } else if (status["forwarding_ready"] != true) {
             "Motor VPN sin forwarding confirmado"
+        } else if (status["forwarding_active"] != true) {
+            "Motor listo · sin salida bidireccional reciente observada"
         } else if (auditedDnsRequests == 0L) {
-            "Túnel activo · esperando eventos DNS"
+            "Salida reciente observada · sin eventos DNS"
         } else {
             // The native event is emitted before the response is sent, so this
             // is a rule match count, not proof of delivery or traffic blocking.

@@ -14,6 +14,13 @@ public final class TProxyService {
 
     public static native boolean TProxyIsRunning();
 
+    /** Recent bidirectional payload on protected, physically bound upstream
+     * sockets. TUN counters and local SOCKS/DNS traffic do not satisfy it. */
+    public static native boolean TProxyHasRecentEgress();
+
+    /** Monotonic per-process counter of successfully created native workers. */
+    public static native long TProxyWorkerGeneration();
+
     public static native long[] TProxyGetStats();
 
     public static native void TProxySetBlockedIps(String[] addresses);

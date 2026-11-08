@@ -23,6 +23,26 @@
 
 #define task_io_yielder hev_socks5_task_io_yielder
 
+
+#ifdef __ANDROID__
+static void
+observe_upstream_traffic (HevSocks5 *base, int event,
+                          const struct sockaddr *peer, socklen_t peer_len,
+                          size_t delivered_payload_bytes)
+{
+    HevSocks5Server *self = HEV_SOCKS5_SERVER (base);
+    if (event == AURA_EGRESS_TICK && base->type == HEV_SOCKS5_TYPE_TCP) {
+        /* fds[0] is the remote socket, never the loopback SOCKS connection.
+         * Its creation already required VpnService.protect + physical binding. */
+        aura_egress_observe_tcp (&self->egress_observation, self->fds[0]);
+    } else if (event == AURA_EGRESS_UDP_SENT ||
+               event == AURA_EGRESS_UDP_REPLY_DELIVERED) {
+        aura_egress_observe_udp (&self->egress_observation, event, peer,
+                                 peer_len, delivered_payload_bytes);
+    }
+}
+#endif
+
 static void
 clear_secret_buffer (uint8_t *buffer, size_t length)
 {
@@ -626,6 +646,11 @@ hev_socks5_server_construct (HevSocks5Server *self, int fd)
 
     self->fds[0] = -1;
     self->fds[1] = -1;
+
+#ifdef __ANDROID__
+    memset (&self->egress_observation, 0, sizeof (self->egress_observation));
+    HEV_SOCKS5 (self)->traffic_observer = observe_upstream_traffic;
+#endif
 
     return 0;
 }
