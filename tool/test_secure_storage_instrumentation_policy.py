@@ -88,6 +88,7 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
         self.assertIn("reactivecircus/android-emulator-runner@v2", self.workflow)
         self.assertIn("api-level: 36", self.workflow)
         self.assertIn(":app:connectedStorageMigrationAndroidTest", self.workflow)
+        self.assertIn(":app:assembleStorageMigrationAndroidTest", self.workflow)
         self.assertIn(
             "-Pandroid.testInstrumentationRunnerArguments.class="
             "com.ciberdefensa.aura.SecureStorageMigrationTest",

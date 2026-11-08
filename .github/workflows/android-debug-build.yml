@@ -100,6 +100,12 @@ jobs:
           print("No failed test XML exists; inspect the preceding setup/compiler/emulator failure.")
           PYTHON
 
+      - name: Compile isolated migration APKs (not a Keystore execution result)
+        working-directory: android
+        env:
+          AURA_ALLOW_DEBUG_SIGNING: 'true'
+        run: python3 ../tool/ci_run.py ./gradlew :app:assembleStorageMigration :app:assembleStorageMigrationAndroidTest --no-daemon
+
       - name: Build debug APK including native tunnel
         env:
           AURA_ALLOW_DEBUG_SIGNING: 'true'
