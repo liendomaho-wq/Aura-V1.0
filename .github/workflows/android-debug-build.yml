@@ -237,6 +237,10 @@ jobs:
           AURA_ALLOW_DEBUG_SIGNING: 'true'
         run: python3 ../tool/ci_run.py ./gradlew :app:assembleStorageMigration :app:assembleStorageMigrationAndroidTest --no-daemon
 
+      # DDMLib 31.13 PropertyFetcher defaults to a 2-second no-output
+      # timeout even though each real preflight adb read has 20 seconds.
+      # Allow that bounded 20s read in software emulation; no API override,
+      # retry, new test outcome, reset or assertion relaxation is introduced.
       - name: Real v9 to v10 Keystore migration on Android 16 emulator
         uses: reactivecircus/android-emulator-runner@v2
         env:
@@ -253,7 +257,7 @@ jobs:
           script: |
             adb shell getprop ro.build.version.sdk
             python3 ../tool/verify_android_runtime_ready.py --expected-api 36 --expected-abi x86_64
-            python3 ../tool/ci_run.py python3 ../tool/run_android_vpn_instrumentation.py --collect-logcat -- ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest,com.ciberdefensa.aura.VpnForwardingInstrumentationTest,com.ciberdefensa.aura.SecureStorageIntegrityTest --no-daemon
+            python3 ../tool/ci_run.py python3 ../tool/run_android_vpn_instrumentation.py --collect-logcat -- ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest,com.ciberdefensa.aura.VpnForwardingInstrumentationTest,com.ciberdefensa.aura.SecureStorageIntegrityTest -Dddmlib.getprop.timeout.sec=20 --no-daemon
 
       - name: Require passing XML for original migration and real VPN traffic cases
         if: always()
@@ -331,6 +335,10 @@ jobs:
           AURA_ALLOW_DEBUG_SIGNING: 'true'
         run: python3 ../tool/ci_run.py ./gradlew :app:assembleStorageMigration :app:assembleStorageMigrationAndroidTest --no-daemon
 
+      # DDMLib 31.13 PropertyFetcher defaults to a 2-second no-output
+      # timeout even though each real preflight adb read has 20 seconds.
+      # Allow that bounded 20s read in software emulation; no API override,
+      # retry, new test outcome, reset or assertion relaxation is introduced.
       - name: Execute original migration plus integrity tests on real Android 10
         uses: reactivecircus/android-emulator-runner@v2
         env:
@@ -347,7 +355,7 @@ jobs:
           script: |
             adb shell getprop ro.build.version.sdk
             python3 ../tool/verify_android_runtime_ready.py --expected-api 29 --expected-abi x86
-            python3 ../tool/ci_run.py ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest,com.ciberdefensa.aura.SecureStorageIntegrityTest --no-daemon
+            python3 ../tool/ci_run.py ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest,com.ciberdefensa.aura.SecureStorageIntegrityTest -Dddmlib.getprop.timeout.sec=20 --no-daemon
       - name: Require actual nonempty migration and tamper-result XML
         if: always()
         run: python3 tool/verify_android_instrumentation.py build/app/outputs/androidTest-results --require-vault-integrity
@@ -361,3 +369,24 @@ jobs:
             build/app/reports/androidTests/
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Expose the first actual API29 provider or setup failure
+        if: failure()
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          from tool.ci_run import annotate, annotation_chunks
+
+          for path in sorted(Path("build/app").rglob("TEST-*.xml")):
+              for case in ET.parse(path).getroot().iter("testcase"):
+                  failure = case.find("failure")
+                  if failure is None:
+                      failure = case.find("error")
+                  if failure is not None:
+                      details = f"{case.get('classname')}.{case.get('name')}\n{failure.get('message')}\n{failure.text}"
+                      for index, chunk in enumerate(annotation_chunks(details), 1):
+                          annotate("error", f"Android test failure details {index}", chunk)
+                      raise SystemExit(1)
+          print("No failed test XML exists; inspect the preceding setup/compiler/emulator failure.")
+          PYTHON

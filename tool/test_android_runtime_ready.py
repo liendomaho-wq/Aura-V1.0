@@ -50,3 +50,17 @@ def test_each_lane_compiles_before_emulation_and_checks_the_real_runtime():
     assert source.index("name: Compile exact migration APKs before starting Android 10") < source.index("name: Execute original migration plus integrity tests on real Android 10")
     assert "verify_android_runtime_ready.py --expected-api 36 --expected-abi x86_64" in source
     assert "verify_android_runtime_ready.py --expected-api 29 --expected-abi x86" in source
+
+
+def test_ddmlib_getprop_timeout_is_bounded_and_only_changes_the_read_deadline():
+    source = (Path(__file__).resolve().parents[1] / ".github/workflows/android-debug-build.yml").read_text()
+    commands = [line for line in source.splitlines() if "python3 ../tool/ci_run.py" in line
+                and ":app:connectedStorageMigrationAndroidTest" in line]
+    assert len(commands) == 2
+    for command in commands:
+        assert "-Dddmlib.getprop.timeout.sec=20 --no-daemon" in command
+        assert "com.ciberdefensa.aura.SecureStorageMigrationTest" in command
+        assert "com.ciberdefensa.aura.SecureStorageIntegrityTest" in command
+        assert "||" not in command
+    assert "name: Expose the first actual API29 provider or setup failure" in source
+    assert "continue-on-error" not in source
