@@ -32,6 +32,10 @@ def native(tmp_path_factory):
 #include "aura_forwarding_health.h"
 
 size_t observation_size(void) { return sizeof(AuraEgressObservation); }
+int payload_predicate(uint64_t acked, uint64_t received, uint32_t out, uint32_t in) {
+    return aura_tcp_payload_present(acked, received, out, in);
+}
+
 
 void metadata_fixture(void *state, int event, const char *ip, int port, size_t length) {
     struct sockaddr_in6 peer;
@@ -58,6 +62,8 @@ void metadata_fixture(void *state, int event, const char *ip, int port, size_t l
     result = ctypes.CDLL(str(library))
     result.observation_size.restype = ctypes.c_size_t
     result.aura_egress_recent.restype = ctypes.c_int
+    result.payload_predicate.argtypes = [ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint32, ctypes.c_uint32]
+    result.payload_predicate.restype = ctypes.c_int
     result.aura_egress_observe_tcp.argtypes = [ctypes.c_void_p, ctypes.c_int]
     result.metadata_fixture.argtypes = [
         ctypes.c_void_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_size_t,
@@ -196,3 +202,18 @@ def test_actual_own_nonloopback_tcp_is_not_remote_egress(native, observation):
                 assert client.recv(128) == b"actual-local-response"
                 native.aura_egress_observe_tcp(observation, client.fileno())
                 assert native.aura_egress_recent() == 0
+
+
+@pytest.mark.parametrize("acked,received,outgoing,incoming,expected", [
+    (1, 0, 0, 0, 0),
+    (2, 1, 0, 0, 0),  # actual Linux SYN/FIN-only counters observed against github.com
+    (42, 0, 1, 0, 0),
+    (1, 42, 0, 1, 0),
+    (10, 10, 0, 1, 0),
+    (10, 10, 1, 0, 0),
+    (10, 10, 1, 1, 1),
+    (2, 1, 1, 1, 1),
+])
+def test_tcp_payload_predicate_not_control_bytes(native, acked, received, outgoing, incoming, expected):
+    # C predicate unit inputs only, NOT routed traffic/Android acceptance.
+    assert native.payload_predicate(acked, received, outgoing, incoming) == expected

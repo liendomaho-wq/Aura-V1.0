@@ -162,20 +162,26 @@ aura_egress_observe_tcp(AuraEgressObservation *observation, int upstream_fd)
     memset(&info, 0, sizeof(info));
     length = sizeof(info);
     if (getsockopt(upstream_fd, IPPROTO_TCP, TCP_INFO, &info, &length) != 0 ||
-        length < offsetof(struct tcp_info, tcpi_bytes_received) + sizeof(info.tcpi_bytes_received))
+        length < offsetof(struct tcp_info, tcpi_data_segs_out) + sizeof(info.tcpi_data_segs_out))
         return;
     observation->tcp_last_probe_ms = now;
-    /* The SYN itself can contribute one acknowledged byte. Require actual
-     * acknowledged payload AND received payload, not connect()/a local write.
-     * Cumulative unchanged counters never renew old evidence. */
-    if (info.tcpi_bytes_acked > 1 && info.tcpi_bytes_received > 0 &&
+    /* SYN and FIN can produce acked=2/received=1 without ANY payload.
+     * Require actual data-bearing segments too. A control-only close or
+     * unchanged cumulative payload counters must never renew old evidence.
+     * Kernels returning a shorter TCP_INFO remain conservatively unconfirmed. */
+    if (aura_tcp_payload_present(info.tcpi_bytes_acked, info.tcpi_bytes_received,
+                                 info.tcpi_data_segs_out, info.tcpi_data_segs_in) &&
         (info.tcpi_bytes_acked > observation->tcp_bytes_acked ||
-         info.tcpi_bytes_received > observation->tcp_bytes_received)) {
+         info.tcpi_bytes_received > observation->tcp_bytes_received) &&
+        (info.tcpi_data_segs_out > observation->tcp_data_segs_out ||
+         info.tcpi_data_segs_in > observation->tcp_data_segs_in)) {
         observation->tcp_bidirectional = 1;
         record_evidence(now);
     }
     observation->tcp_bytes_acked = info.tcpi_bytes_acked;
     observation->tcp_bytes_received = info.tcpi_bytes_received;
+    observation->tcp_data_segs_out = info.tcpi_data_segs_out;
+    observation->tcp_data_segs_in = info.tcpi_data_segs_in;
 }
 
 void

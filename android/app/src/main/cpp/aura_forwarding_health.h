@@ -27,11 +27,22 @@ typedef struct {
     uint64_t tcp_last_probe_ms;
     uint64_t tcp_bytes_acked;
     uint64_t tcp_bytes_received;
+    uint32_t tcp_data_segs_out;
+    uint32_t tcp_data_segs_in;
     int tcp_peer_checked;
     int tcp_peer_eligible;
     int tcp_bidirectional;
     AuraEgressUdpPeer udp_peers[AURA_EGRESS_MAX_UDP_PEERS];
 } AuraEgressObservation;
+
+/* TCP_INFO byte counters include SYN/FIN on Linux. Require genuine data
+ * segments in BOTH directions; this predicate never creates evidence itself. */
+static inline int
+aura_tcp_payload_present(uint64_t acked, uint64_t received,
+                         uint32_t data_out, uint32_t data_in)
+{
+    return acked > 1 && received > 0 && data_out > 0 && data_in > 0;
+}
 
 void aura_egress_reset(void);
 int aura_egress_recent(void);
