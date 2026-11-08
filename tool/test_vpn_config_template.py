@@ -413,7 +413,19 @@ for required_recovery_step in (
         sys.exit("FAIL: VPN handover recovery is missing " + required_recovery_step)
 if "recoverTunnelAfterNetworkChange()" not in text:
     sys.exit("FAIL: selected physical-network changes do not invoke tunnel recovery")
-if "tunnelStarted = false" not in recovery_body or "no pudo recuperarse" not in recovery_body:
+failure_handler = re.search(
+    r"private fun handleNetworkRecoveryFailure\(error: Throwable\) \{(.*?)\n    \}",
+    text,
+    re.DOTALL,
+)
+if not failure_handler:
+    sys.exit("FAIL: failed network recovery handler is missing")
+failure_body = failure_handler.group(1)
+if (
+    "tunnelStarted = false" not in failure_body
+    or not re.search(r"reportState\(\s*false", failure_body)
+    or "no pudo recuperarse" not in failure_body.lower()
+):
     sys.exit("FAIL: failed network recovery must report the tunnel as inactive")
 
 print("PASS: physical-network handover restarts and verifies tun2socks before reporting protection active.")
