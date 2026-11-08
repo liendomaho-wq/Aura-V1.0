@@ -53,6 +53,7 @@ bash tool/compile_aura.sh
 (cd android && AURA_ALLOW_DEBUG_SIGNING=true ./gradlew :app:testDebugUnitTest \
   --tests com.ciberdefensa.aura.VpnStartRequestGateTest \
   --tests com.ciberdefensa.aura.VpnLifecycleGateTest \
+  --tests com.ciberdefensa.aura.VpnRecoveryGateTest \
   --tests com.ciberdefensa.aura.AuraSocks5CredentialsTest \
   --tests com.ciberdefensa.aura.Socks5AuthProtocolTest)
 ```

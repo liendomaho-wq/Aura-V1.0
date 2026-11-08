@@ -613,10 +613,10 @@ if not recovery_request:
     sys.exit("FAIL: retained TUN recovery request gate is missing")
 recovery_request_body = recovery_request.group(1)
 for required in (
-    "recoveryRequested.compareAndSet(false, true)",
+    "recoveryGate.tryBegin(requestId)",
     "worker.execute",
-    "recoverTunnelAfterNetworkChange(requestId)",
-    "recoveryRequested.set(false)",
+    "recoverTunnelAfterNetworkChange(attempt.requestId)",
+    "recoveryGate.finish(attempt)",
 ):
     if required not in recovery_request_body:
         sys.exit("FAIL: VPN recovery gate is missing " + required)
@@ -629,7 +629,8 @@ start_command = re.search(
     re.DOTALL,
 )
 if not start_command or (
-    "vpnInterface != null && !startRequested.get()" not in start_command.group(1)
+    "shouldRetryTunnelRecovery()" not in start_command.group(1)
+    or 'shieldStatus()["forwarding_active"] == true' not in start_command.group(1)
     or "requestTunnelRecovery(requestId)" not in start_command.group(1)
 ):
     sys.exit("FAIL: explicit VPN activation must recover forwarding on the retained TUN")
@@ -642,9 +643,43 @@ same_network_retry = re.search(
 if not same_network_retry or (
     "selected == previous" not in same_network_retry.group(1)
     or "requestTunnelRecovery()" not in same_network_retry.group(1)
-    or "!tunnelStarted" not in same_network_retry.group(1)
+    or "selected != null && shouldRetryTunnelRecovery()" not in same_network_retry.group(1)
 ):
     sys.exit("FAIL: a later callback on the same physical network must retry failed forwarding")
+
+retry_policy = re.search(
+    r"private fun shouldRetryTunnelRecovery\(\): Boolean =(.*?)\n    /\*\*",
+    text,
+    re.DOTALL,
+)
+if not retry_policy or any(part not in retry_policy.group(1) for part in (
+    "recoveryGate.canRetryRetainedTunnel(",
+    "hasValidInterface = vpnInterface?.fileDescriptor?.valid() == true",
+    "panicIsolationActive = panicIsolationActive",
+    'forwardingVerified = shieldStatus()["forwarding_active"] == true',
+    "startInProgress = startRequested.get()",
+    "closing = serviceShuttingDown || worker.isShutdown",
+)):
+    sys.exit("FAIL: retry decisions must use a valid retained TUN, live native status and lifecycle/start gates")
+recovery_gate = Path(
+    "android/app/src/main/kotlin/com/ciberdefensa/aura/VpnRecoveryGate.kt"
+).read_text(encoding="utf-8")
+for required in (
+    "hasValidInterface && !panicIsolationActive",
+    "!forwardingVerified && !startInProgress && !closing",
+    "@Synchronized\n    fun tryBegin(requestId: String?): Attempt?",
+    "if (active != null) return null",
+    "Attempt(requestId).also { active = it }",
+    "@Synchronized\n    fun finish(attempt: Attempt): Boolean",
+    "if (active !== attempt) return false",
+    "active = null",
+):
+    if required not in recovery_gate:
+        sys.exit("FAIL: JVM-tested recovery ownership/policy is missing " + required)
+if not re.search(r"finally\s*\{\s*recoveryGate.finish\(attempt\)", recovery_request_body):
+    sys.exit("FAIL: every completed or failed recovery must release its own attempt in finally")
+if "requestId = attempt.requestId" not in recovery_request_body:
+    sys.exit("FAIL: cancelled queued recovery must retain the original request correlation")
 
 if "startRequested.set(false)" not in failure_body:
     sys.exit("FAIL: failed network recovery must release the start gate for a later retry")
@@ -809,7 +844,7 @@ for required_fail_closed_guard in (
     "if (!underlayUpdated)",
     "stopTunnelForwardingForNetworkFailure(",
     "else if (vpnInterface != null && !panicIsolationActive)",
-    "recoverTunnelAfterNetworkChange(requestId)",
+    "recoverTunnelAfterNetworkChange(attempt.requestId)",
     "TProxyService.TProxyStopService()",
     "tunnelStarted = false",
     "stopConfirmed = stopNativeWorker()",
@@ -828,6 +863,8 @@ if "stopNativeWorker()" not in fail_closed.group(1):
     sys.exit("FAIL: forwarding shutdown must reconcile the native worker")
 if "stopConfirmed" not in fail_closed.group(1):
     sys.exit("FAIL: forwarding shutdown must not claim success when JNI stop is unconfirmed")
+if "startRequested.set(false)" not in fail_closed.group(1):
+    sys.exit("FAIL: underlay failure must release the start gate while retaining the fail-closed TUN")
 if "updateForegroundNotification()" not in fail_closed.group(1):
     sys.exit("FAIL: degraded network state must be reflected in the VPN notification")
 

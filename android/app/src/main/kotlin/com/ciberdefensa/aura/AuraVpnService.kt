@@ -160,7 +160,7 @@ class AuraVpnService : VpnService() {
     private val blockedIps: MutableSet<String> =
         Collections.synchronizedSet(HashSet())
     private val startRequested = AtomicBoolean(false)
-    private val recoveryRequested = AtomicBoolean(false)
+    private val recoveryGate = VpnRecoveryGate()
     private val lifecycleGate = VpnLifecycleGate()
     private val notificationHandler = Handler(Looper.getMainLooper())
     private var notificationUpdatePending = false
@@ -223,20 +223,22 @@ class AuraVpnService : VpnService() {
             )
             return Service.START_STICKY
         }
-        if (tunnelStarted) {
-            if (shieldStatus()["forwarding_active"] == true) {
-                reportState(true, "El túnel VPN ya estaba activo.", requestId = requestId)
-            } else {
-                reportState(
-                    false,
-                    "El estado del motor VPN no está confirmado. Revise la protección.",
-                    requestId = requestId,
-                )
-            }
-        } else if (vpnInterface != null && !startRequested.get()) {
-            // Android retained the full-route TUN after a failed handover. Reuse
-            // that interface and restart forwarding instead of creating a second TUN.
+        if (shieldStatus()["forwarding_active"] == true) {
+            reportState(true, "El túnel VPN ya estaba activo.", requestId = requestId)
+        } else if (shouldRetryTunnelRecovery()) {
+            // A stale tunnelStarted flag is not evidence of a live worker. Reuse
+            // the retained valid TUN and verify recovery for this exact request.
             requestTunnelRecovery(requestId)
+        } else if (vpnInterface != null) {
+            reportState(
+                false,
+                if (startRequested.get()) {
+                    "Ya hay un arranque VPN en curso."
+                } else {
+                    "La interfaz VPN no está disponible para recuperar el forwarding."
+                },
+                requestId = requestId,
+            )
         } else if (startRequested.compareAndSet(false, true)) {
             try {
                 worker.execute { startTunnel(requestId) }
@@ -675,7 +677,7 @@ class AuraVpnService : VpnService() {
             // A failed recovery can leave the selected underlay unchanged while
             // the TUN remains installed and native forwarding is stopped. A later
             // callback on that same network is still a valid recovery trigger.
-            if (selected != null && vpnInterface != null && !panicIsolationActive && !tunnelStarted) {
+            if (selected != null && shouldRetryTunnelRecovery()) {
                 requestTunnelRecovery()
             }
             return
@@ -728,6 +730,7 @@ class AuraVpnService : VpnService() {
         } finally {
             if (stopConfirmed) discardTunnelConfiguration()
             tunnelStarted = false
+            startRequested.set(false)
             reportState(
                 false,
                 if (stopConfirmed) {
@@ -739,6 +742,15 @@ class AuraVpnService : VpnService() {
             updateForegroundNotification()
         }
     }
+
+    private fun shouldRetryTunnelRecovery(): Boolean =
+        recoveryGate.canRetryRetainedTunnel(
+            hasValidInterface = vpnInterface?.fileDescriptor?.valid() == true,
+            panicIsolationActive = panicIsolationActive,
+            forwardingVerified = shieldStatus()["forwarding_active"] == true,
+            startInProgress = startRequested.get(),
+            closing = serviceShuttingDown || worker.isShutdown,
+        )
 
     /**
      * A running tun2socks instance may retain upstream sockets created on the
@@ -753,7 +765,8 @@ class AuraVpnService : VpnService() {
             }
             return
         }
-        if (!recoveryRequested.compareAndSet(false, true)) {
+        val attempt = recoveryGate.tryBegin(requestId)
+        if (attempt == null) {
             if (requestId != null) {
                 reportState(false, "La recuperación del túnel ya está en curso.", requestId = requestId)
             }
@@ -767,18 +780,18 @@ class AuraVpnService : VpnService() {
                             reportState(
                                 false,
                                 "La recuperación VPN no está disponible en el estado actual.",
-                                requestId = requestId,
+                                requestId = attempt.requestId,
                             )
                         }
                         return@execute
                     }
-                    recoverTunnelAfterNetworkChange(requestId)
+                    recoverTunnelAfterNetworkChange(attempt.requestId)
                 } finally {
-                    recoveryRequested.set(false)
+                    recoveryGate.finish(attempt)
                 }
             }
         } catch (error: java.util.concurrent.RejectedExecutionException) {
-            recoveryRequested.set(false)
+            recoveryGate.finish(attempt)
             if (requestId != null) {
                 reportState(false, "El servicio VPN está cerrándose.", requestId = requestId)
             }
