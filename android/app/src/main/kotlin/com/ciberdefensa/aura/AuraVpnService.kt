@@ -17,6 +17,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.aura.cyberdefense.AuraNotificationService
 import hev.htproxy.TProxyService
+import java.io.DataInputStream
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -31,6 +32,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.security.SecureRandom
 
 class AuraVpnService : VpnService() {
     companion object {
@@ -168,6 +170,9 @@ class AuraVpnService : VpnService() {
     private var feedRefreshScheduled = false
     @Volatile private var panicIsolationActive = false
     @Volatile private var tunnelStarted = false
+    @Volatile private var localProxy: AuraLocalSocks5Proxy? = null
+    @Volatile private var proxyUsername: String? = null
+    @Volatile private var proxyPassword: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -257,6 +262,7 @@ class AuraVpnService : VpnService() {
         // calls; stale work cannot start or stop a later service's worker.
         val shutdownConfirmed = lifecycleGate.close {
             val nativeStopped = stopNativeWorkerUnchecked()
+            stopLocalProxy()
             tunnelStarted = false
             val interfaceClosed = try {
                 vpnInterface?.close()
@@ -386,7 +392,10 @@ class AuraVpnService : VpnService() {
             } ?: throw IOException("El servicio VPN está cerrándose.")
             established = tun
 
+            startLocalProxy()
             val configFile = File(filesDir, "aura-hev-socks5.yml")
+            val username = proxyUsername ?: throw IOException("Faltan credenciales del proxy local.")
+            val password = proxyPassword ?: throw IOException("Falta la contraseña del proxy local.")
             configFile.writeText(
                 """
                 tunnel:
@@ -399,6 +408,8 @@ class AuraVpnService : VpnService() {
                   port: $LOCAL_SOCKS5_PORT
                   address: $LOCAL_SOCKS5_HOST
                   udp: 'tcp'
+                  username: '$username'
+                  password: '$password'
                 misc:
                   log-level: error
                 mapdns:
@@ -460,6 +471,7 @@ class AuraVpnService : VpnService() {
     ) {
         Log.e("AuraVPN", "No se pudo iniciar el escudo VPN.", error)
         val stopConfirmed = stopNativeWorker()
+        stopLocalProxy()
         tunnelStarted = false
         lifecycleGate.runIfOpen {
             try {
@@ -506,6 +518,7 @@ class AuraVpnService : VpnService() {
                 return false
             }
             tunnelStarted = false
+            stopLocalProxy()
             panicIsolationActive = true
             startRequested.set(false)
             reportState(false, "Aislamiento de emergencia activo; forwarding detenido.")
@@ -534,6 +547,8 @@ class AuraVpnService : VpnService() {
                 throw IOException("No existe la configuración del túnel para reanudarlo.")
             }
 
+            // Recreate the authenticated loopback relay before Hev reconnects.
+            startLocalProxy()
             // Reconcile native state and restart as one lifecycle operation.
             if (!restartNativeWorker(configFile.absolutePath, tun)) {
                 throw IOException("El motor VPN no pudo iniciar durante la reanudación.")
@@ -567,6 +582,7 @@ class AuraVpnService : VpnService() {
 
     private fun handleResumeFailure(error: Throwable): Boolean {
         val stopConfirmed = stopNativeWorker()
+        stopLocalProxy()
         tunnelStarted = false
         Log.e("AuraVPN", "No se pudo reanudar el forwarding del túnel.", error)
         reportState(
@@ -712,6 +728,7 @@ class AuraVpnService : VpnService() {
             Log.e("AuraVPN", "No se pudo detener el forwarding tras perder la red.", exception)
         } finally {
             tunnelStarted = false
+            stopLocalProxy()
             reportState(
                 false,
                 if (stopConfirmed) {
@@ -739,6 +756,7 @@ class AuraVpnService : VpnService() {
         }
 
         try {
+            startLocalProxy()
             if (!restartNativeWorker(File(filesDir, "aura-hev-socks5.yml").absolutePath, tun)) {
                 throw IOException("El motor VPN no pudo reiniciarse en la nueva red.")
             }
@@ -772,6 +790,7 @@ class AuraVpnService : VpnService() {
 
     private fun handleNetworkRecoveryFailure(error: Throwable) {
         val stopConfirmed = stopNativeWorker()
+        stopLocalProxy()
         tunnelStarted = false
         Log.e("AuraVPN", "No se pudo recuperar el túnel tras cambiar de red.", error)
         reportState(
@@ -842,6 +861,37 @@ class AuraVpnService : VpnService() {
         }
     }
 
+    private fun startLocalProxy() {
+        if (localProxy != null) return
+        val random = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        val username = "aura"
+        val password = random.joinToString("") { "%02x".format(it) }
+        val proxy = AuraLocalSocks5Proxy(
+            physicalNetwork = { underlyingNetwork },
+            protectTcp = { socket -> protect(socket) },
+            protectUdp = { socket -> protect(socket) },
+            username = username,
+            password = password,
+            port = LOCAL_SOCKS5_PORT,
+        )
+        proxy.start()
+        proxyUsername = username
+        proxyPassword = password
+        localProxy = proxy
+    }
+
+    private fun stopLocalProxy() {
+        try {
+            localProxy?.stop()
+        } catch (error: Exception) {
+            Log.w("AuraVPN", "No se pudo cerrar el proxy SOCKS5 local.", error)
+        } finally {
+            localProxy = null
+            proxyUsername = null
+            proxyPassword = null
+        }
+    }
+
     private fun verifyLocalSocks5Ready() {
         val deadline = android.os.SystemClock.elapsedRealtime() + 5000
         var lastFailure: Exception? = null
@@ -853,21 +903,32 @@ class AuraVpnService : VpnService() {
                         250,
                     )
                     socket.soTimeout = 500
-                    socket.getOutputStream().write(byteArrayOf(5, 1, 0))
-                    socket.getOutputStream().flush()
-                    val response = ByteArray(2)
-                    var offset = 0
-                    while (offset < response.size) {
-                        val count = socket.getInputStream().read(
-                            response,
-                            offset,
-                            response.size - offset,
-                        )
-                        if (count < 0) throw IOException("El proxy SOCKS5 local cerró el saludo.")
-                        offset += count
+                    val input = DataInputStream(socket.getInputStream())
+                    val output = socket.getOutputStream()
+                    output.write(byteArrayOf(5, 1, 2))
+                    output.flush()
+                    val greeting = ByteArray(2)
+                    input.readFully(greeting)
+                    if (greeting[0].toInt() != 5 || greeting[1].toInt() != 2) {
+                        throw IOException("El proxy SOCKS5 no exige autenticación.")
                     }
-                    if (response[0].toInt() != 5 || response[1].toInt() != 0) {
-                        throw IOException("El proxy SOCKS5 local rechazó la negociación.")
+                    val user = proxyUsername?.toByteArray(Charsets.UTF_8)
+                        ?: throw IOException("No existe el usuario del proxy local.")
+                    val pass = proxyPassword?.toByteArray(Charsets.UTF_8)
+                        ?: throw IOException("No existe la contraseña del proxy local.")
+                    if (user.isEmpty() || user.size > 255 || pass.isEmpty() || pass.size > 255) {
+                        throw IOException("Las credenciales SOCKS5 tienen una longitud inválida.")
+                    }
+                    output.writeByte(1)
+                    output.writeByte(user.size)
+                    output.write(user)
+                    output.writeByte(pass.size)
+                    output.write(pass)
+                    output.flush()
+                    val authentication = ByteArray(2)
+                    input.readFully(authentication)
+                    if (authentication[0].toInt() != 1 || authentication[1].toInt() != 0) {
+                        throw IOException("El proxy SOCKS5 rechazó las credenciales.")
                     }
                 }
                 if (!TProxyService.TProxyIsRunning()) {
