@@ -547,7 +547,7 @@ print("PASS: shield diagnostics return bounded active IP threat-feed rules witho
 # A physical-network handover must restart the native worker: merely updating
 # Android's underlay metadata does not migrate sockets opened on the old network.
 recovery = re.search(
-    r"private fun recoverTunnelAfterNetworkChange\(requestId: String\\? = null\) \{(.*?)\n    \}",
+    r"private fun recoverTunnelAfterNetworkChange\(requestId: String\? = null\) \{(.*?)\n    \}",
     text,
     re.DOTALL,
 )
@@ -566,7 +566,7 @@ for required_recovery_step in (
 if "requestTunnelRecovery()" not in text:
     sys.exit("FAIL: selected physical-network changes do not schedule tunnel recovery")
 failure_handler = re.search(
-    r"private fun handleNetworkRecoveryFailure\(error: Throwable, requestId: String\\? = null\) \{(.*?)\n    \}",
+    r"private fun handleNetworkRecoveryFailure\(error: Throwable, requestId: String\? = null\) \{(.*?)\n    \}",
     text,
     re.DOTALL,
 )
