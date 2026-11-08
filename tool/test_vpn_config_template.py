@@ -774,9 +774,33 @@ if not resume_match:
 resume_body = resume_match.group(1)
 if "verifyLocalSocks5Ready()" not in resume_body:
     sys.exit("FAIL: VPN resume must verify the local SOCKS5 service")
-if "finally" not in resume_body or "tunnelStarted = false" not in resume_body:
-    sys.exit("FAIL: failed VPN resume must clear the native forwarding state")
-if "updateForegroundNotification()" not in resume_body:
-    sys.exit("FAIL: failed VPN resume must refresh its foreground status")
+if (
+    "handleResumeFailure(exception)" not in resume_body
+    or "handleResumeFailure(error)" not in resume_body
+):
+    sys.exit("FAIL: VPN resume failures must enter the native cleanup handler")
+
+resume_failure = re.search(
+    r"private fun handleResumeFailure\(error: Throwable\): Boolean \{(.*?)\n    \}",
+    text,
+    re.DOTALL,
+)
+if not resume_failure:
+    sys.exit("FAIL: VPN resume failure cleanup handler is missing")
+resume_failure_body = resume_failure.group(1)
+if (
+    "stopNativeWorker()" not in resume_failure_body
+    or "tunnelStarted = false" not in resume_failure_body
+    or "reportState(" not in resume_failure_body
+    or "updateForegroundNotification()" not in resume_failure_body
+):
+    sys.exit("FAIL: failed VPN resume must stop native forwarding and report inactive state")
+if (
+    "No se pudo reanudar el túnel; el forwarding permanece detenido."
+    not in resume_failure_body
+    or "No se pudo reanudar el túnel; el cierre nativo no está confirmado."
+    not in resume_failure_body
+):
+    sys.exit("FAIL: failed VPN resume must distinguish confirmed and unconfirmed native shutdown")
 
 print("PASS: VPN teardown and resume reconcile native worker state after failures.")
