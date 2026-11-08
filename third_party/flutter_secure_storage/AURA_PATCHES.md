@@ -1,6 +1,6 @@
 # Aura: narrowly scoped Android v9 ESP migration fixes
 
-Upstream runtime: **v10.3.4**, commit `692a374a5071c0b60939f624ede58d666b6b645c` of https://github.com/juliansteenbakker/flutter_secure_storage. Original BSD license and embedded notices are preserved. `UPSTREAM.json` records the archive digest, every included upstream file digest and the three functional Android patch digests plus explicitly marked whitespace-only differences; `AURA_PATCHES.json` stores the exact unified patch as JSON text. All production Dart implementation files are unmodified. Example applications, upstream test helpers/tests and dev-only analyzer configuration are not copied or represented as executed Aura tests.
+Upstream runtime: **v10.3.4**, commit `692a374a5071c0b60939f624ede58d666b6b645c` of https://github.com/juliansteenbakker/flutter_secure_storage. Original BSD license and embedded notices are preserved. `UPSTREAM.json` records the archive digest, every included upstream file digest and the three functional Android patch digests plus explicitly marked whitespace-only differences; `AURA_PATCHES.json` stores the exact unified patch as JSON text. All production Dart implementation files are unmodified. Example applications, upstream test suites and dev-only analyzer configuration are not copied or represented as executed Aura tests. The published SDK helper imported by its production Dart library is retained byte-for-byte for API compatibility; it is not used to replace Android/Keystore tests.
 
 ## Actual defect, not an assertion change
 

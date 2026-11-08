@@ -3,7 +3,7 @@
   "tag": "v10.3.4",
   "commit": "692a374a5071c0b60939f624ede58d666b6b645c",
   "archive_sha256": "f4c884791eabd98356713b6b71655ac10ba4732f4d48275904ca14e6868d8f77",
-  "scope": "Unmodified v10.3.4 published runtime and original license/docs, except explicitly listed Aura Android fixes. Upstream example apps, dev analyzer config and test helpers/tests are not copied or counted as executed; all original Aura real-Android migration assertions remain unchanged.",
+  "scope": "Published v10.3.4 runtime and SDK compatibility helper imported by its production library, original license/docs; three functional Android fixes and separately marked whitespace-only changes. Example apps, dev analyzer configuration and upstream test suites are not copied or counted as executed. The unmodified SDK test helper is not used as Android/Keystore evidence. Original Aura migration assertions remain unchanged.",
   "files": [
     {
       "path": "CHANGELOG.md",
@@ -183,6 +183,10 @@
     {
       "path": "lib/options/windows_options.dart",
       "upstream_sha256": "0e92ae5044f9496b0850df5fd28cd5c4f2e8b8438cf8495dae1af6f712b4d142"
+    },
+    {
+      "path": "lib/test/test_flutter_secure_storage_platform.dart",
+      "upstream_sha256": "bf6fa13a7d3063ef69a68612737f27afd6f58a53ccda6818c3e0ad193e03dd99"
     },
     {
       "path": "pubspec.yaml",

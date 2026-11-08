@@ -22,7 +22,7 @@ def test_pinned_upstream_runtime_and_every_changed_file_are_explicit():
         if "local_sha256" in entry:
             (formatting if entry.get("whitespace_only") else changed).append(entry["path"])
             assert entry["change"]
-    assert len(manifest["files"]) == 42
+    assert len(manifest["files"]) == 43
     assert len(changed) == 3
     assert len(formatting) == 3
     assert all(path.startswith("android/") for path in changed)
@@ -66,3 +66,15 @@ def test_migration_is_one_commit_and_key_persistence_is_checked():
     assert "if (!editor.commit())" in constructor
     assert "Could not persist wrapped AES key before data migration" in constructor
     assert ".apply()" not in constructor
+
+
+def test_every_published_runtime_dart_import_has_its_original_sdk_helper():
+    manifest = json.loads((VENDOR / "UPSTREAM.json").read_text())
+    declared = {entry["path"] for entry in manifest["files"] if entry["path"].endswith(".dart")}
+    actual = {str(path.relative_to(VENDOR)) for path in (VENDOR / "lib").rglob("*.dart")}
+    assert declared == actual
+    helper = "lib/test/test_flutter_secure_storage_platform.dart"
+    assert helper in declared
+    entry = next(entry for entry in manifest["files"] if entry["path"] == helper)
+    assert "local_sha256" not in entry
+    assert "test/test_flutter_secure_storage_platform.dart" in (VENDOR / "lib/flutter_secure_storage.dart").read_text()

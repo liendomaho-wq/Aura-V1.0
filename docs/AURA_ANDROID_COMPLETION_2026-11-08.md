@@ -92,7 +92,7 @@ Esta tabla describe la nueva corrección; los éxitos históricos no se transfie
 
 - Primera falla real: run `42491355979`, job `128766339515`, `SecureStorageMigrationTest.java:74`: `expected:<v9-real-keystore-secret-preserved> but was:<null>`. Android 16 ejecutó **2/2 casos, 0 skips, 1 failure**; el caso de reinicio interrumpido pasó. Compilar el APK no había detectado esto.
 - Causa verificada en el tag upstream **v10.3.4**, commit `692a374a5071c0b60939f624ede58d666b6b645c`: con `migrateWithBackup=true` se aplaza ESP, pero `canSkipMarkerlessMigration()` interpreta la ausencia de claves con prefijo en claro como instalación vacía. ESP cifra los nombres; la ruta puede devolver `null` aunque exista el secreto. Una aplicación que crea claves cuando recibe `null` queda expuesta a usar una clave nueva sobre datos antiguos.
-- Corrección `0bdd79b`: runtime fijado localmente mediante `dependency_overrides`, 42 archivos de producción/metadatos con procedencia completa en `third_party/flutter_secure_storage/UPSTREAM.json`; **3 archivos Android con cambios funcionales, 3 cambios sólo de whitespace**. No hay cambios funcionales Dart del proveedor. Licencia original preservada. No se modifica la caché global de paquetes ni se depende de un parche remoto mutable.
+- Corrección `0bdd79b`: runtime fijado localmente mediante `dependency_overrides`, 43 archivos de runtime/compatibilidad/metadatos con procedencia completa en `third_party/flutter_secure_storage/UPSTREAM.json`; **3 archivos Android con cambios funcionales, 3 cambios sólo de whitespace**. No hay cambios funcionales Dart del proveedor. Licencia original preservada. No se modifica la caché global de paquetes ni se depende de un parche remoto mutable.
 - Se detecta ESP antes de la ruta rápida; se autentican datos antes de mutar; una conversión escribe todos los ciphertext destino y elimina sus claves ESP correspondientes en **un solo commit síncrono del mismo archivo**. La clave AES envuelta debe persistirse con commit comprobado antes. Datos corruptos o raíces legacy/current distintas producen error, conservando evidencia; una raíz igual conserva el ciphertext actual exacto. Un fallo ESP no llega a limpiar backups como si hubiera sido éxito.
 - El caso puro ESP no intenta desenvolver una clave CBC adivinada. El caso con backups sigue la ruta de recuperación; no se inventan flags de backup interrumpido para hacer pasar el test.
 - Los **dos tests originales y todas sus aserciones siguen byte por byte idénticos** a main: SHA-256 `049bcdd4a140d1b2d05e30c0501d9821e55a4ab592fcf9fe5662d7c907b807be`.
@@ -233,3 +233,10 @@ tool/train_max_aura_brain.py
 tool/verify_android_instrumentation.py
 tool/vpn_echo_fixture.py
 ```
+
+
+### Primer error de CI del proveedor fijado y corrección de completitud SDK
+
+- `f64d1db`, Flutter `42496260438` / `128779157011`: **201 Python + 124 subtests, sin skips**, 8 AAB reales aprobadas y Dart format **66 archivos / 0 cambios**. Static analysis falló con `uri_does_not_exist` en `flutter_secure_storage.dart:7` y `undefined_method` en `:399`.
+- Causa: al seleccionar runtime se omitió el helper de compatibilidad publicado `lib/test/test_flutter_secure_storage_platform.dart`, pero la librería de producción lo importa. Se restaura **exactamente desde el mismo commit upstream** y se comprueba su hash y el inventario completo Dart. No se deshabilita analyze ni se elimina la API.
+- Ese helper original del SDK no es un mock inventado por Aura ni evidencia Android; ninguna prueba de migración lo usa. Los tests reales siguen con Keystore del sistema y todos sus asserts. Se requiere nueva CI del SHA con esta reparación; los tests Flutter aún no llegaron a ejecutarse en el run fallido.
