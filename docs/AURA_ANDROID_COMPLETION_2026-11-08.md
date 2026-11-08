@@ -73,7 +73,7 @@ Esta tabla describe la nueva corrección; los éxitos históricos no se transfie
 - Se exige XML no vacío con ambos casos ejecutados exactamente una vez, sin fallos/omisiones/reintentos escondidos; se conservan XML/informes reales como artefactos.
 - Regresiones locales: `python -m pytest -q tool/test_secure_storage_instrumentation_policy.py tool/test_verify_android_instrumentation.py`: **23 passed**. Los XML de estas regresiones son fixtures del parser, **no resultados de Android**.
 - YAML de workflows parseado y `git diff --check` aprobados. JRE local confirmado sin `javac`, `jarsigner`, `jar` ni headers JNI; no se inventa compilación Android local.
-- **Ejecución Android de la nueva corrección todavía pendiente; añadir evidencia de CI antes de cerrar CI-01 o la migración.**
+- **Actualización ejecutada:** `42491355979` / `128766339515` arrancó Android 16 completo por software y ejecutó ambos tests originales: 2 ejecutados, 0 omitidos, 1 falló. El bloqueo de ejecución por KVM se superó; la migración NO aprobó. Ver VAULT-02 abajo.
 
 ### MODEL-01 — reintentos reales con presupuesto, sin promover el candidato
 
@@ -83,4 +83,153 @@ Esta tabla describe la nueva corrección; los éxitos históricos no se transfie
 - El test holdout y su conjunto adversarial no eligen configuraciones. Las métricas se calculan sobre el modelo serializado elegido, guardan SHA del candidato, script, corpus y splits, versiones Python/NumPy/scikit-learn y resultado explícito del gate.
 - Nuevas regresiones verifican el plan acotado, el límite original, árbol completo de peor caso para el último fallback, serialización finita, estadísticas del modelo real 3.0.0 y separación de selección/holdout. **No son métricas de entrenamiento del dataset ni un benchmark del teléfono.**
 - Suite local tras estos cambios: **155 passed, 8 skipped, 124 subtests passed in 8.79s** (`python -m pytest -q -rs`). `compileall` y `git diff --check` aprobados. Las ocho omisiones AAB locales siguen pendientes.
-- **Reentrenamiento y evaluación completos pendientes de CI; el modelo 3.0.0, su digest y firma permanecen intactos.**
+- **La ejecución real `42491355992` completó los intentos acotados: el candidato depth 8 / leaf 1024 cabe (3.621.963 bytes calibrados), pero su recall adversarial fue 0,0202 < 0,60 y el gate lo RECHAZÓ. No se promueve; el modelo 3.0.0, su digest y firma permanecen intactos.**
+
+
+## Actualización de implementación y evidencia — código hasta `bbdb6fa`
+
+### VAULT-02 (alta) — fallo real de preservación descubierto al ejecutar Android
+
+- Primera falla real: run `42491355979`, job `128766339515`, `SecureStorageMigrationTest.java:74`: `expected:<v9-real-keystore-secret-preserved> but was:<null>`. Android 16 ejecutó **2/2 casos, 0 skips, 1 failure**; el caso de reinicio interrumpido pasó. Compilar el APK no había detectado esto.
+- Causa verificada en el tag upstream **v10.3.4**, commit `692a374a5071c0b60939f624ede58d666b6b645c`: con `migrateWithBackup=true` se aplaza ESP, pero `canSkipMarkerlessMigration()` interpreta la ausencia de claves con prefijo en claro como instalación vacía. ESP cifra los nombres; la ruta puede devolver `null` aunque exista el secreto. Una aplicación que crea claves cuando recibe `null` queda expuesta a usar una clave nueva sobre datos antiguos.
+- Corrección `0bdd79b`: runtime fijado localmente mediante `dependency_overrides`, 42 archivos de producción/metadatos con procedencia completa en `third_party/flutter_secure_storage/UPSTREAM.json`; **3 archivos Android con cambios funcionales, 3 cambios sólo de whitespace**. No hay cambios funcionales Dart del proveedor. Licencia original preservada. No se modifica la caché global de paquetes ni se depende de un parche remoto mutable.
+- Se detecta ESP antes de la ruta rápida; se autentican datos antes de mutar; una conversión escribe todos los ciphertext destino y elimina sus claves ESP correspondientes en **un solo commit síncrono del mismo archivo**. La clave AES envuelta debe persistirse con commit comprobado antes. Datos corruptos o raíces legacy/current distintas producen error, conservando evidencia; una raíz igual conserva el ciphertext actual exacto. Un fallo ESP no llega a limpiar backups como si hubiera sido éxito.
+- El caso puro ESP no intenta desenvolver una clave CBC adivinada. El caso con backups sigue la ruta de recuperación; no se inventan flags de backup interrumpido para hacer pasar el test.
+- Los **dos tests originales y todas sus aserciones siguen byte por byte idénticos** a main: SHA-256 `049bcdd4a140d1b2d05e30c0501d9821e55a4ab592fcf9fe5662d7c907b807be`.
+- `SecureStorageIntegrityTest` añade cuatro casos con Keystore/proveedor real y UID privado: tag GCM alterado sin reset de otros secretos; ESP corrupto que falla y permite reintentar tras restaurar el ciphertext exacto de prueba; conflicto legacy/current conservando ambos; recuperación con valores iguales sin rekey. **Escritos, todavía pendientes de compilación/ejecución CI de esta corrección.** No se cuentan los fixtures XML como Android.
+- La normalización inicial de procedencia detectó cambios de newline innecesarios; se restauraron los bytes upstream de licencia/MasterKey/MasterKeys en vez de aflojar el control. Los hashes actuales y las diferencias exactas quedan en el manifiesto/`AURA_PATCHES.json`.
+- Esto NO cierra VAULT-01: las opciones reales de la app todavía no atan sus claves a una autenticación CryptoObject. No se hace una migración irreversible de claves biométricas sin recuperación verificada.
+
+### VPN-01 / JNI-01 — disponibilidad distinta de tráfico observado
+
+- `55f65b8` separa `forwarding_ready` (TUN válido + worker vivo) de `forwarding_active` (además, evidencia bidireccional reciente de sockets upstream protegidos). Abrir SOCKS, aceptar RFC1929, DNS local o contadores TUN no constituye esa evidencia.
+- Observación TCP mediante `TCP_INFO` real: payload recibido y ACK de datos; exclusión de loopback/direcciones propias; caducidad monotónica de 60 s. UDP conserva un conjunto acotado de peers enviados/respuestas correlacionadas. Se reinicia la evidencia por worker; no se consulta un destino externo periódico de prueba desde producción.
+- Worker perdido: seguimiento cada 2 s, recuperación coalescida usando el executor existente; la ausencia de tráfico por inactividad no provoca reinicios. Notificaciones distinguen preparación, espera de tráfico y salida observada. La confirmación de inicio se correlaciona y se difiere hasta observar salida, en vez de confirmar sólo pthread/SOCKS.
+- JNI: se corta al fallar NewLongArray/lookup/ref; no se siguen haciendo lookups con excepción pendiente. Se verifican recursos pthread y se publica el callback VM sólo tras inicialización completa. Generación incrementada sólo tras crear un worker real, usada para probar recuperación.
+- Regresiones locales del componente: **19 casos** de C ejecutado/guards JNI; incluyen intercambio TCP real en loopback y en una dirección propia no-loopback, ambos rechazados como salida remota. Los positivos UDP de estado reciben metadatos de unidad; no prueban UDP enrutado.
+- Prueba adicional ejecutada: TLS con certificado/hostname verificados a `github.com:443`, HEAD `/robots.txt` respondió 200; el C real detectó ACK/payload y luego caducó tras **60,100169 s**, sin reinicio de proceso. Informe local `tool/reports/completion/native-egress-expiry.json`. **Linux, no Android ni TUN; no cierra el gate VPN.**
+- `cdf3d75` añade fixture de peers TCP/UDP IPv4/IPv6 reales y driver que preserva fallos/limpia procesos; siete pruebas de infraestructura host ejecutadas, sin sustituir Gradle. Cuatro casos Android requieren consentimiento real, sockets ligados a la VPN, nonce intacto, contadores TUN, rechazo RFC1929, generación nueva tras terminar worker, aislamiento sin fuga y stop comprobado. **Aún no ejecutados en Android.** El alias IPv6 del host `fec0::2` sigue sin validar en el emulador; su ausencia debe fallar, no omitirse.
+
+### AUTH-01 — un propietario por solicitud, sin confundirlo con CryptoObject
+
+- `ee81808` usa ticket por identidad compartido entre biometría/credencial; rechaza reemplazos concurrentes, callbacks obsoletos y doble finalización. La credencial usa launcher con clave única; destrucción cierra, cancela, desregistra y completa el resultado original como falso.
+- Siete casos JVM añadidos, incluida carrera de ocho threads con errores propagados. **Pendientes de ejecución Kotlin/JVM CI.** No se reportan como ya aprobados ni como autorización criptográfica de material del vault.
+
+### CI y modelo: evidencia visible sin convertir fallos en éxito
+
+- `a5ece86` publica métricas reales compactas del candidato incluso si es rechazado y ejecuta benchmark del candidato rechazado sin llamar a eso aceptación ni rendimiento del teléfono. El gate de entrenamiento sigue rojo cuando falla calidad.
+- `bbdb6fa` imprime diagnóstico por caso y hashes XML aun si otra clase falla; el verificador estricto se ejecuta igualmente y devuelve fallo. Android 16 exige **10 casos** (2 originales + 4 integridad + 4 VPN), sin skips/reintentos escondidos. API 29 añade los seis de almacenamiento, **no sustituye Android 16 ni demuestra el Redmi**.
+- Metadatos APK conservan commit exacto, cuatro ELF por ABI, modelo/digest/firma comparados byte a byte y lock realmente resuelto. Se publica sólo el delta público del lock con SHA, nunca material de firma.
+- El último CI completado previo a estos cambios (`f8ed1b8`) tuvo Flutter y los tres jobs de firma/SBOM positivos, APK/JNI positivo, migración 1 fallo y modelo rechazado por recall adversarial. **Esos éxitos NO aprueban código nativo/Kotlin/proveedor modificado después.**
+
+### Pruebas locales de la corrección completa actual
+
+```text
+/home/user/.cache/aura-completion-venv/bin/python -m pytest -q -rs
+193 passed, 8 skipped, 124 subtests passed in 10.40s
+```
+
+`tool/test_vpn_config_template.py`, compilación Python, YAML de workflows y `git diff --check` aprobados. Las ocho omisiones AAB siguen siendo por falta de JDK completo local; no son éxito. No hay Flutter/SDK Android local establecido. Procedencia, guards de fuente y fixtures de parser no se presentan como tests físicos. La nueva CI debe compilar y ejecutar antes de cerrar defectos/regresiones.
+
+### Bloqueos que siguen abiertos
+
+1. Obtener ejecución CI del código corregido (Android/JNI/JVM/Flutter y los 10 casos reales); diagnosticar/corregir el primer error real, no eliminar aserciones. Aprobar repetición normal/interrumpida más integridad antes de cerrar VAULT-02.
+2. Atar material real del vault a CryptoObject y verificar acceso antiguo, cancelación, invalidación/enrollment, background y recuperación sin backup descifrable que eluda autenticación. **VAULT-01 alta abierta.**
+3. Tráfico/recovery/handover/stop/consumo Android: código y pruebas nuevos todavía sin ejecución Android. Sin aceptación anticipada de IPv6, UDP o Redmi.
+4. Modelo candidato rechazado: no promover 3.1.0, no rebajar gates ni reutilizar el test observado para escoger hiperparámetros. Falta revisión FP/FN independiente y calidad aprobada; 3.0.0 sigue activo.
+5. Lock restante de dependencias federadas debe reflejar la resolución real de CI; se conserva evidencia reproducible para actualizarlo sin hashes inventados.
+6. Dispositivo de referencia no conectado: ninguna función validada físicamente. Propietario debe proporcionar ejecución/registro del Redmi Android 16.
+7. Firma de producción y Codemagic pendientes: claves de CI efímeras no son identidad de distribución. Codemagic no ofrece conector utilizable en esta sesión; propietario debe configurar/ejecutar su proyecto por canal seguro, sin claves en chat. No hay publicación ni merge nuevo en main.
+
+Los nueve criterios conservan el denominador original y pesos iguales; ninguno parcial se redondea a completo. El cierre definitivo se actualiza con resultados reales posteriores, no con promesas de esta implementación.
+
+### Inventario de cambios hasta el código registrado
+
+La procedencia de cada archivo vendorizado está en su manifiesto. Lista respecto a main verificado:
+
+```text
+.github/workflows/android-debug-build.yml
+.github/workflows/flutter-quality.yml
+.github/workflows/model-training.yml
+.github/workflows/release-signing-integrity.yml
+android/app/build.gradle
+android/app/src/androidTest/java/com/ciberdefensa/aura/SecureStorageIntegrityTest.java
+android/app/src/androidTest/java/com/ciberdefensa/aura/VpnForwardingInstrumentationTest.java
+android/app/src/main/cpp/aura_forwarding_health.c
+android/app/src/main/cpp/aura_forwarding_health.h
+android/app/src/main/cpp/hev-socks5-tunnel/Android.mk
+android/app/src/main/cpp/hev-socks5-tunnel/src/core/src/hev-socks5-misc.c
+android/app/src/main/cpp/hev-socks5-tunnel/src/core/src/hev-socks5-server.c
+android/app/src/main/cpp/hev-socks5-tunnel/src/core/src/hev-socks5-server.h
+android/app/src/main/cpp/hev-socks5-tunnel/src/core/src/hev-socks5-udp.c
+android/app/src/main/cpp/hev-socks5-tunnel/src/core/src/hev-socks5.c
+android/app/src/main/cpp/hev-socks5-tunnel/src/core/src/hev-socks5.h
+android/app/src/main/cpp/hev-socks5-tunnel/src/hev-jni.c
+android/app/src/main/java/hev/htproxy/TProxyService.java
+android/app/src/main/kotlin/com/ciberdefensa/aura/AuraVpnService.kt
+android/app/src/main/kotlin/com/ciberdefensa/aura/LocalAuthRequestGate.kt
+android/app/src/main/kotlin/com/ciberdefensa/aura/MainActivity.kt
+android/app/src/storageMigration/AndroidManifest.xml
+android/app/src/storageMigration/java/com/ciberdefensa/aura/VpnInstrumentationActivity.java
+android/app/src/test/kotlin/com/ciberdefensa/aura/LocalAuthRequestGateTest.kt
+docs/AURA_ANDROID_COMPLETION_2026-11-08.md
+pubspec.lock
+pubspec.yaml
+third_party/flutter_secure_storage/AURA_PATCHES.json
+third_party/flutter_secure_storage/AURA_PATCHES.md
+third_party/flutter_secure_storage/CHANGELOG.md
+third_party/flutter_secure_storage/LICENSE
+third_party/flutter_secure_storage/README.md
+third_party/flutter_secure_storage/UPSTREAM.json
+third_party/flutter_secure_storage/android/.gitignore
+third_party/flutter_secure_storage/android/build.gradle
+third_party/flutter_secure_storage/android/gradle.properties
+third_party/flutter_secure_storage/android/gradle/wrapper/gradle-wrapper.properties
+third_party/flutter_secure_storage/android/settings.gradle
+third_party/flutter_secure_storage/android/src/main/AndroidManifest.xml
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/FlutterSecureStorage.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/FlutterSecureStorageConfig.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/FlutterSecureStoragePlugin.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/MigrationBackup.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/NamespacedConfigSource.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/SecurePreferencesCallback.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/BiometricNamespaceKeyRecovery.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/KeyCipher.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/KeyCipherAlgorithm.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/KeyCipherFunction.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/KeyCipherImplementationAES23.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/KeyCipherImplementationRSA18.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/KeyCipherImplementationRSAOAEP.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/LegacyNamespaceKeyRecovery.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/StorageCipher.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/StorageCipherAlgorithm.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/StorageCipherFactory.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/StorageCipherFunction.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/StorageCipherImplementationAES18.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/StorageCipherImplementationAES23.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/StorageCipherImplementationGCM.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/crypto/EncryptedSharedPreferences.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/crypto/MasterKey.java
+third_party/flutter_secure_storage/android/src/main/java/com/it_nomads/fluttersecurestorage/crypto/MasterKeys.java
+third_party/flutter_secure_storage/lib/flutter_secure_storage.dart
+third_party/flutter_secure_storage/lib/options/android_options.dart
+third_party/flutter_secure_storage/lib/options/apple_options.dart
+third_party/flutter_secure_storage/lib/options/ios_options.dart
+third_party/flutter_secure_storage/lib/options/linux_options.dart
+third_party/flutter_secure_storage/lib/options/macos_options.dart
+third_party/flutter_secure_storage/lib/options/web_options.dart
+third_party/flutter_secure_storage/lib/options/windows_options.dart
+third_party/flutter_secure_storage/pubspec.yaml
+tool/run_android_vpn_instrumentation.py
+tool/test_forwarding_health_native.py
+tool/test_mobile_budget.py
+tool/test_secure_storage_instrumentation_policy.py
+tool/test_secure_storage_vendor.py
+tool/test_verify_android_instrumentation.py
+tool/test_vpn_config_template.py
+tool/test_vpn_echo_fixture.py
+tool/test_vpn_instrumentation_driver.py
+tool/train_max_aura_brain.py
+tool/verify_android_instrumentation.py
+tool/vpn_echo_fixture.py
+```
