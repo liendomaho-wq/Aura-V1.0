@@ -3,8 +3,9 @@ import 'package:flutter/services.dart';
 import 'ai_brain.dart';
 
 class AuraCore {
-  static const MethodChannel _telemetryChannel =
-      MethodChannel('com.ciberdefensa.aura/telemetry');
+  static const MethodChannel _telemetryChannel = MethodChannel(
+    'com.ciberdefensa.aura/telemetry',
+  );
   static const String _privacyAuditEvent =
       'AUDITORÍA_DE_VECTORES_DE_PRIVACIDAD_DISPOSITIVO';
 

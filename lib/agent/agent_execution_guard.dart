@@ -59,28 +59,28 @@ abstract final class AuraToolExecutionPolicy {
 
   static const Map<String, Set<String>> _allowedArguments =
       <String, Set<String>>{
-    'update_defenses': <String>{'confirmed_by_user'},
-    'audit_device': <String>{'confirmed_by_user'},
-    'scan_apps': <String>{'confirmed_by_user'},
-    'analyze_domain': <String>{'domain', 'confirmed_by_user'},
-    'toggle_defenses': <String>{'activate', 'confirmed_by_user'},
-    'block_domain': <String>{'domain', 'confirmed_by_user'},
-    'isolate_app': <String>{'package_name', 'reason', 'confirmed_by_user'},
-    'panic_isolation': <String>{'confirmed_by_user'},
-    'resume_network': <String>{'confirmed_by_user'},
-    'cryptographic_purge': <String>{'confirmed_by_user'},
-  };
+        'update_defenses': <String>{'confirmed_by_user'},
+        'audit_device': <String>{'confirmed_by_user'},
+        'scan_apps': <String>{'confirmed_by_user'},
+        'analyze_domain': <String>{'domain', 'confirmed_by_user'},
+        'toggle_defenses': <String>{'activate', 'confirmed_by_user'},
+        'block_domain': <String>{'domain', 'confirmed_by_user'},
+        'isolate_app': <String>{'package_name', 'reason', 'confirmed_by_user'},
+        'panic_isolation': <String>{'confirmed_by_user'},
+        'resume_network': <String>{'confirmed_by_user'},
+        'cryptographic_purge': <String>{'confirmed_by_user'},
+      };
 
   static Duration timeoutFor(String tool) => switch (tool) {
-        'update_defenses' => const Duration(seconds: 100),
-        'analyze_domain' => const Duration(seconds: 45),
-        // Native consent and service confirmation each have a 30 s deadline.
-        // Extra time accommodates channel delivery; timeout still means unknown.
-        'toggle_defenses' => const Duration(seconds: 80),
-        'scan_apps' || 'audit_device' => const Duration(seconds: 30),
-        'cryptographic_purge' => const Duration(seconds: 30),
-        _ => const Duration(seconds: 20),
-      };
+    'update_defenses' => const Duration(seconds: 100),
+    'analyze_domain' => const Duration(seconds: 45),
+    // Native consent and service confirmation each have a 30 s deadline.
+    // Extra time accommodates channel delivery; timeout still means unknown.
+    'toggle_defenses' => const Duration(seconds: 80),
+    'scan_apps' || 'audit_device' => const Duration(seconds: 30),
+    'cryptographic_purge' => const Duration(seconds: 30),
+    _ => const Duration(seconds: 20),
+  };
 
   /// Returns a stable error code; never includes user data in the error.
   static String? validate(String tool, Map<String, dynamic> arguments) {
@@ -113,8 +113,9 @@ abstract final class AuraToolExecutionPolicy {
       final packageName = arguments['package_name'];
       if (packageName is! String ||
           packageName.length > 255 ||
-          !RegExp(r'^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$')
-              .hasMatch(packageName)) {
+          !RegExp(
+            r'^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$',
+          ).hasMatch(packageName)) {
         return 'invalid_package_name';
       }
       final reason = arguments['reason'];
@@ -132,11 +133,14 @@ abstract final class AuraToolExecutionPolicy {
     }
     final labels = value.split('.');
     if (labels.length < 2) return false;
-    return labels.every((label) =>
-        label.isNotEmpty &&
-        label.length <= 63 &&
-        RegExp(r'^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$')
-            .hasMatch(label)) &&
+    return labels.every(
+          (label) =>
+              label.isNotEmpty &&
+              label.length <= 63 &&
+              RegExp(
+                r'^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$',
+              ).hasMatch(label),
+        ) &&
         RegExp(r'^[A-Za-z]{2,63}$').hasMatch(labels.last);
   }
 
@@ -152,10 +156,12 @@ abstract final class AuraToolExecutionPolicy {
     }
     if (value is Map) {
       if (value.length > maxCollectionEntries) return false;
-      return value.entries.every((entry) =>
-          entry.key is String &&
-          (entry.key as String).length <= 64 &&
-          _isSafeValue(entry.value, depth + 1));
+      return value.entries.every(
+        (entry) =>
+            entry.key is String &&
+            (entry.key as String).length <= 64 &&
+            _isSafeValue(entry.value, depth + 1),
+      );
     }
     return false;
   }

@@ -13,20 +13,14 @@ import 'aura_crypto_layer.dart';
 import 'agent_execution_guard.dart';
 
 class ToolStep {
-  const ToolStep({
-    required this.name,
-    required this.arguments,
-  });
+  const ToolStep({required this.name, required this.arguments});
 
   final String name;
   final Map<String, dynamic> arguments;
 }
 
 class ToolResult {
-  const ToolResult({
-    required this.summary,
-    required this.data,
-  });
+  const ToolResult({required this.summary, required this.data});
 
   final String summary;
   final Map<String, dynamic> data;
@@ -43,12 +37,15 @@ abstract class AuraTools {
     'https://yojamm16-boop.github.io/Aura-V1.0/model/aura_brain_model.json.sig',
   );
   static const int _maxModelBytes = 5 * 1024 * 1024;
-  static const MethodChannel _engineChannel =
-      MethodChannel('com.aura.cyberdefense/engine');
-  static const MethodChannel _securityChannel =
-      MethodChannel('com.ciberdefensa.aura/security');
-    static const MethodChannel _panicChannel =
-      MethodChannel('com.aura.cyberdefense/panic');
+  static const MethodChannel _engineChannel = MethodChannel(
+    'com.aura.cyberdefense/engine',
+  );
+  static const MethodChannel _securityChannel = MethodChannel(
+    'com.ciberdefensa.aura/security',
+  );
+  static const MethodChannel _panicChannel = MethodChannel(
+    'com.aura.cyberdefense/panic',
+  );
   static final AuraSecureVault _secureVault = AuraSecureVault();
 
   static Future<ToolResult> execute(
@@ -82,7 +79,8 @@ abstract class AuraTools {
       token.markExecutionStarted();
     } on AgentOperationCancelled {
       return ToolResult(
-        summary: 'Operación cancelada antes de iniciar; no se ejecutó ninguna herramienta.',
+        summary:
+            'Operación cancelada antes de iniciar; no se ejecutó ninguna herramienta.',
         data: <String, dynamic>{
           'ok': false,
           'error': 'operation_cancelled',
@@ -94,41 +92,44 @@ abstract class AuraTools {
 
     var timedOut = false;
     try {
-      final result = await _executeTrusted(
-        step,
-        onProgress: (message) {
-          if (!timedOut) onProgress?.call(message);
-        },
-        stateProvider: stateProvider,
-        onToolStarted: (toolName, arguments) {
-          if (!timedOut) onToolStarted?.call(toolName, arguments);
-        },
-        onToolCompleted: (toolName, arguments, result) {
-          if (!timedOut) onToolCompleted?.call(toolName, arguments, result);
-        },
-      ).timeout(
-        AuraToolExecutionPolicy.timeoutFor(step.name),
-        onTimeout: () {
-          timedOut = true;
-          return ToolResult(
-            summary: 'La operación excedió el tiempo máximo. Su resultado es desconocido; comprueba el estado antes de volver a intentarlo.',
-            data: <String, dynamic>{
-              'ok': false,
-              'error': 'operation_timeout',
-              'tool': step.name,
-              'outcome': 'unknown',
-              'automatic_retry_allowed': false,
-              'security_level': 'warning',
+      final result =
+          await _executeTrusted(
+            step,
+            onProgress: (message) {
+              if (!timedOut) onProgress?.call(message);
+            },
+            stateProvider: stateProvider,
+            onToolStarted: (toolName, arguments) {
+              if (!timedOut) onToolStarted?.call(toolName, arguments);
+            },
+            onToolCompleted: (toolName, arguments, result) {
+              if (!timedOut) onToolCompleted?.call(toolName, arguments, result);
+            },
+          ).timeout(
+            AuraToolExecutionPolicy.timeoutFor(step.name),
+            onTimeout: () {
+              timedOut = true;
+              return ToolResult(
+                summary:
+                    'La operación excedió el tiempo máximo. Su resultado es desconocido; comprueba el estado antes de volver a intentarlo.',
+                data: <String, dynamic>{
+                  'ok': false,
+                  'error': 'operation_timeout',
+                  'tool': step.name,
+                  'outcome': 'unknown',
+                  'automatic_retry_allowed': false,
+                  'security_level': 'warning',
+                },
+              );
             },
           );
-        },
-      );
 
       // Every tool must return an explicit boolean outcome. Missing or
       // malformed postconditions are never promoted to success.
       if (result.data['ok'] is! bool) {
         return ToolResult(
-          summary: 'La herramienta no devolvió una postcondición verificable. No se marcará como exitosa.',
+          summary:
+              'La herramienta no devolvió una postcondición verificable. No se marcará como exitosa.',
           data: <String, dynamic>{
             'ok': false,
             'error': 'invalid_tool_postcondition',
@@ -145,7 +146,8 @@ abstract class AuraTools {
       );
     } on Object {
       return ToolResult(
-        summary: 'La herramienta no pudo completar la operación. No se confirmó ningún cambio.',
+        summary:
+            'La herramienta no pudo completar la operación. No se confirmó ningún cambio.',
         data: <String, dynamic>{
           'ok': false,
           'error': 'tool_boundary_failure',
@@ -168,9 +170,8 @@ abstract class AuraTools {
         case 'update_defenses':
           return await _updateDefenses(onProgress);
         case 'audit_device':
-          final report = await _securityChannel.invokeMapMethod<String, dynamic>(
-            'checkHostileEnvironment',
-          );
+          final report = await _securityChannel
+              .invokeMapMethod<String, dynamic>('checkHostileEnvironment');
           if (report == null ||
               report['isEmulator'] is! bool ||
               report['isRooted'] is! bool ||
@@ -181,7 +182,8 @@ abstract class AuraTools {
               report['environmentCheckErrors'] is! List ||
               report['untrustedAccessibilityServicePackages'] is! List) {
             return const ToolResult(
-              summary: 'Android no devolvió un informe válido de postura del dispositivo.',
+              summary:
+                  'Android no devolvió un informe válido de postura del dispositivo.',
               data: <String, dynamic>{
                 'ok': false,
                 'error': 'invalid_device_audit_report',
@@ -203,19 +205,19 @@ abstract class AuraTools {
           final auditStatus = errors.isNotEmpty
               ? 'incomplete'
               : hostile
-                  ? 'review_required'
-                  : 'no_indicators_observed';
+              ? 'review_required'
+              : 'no_indicators_observed';
           final summary = errors.isNotEmpty
               ? 'Auditoría de postura incompleta: ' +
-                  indicators.length.toString() +
-                  ' indicadores observados y ' +
-                  errors.length.toString() +
-                  ' comprobaciones no disponibles. Revisa el detalle antes de sacar conclusiones.'
+                    indicators.length.toString() +
+                    ' indicadores observados y ' +
+                    errors.length.toString() +
+                    ' comprobaciones no disponibles. Revisa el detalle antes de sacar conclusiones.'
               : hostile
-                  ? 'Android reportó ' +
-                      indicators.length.toString() +
-                      ' indicadores del entorno que requieren revisión. Esto no demuestra por sí solo que exista malware.'
-                  : 'La auditoría terminó sin indicadores hostiles observados en las comprobaciones disponibles. Esto no certifica que el dispositivo esté libre de amenazas.';
+              ? 'Android reportó ' +
+                    indicators.length.toString() +
+                    ' indicadores del entorno que requieren revisión. Esto no demuestra por sí solo que exista malware.'
+              : 'La auditoría terminó sin indicadores hostiles observados en las comprobaciones disponibles. Esto no certifica que el dispositivo esté libre de amenazas.';
           return ToolResult(
             summary: summary,
             data: <String, dynamic>{
@@ -223,7 +225,9 @@ abstract class AuraTools {
               'user_action_required': errors.isNotEmpty || hostile,
               'tool': 'audit_device',
               'audit_status': auditStatus,
-              'security_level': errors.isNotEmpty || hostile ? 'warning' : 'safe',
+              'security_level': errors.isNotEmpty || hostile
+                  ? 'warning'
+                  : 'safe',
               'is_emulator': report['isEmulator'],
               'is_rooted': report['isRooted'],
               'root_confidence': report['rootConfidence'],
@@ -242,13 +246,16 @@ abstract class AuraTools {
             },
           );
         case 'scan_apps':
-          final report = await _securityChannel.invokeMapMethod<String, dynamic>(
-            'scanActiveSensitiveServices',
-          );
+          final report = await _securityChannel
+              .invokeMapMethod<String, dynamic>('scanActiveSensitiveServices');
           if (report == null) {
             return const ToolResult(
-              summary: 'Android no devolvió un informe del escáner de aplicaciones.',
-              data: <String, dynamic>{'ok': false, 'error': 'empty_scan_report'},
+              summary:
+                  'Android no devolvió un informe del escáner de aplicaciones.',
+              data: <String, dynamic>{
+                'ok': false,
+                'error': 'empty_scan_report',
+              },
             );
           }
           const countToListField = <String, String>{
@@ -268,23 +275,20 @@ abstract class AuraTools {
             return value is List && value.every((entry) => entry is Map);
           });
           final timestamp = report['timestamp'];
-          final countsMatchLists = countsAreValid &&
+          final countsMatchLists =
+              countsAreValid &&
               listsAreValid &&
               countToListField.entries.every(
                 (entry) =>
-                    report[entry.key] ==
-                    (report[entry.value] as List).length,
+                    report[entry.key] == (report[entry.value] as List).length,
               );
           final activeSpecialAccessCount =
               report['active_special_access_count'];
           final specialAccessCount = report['special_access_count'];
           final confirmedActiveSpecialAccess = listsAreValid
               ? (report['special_access'] as List)
-                  .where(
-                    (entry) =>
-                        (entry as Map)['state'] == 'ACTIVE',
-                  )
-                  .length
+                    .where((entry) => (entry as Map)['state'] == 'ACTIVE')
+                    .length
               : -1;
           if (timestamp is! int ||
               timestamp <= 0 ||
@@ -294,7 +298,8 @@ abstract class AuraTools {
               activeSpecialAccessCount != confirmedActiveSpecialAccess ||
               activeSpecialAccessCount > (specialAccessCount as int)) {
             return const ToolResult(
-              summary: 'Auditoría de aplicaciones incompleta: Android devolvió un informe ausente o incoherente. No se interpretará como cero aplicaciones ni cero riesgos.',
+              summary:
+                  'Auditoría de aplicaciones incompleta: Android devolvió un informe ausente o incoherente. No se interpretará como cero aplicaciones ni cero riesgos.',
               data: <String, dynamic>{
                 'ok': false,
                 'error': 'invalid_scan_report',
@@ -310,7 +315,8 @@ abstract class AuraTools {
           final signatureIssues = report['signature_issue_count'] as int;
           final obfuscated = report['obfuscated_app_count'] as int;
           return ToolResult(
-            summary: 'Escaneo local completado: $activeServices apps con servicios sensibles activos, $activeSpecialAccess accesos especiales confirmados, $suspicious con combinación de permisos de alto riesgo, $signatureIssues incidencias de firma y $obfuscated con indicadores de ofuscación. Son señales para revisar, no prueba de malware.',
+            summary:
+                'Escaneo local completado: $activeServices apps con servicios sensibles activos, $activeSpecialAccess accesos especiales confirmados, $suspicious con combinación de permisos de alto riesgo, $signatureIssues incidencias de firma y $obfuscated con indicadores de ofuscación. Son señales para revisar, no prueba de malware.',
             data: <String, dynamic>{
               'ok': true,
               'scan_type': 'installed_app_static_review',
@@ -326,7 +332,8 @@ abstract class AuraTools {
               'obfuscated_app_count': obfuscated,
               'applications': report['applications'] ?? const <dynamic>[],
               'suspicious_apps': report['suspicious_apps'] ?? const <dynamic>[],
-              'signature_issues': report['signature_issues'] ?? const <dynamic>[],
+              'signature_issues':
+                  report['signature_issues'] ?? const <dynamic>[],
               'obfuscated_apps': report['obfuscated_apps'] ?? const <dynamic>[],
               'limitations': <String>[
                 'Los permisos solicitados no demuestran que estén concedidos o abusados.',
@@ -346,7 +353,8 @@ abstract class AuraTools {
               ).hasMatch(domain) ||
               InternetAddress.tryParse(domain) != null) {
             return const ToolResult(
-              summary: 'No se analizó el dominio: el nombre no tiene un formato DNS válido.',
+              summary:
+                  'No se analizó el dominio: el nombre no tiene un formato DNS válido.',
               data: <String, dynamic>{
                 'ok': false,
                 'error': 'invalid_domain',
@@ -363,7 +371,8 @@ abstract class AuraTools {
           final modelAvailable = await brain.preloadModel();
           if (!modelAvailable) {
             return const ToolResult(
-              summary: 'Análisis no disponible: no se pudo cargar el modelo local validado. No se emitió un veredicto.',
+              summary:
+                  'Análisis no disponible: no se pudo cargar el modelo local validado. No se emitió un veredicto.',
               data: <String, dynamic>{
                 'ok': false,
                 'error': 'verified_model_unavailable',
@@ -374,7 +383,8 @@ abstract class AuraTools {
           final integrity = await brain.verifyModelIntegrity();
           if (!integrity.verified || !integrity.signatureVerified) {
             return ToolResult(
-              summary: 'Análisis detenido: la integridad o firma del modelo no pudo verificarse. No se emitió un veredicto.',
+              summary:
+                  'Análisis detenido: la integridad o firma del modelo no pudo verificarse. No se emitió un veredicto.',
               data: <String, dynamic>{
                 'ok': false,
                 'error': 'model_integrity_unverified',
@@ -389,10 +399,12 @@ abstract class AuraTools {
             jsonEncode(<String, String>{'host': normalizedDomain}),
             enforceBlocklistHits: false,
           );
-          final completed = analysis.isNotEmpty &&
+          final completed =
+              analysis.isNotEmpty &&
               !analysis.startsWith('No se pudo completar') &&
               !analysis.contains('no se encontró un dominio válido');
-          final threatRequiresReview = analysis.contains('POSIBLE AMENAZA') ||
+          final threatRequiresReview =
+              analysis.contains('POSIBLE AMENAZA') ||
               analysis.contains('AMENAZA:');
           return ToolResult(
             summary: analysis,
@@ -419,7 +431,8 @@ abstract class AuraTools {
         case 'block_domain':
           if (step.arguments['confirmed_by_user'] != true) {
             return const ToolResult(
-              summary: 'Bloqueo no ejecutado: requiere confirmación explícita del usuario.',
+              summary:
+                  'Bloqueo no ejecutado: requiere confirmación explícita del usuario.',
               data: <String, dynamic>{
                 'ok': false,
                 'error': 'user_confirmation_required',
@@ -428,7 +441,9 @@ abstract class AuraTools {
             );
           }
           final domain = step.arguments['domain'];
-          if (domain is! String || domain.trim().isEmpty || domain.length > 253) {
+          if (domain is! String ||
+              domain.trim().isEmpty ||
+              domain.length > 253) {
             return const ToolResult(
               summary: 'No se ejecutó el bloqueo: el dominio no es válido.',
               data: <String, dynamic>{'ok': false, 'error': 'invalid_domain'},
@@ -443,15 +458,13 @@ abstract class AuraTools {
             summary: confirmed
                 ? 'Dominio bloqueado por el motor DNS local.'
                 : 'El motor DNS no confirmó el bloqueo del dominio.',
-            data: <String, dynamic>{
-              'ok': confirmed,
-              'domain': domain,
-            },
+            data: <String, dynamic>{'ok': confirmed, 'domain': domain},
           );
         case 'isolate_app':
           if (step.arguments['confirmed_by_user'] != true) {
             return const ToolResult(
-              summary: 'No se abrió la configuración de la aplicación: requiere confirmación explícita.',
+              summary:
+                  'No se abrió la configuración de la aplicación: requiere confirmación explícita.',
               data: <String, dynamic>{
                 'ok': false,
                 'error': 'user_confirmation_required',
@@ -461,11 +474,13 @@ abstract class AuraTools {
           }
           final packageName = step.arguments['package_name'];
           if (packageName is! String ||
-              !RegExp(r'^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$')
-                  .hasMatch(packageName) ||
+              !RegExp(
+                r'^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$',
+              ).hasMatch(packageName) ||
               packageName.length > 255) {
             return const ToolResult(
-              summary: 'No se abrió la configuración: el identificador de paquete no es válido.',
+              summary:
+                  'No se abrió la configuración: el identificador de paquete no es válido.',
               data: <String, dynamic>{
                 'ok': false,
                 'error': 'invalid_package_name',
@@ -474,13 +489,14 @@ abstract class AuraTools {
             );
           }
           final reason = step.arguments['reason'];
-          final nativeResult = await _engineChannel.invokeMapMethod<String, dynamic>(
-            'openAppDetails',
-            <String, dynamic>{
-              'package_name': packageName,
-              if (reason is String) 'reason': reason,
-            },
-          );
+          final nativeResult = await _engineChannel
+              .invokeMapMethod<String, dynamic>(
+                'openAppDetails',
+                <String, dynamic>{
+                  'package_name': packageName,
+                  if (reason is String) 'reason': reason,
+                },
+              );
           if (nativeResult == null) {
             return const ToolResult(
               summary: 'Android no devolvió el resultado de Ajustes.',
@@ -488,7 +504,8 @@ abstract class AuraTools {
             );
           }
           return ToolResult(
-            summary: (nativeResult['message'] as String?) ??
+            summary:
+                (nativeResult['message'] as String?) ??
                 (nativeResult['error'] as String?) ??
                 'Android devolvió el resultado de la solicitud.',
             data: <String, dynamic>{
@@ -505,7 +522,8 @@ abstract class AuraTools {
         case 'panic_isolation':
           if (step.arguments['confirmed_by_user'] != true) {
             return const ToolResult(
-              summary: 'Aislamiento no ejecutado: requiere confirmación explícita del usuario.',
+              summary:
+                  'Aislamiento no ejecutado: requiere confirmación explícita del usuario.',
               data: <String, dynamic>{
                 'ok': false,
                 'error': 'user_confirmation_required',
@@ -513,10 +531,8 @@ abstract class AuraTools {
               },
             );
           }
-          final isolated = await _panicChannel.invokeMethod<bool>(
-                'panicIsolation',
-              ) ??
-              false;
+          final isolated =
+              await _panicChannel.invokeMethod<bool>('panicIsolation') ?? false;
           return ToolResult(
             summary: isolated
                 ? 'Forwarding del túnel detenido; la interfaz VPN queda en modo de descarte.'
@@ -531,7 +547,8 @@ abstract class AuraTools {
         case 'resume_network':
           if (step.arguments['confirmed_by_user'] != true) {
             return const ToolResult(
-              summary: 'Reanudación no ejecutada: requiere confirmación explícita del usuario.',
+              summary:
+                  'Reanudación no ejecutada: requiere confirmación explícita del usuario.',
               data: <String, dynamic>{
                 'ok': false,
                 'error': 'user_confirmation_required',
@@ -539,10 +556,8 @@ abstract class AuraTools {
               },
             );
           }
-          final resumed = await _panicChannel.invokeMethod<bool>(
-                'resumeTunnel',
-              ) ??
-              false;
+          final resumed =
+              await _panicChannel.invokeMethod<bool>('resumeTunnel') ?? false;
           return ToolResult(
             summary: resumed
                 ? 'Forwarding del túnel restablecido.'
@@ -555,7 +570,8 @@ abstract class AuraTools {
         case 'cryptographic_purge':
           if (step.arguments['confirmed_by_user'] != true) {
             return const ToolResult(
-              summary: 'Purga no ejecutada: requiere una segunda orden de confirmación explícita.',
+              summary:
+                  'Purga no ejecutada: requiere una segunda orden de confirmación explícita.',
               data: <String, dynamic>{
                 'ok': false,
                 'error': 'user_confirmation_required',
@@ -564,9 +580,8 @@ abstract class AuraTools {
             );
           }
           await AuraAIBrain.purgeAllInMemoryModels();
-          final nativeAuditMemoryPurged = await _engineChannel.invokeMethod<bool>(
-                'purgeAuditMemory',
-              ) ??
+          final nativeAuditMemoryPurged =
+              await _engineChannel.invokeMethod<bool>('purgeAuditMemory') ??
               false;
           await _secureVault.purgeSensitiveData();
           final Map<String, dynamic> auditData = {
@@ -590,7 +605,8 @@ abstract class AuraTools {
       }
     } on PlatformException catch (error) {
       return ToolResult(
-        summary: 'No se pudo completar la operación nativa. No se confirmó ningún cambio.',
+        summary:
+            'No se pudo completar la operación nativa. No se confirmó ningún cambio.',
         data: <String, dynamic>{
           'ok': false,
           'error': 'operation_failed',
@@ -615,7 +631,8 @@ abstract class AuraTools {
       // or crash the agent command loop. Avoid returning exception text because
       // platform errors can contain paths, hostnames or other sensitive data.
       return ToolResult(
-        summary: 'No se pudo completar la operación. No se confirmó ningún cambio; revisa el estado antes de reintentar.',
+        summary:
+            'No se pudo completar la operación. No se confirmó ningún cambio; revisa el estado antes de reintentar.',
         data: <String, dynamic>{
           'ok': false,
           'error': 'operation_failed',
@@ -634,7 +651,8 @@ abstract class AuraTools {
     final activate = arguments['activate'] == true;
     if (arguments['confirmed_by_user'] != true) {
       return const ToolResult(
-        summary: 'Cambio de defensa no ejecutado: requiere confirmación explícita del usuario.',
+        summary:
+            'Cambio de defensa no ejecutado: requiere confirmación explícita del usuario.',
         data: <String, dynamic>{
           'ok': false,
           'error': 'user_confirmation_required',
@@ -643,7 +661,8 @@ abstract class AuraTools {
       );
     }
     try {
-      final confirmed = await shieldChannel.invokeMethod<bool>(
+      final confirmed =
+          await shieldChannel.invokeMethod<bool>(
             activate ? 'startShield' : 'stopShield',
           ) ??
           false;
@@ -651,7 +670,8 @@ abstract class AuraTools {
         // Android's stopService return value only means that it accepted the
         // request. The service's native worker may not have stopped yet.
         return const ToolResult(
-          summary: 'Android aceptó la solicitud de detener la VPN, pero el cierre aún no está confirmado. Comprueba el estado antes de continuar.',
+          summary:
+              'Android aceptó la solicitud de detener la VPN, pero el cierre aún no está confirmado. Comprueba el estado antes de continuar.',
           data: <String, dynamic>{
             'ok': false,
             'request_accepted': true,
@@ -665,8 +685,8 @@ abstract class AuraTools {
         summary: confirmed
             ? 'DEFENSA ACTIVADA — túnel en marcha'
             : activate
-                ? 'No se confirmó el inicio del escudo VPN. Comprueba su estado antes de reintentar.'
-                : 'Android no confirmó la solicitud de detener el escudo VPN.',
+            ? 'No se confirmó el inicio del escudo VPN. Comprueba su estado antes de reintentar.'
+            : 'Android no confirmó la solicitud de detener el escudo VPN.',
         data: <String, dynamic>{
           'ok': confirmed,
           if (confirmed) 'vpn_active': true,
@@ -678,8 +698,8 @@ abstract class AuraTools {
         summary: error.code == 'VPN_START_TIMEOUT'
             ? 'El servicio VPN no confirmó el arranque a tiempo. Comprueba su estado antes de reintentar.'
             : error.code == 'VPN_CONSENT_TIMEOUT'
-                ? 'El consentimiento VPN agotó el tiempo. Cierra el diálogo del sistema antes de reintentar.'
-                : 'No pude contactar el motor VPN. Revisa que Aura esté activa.',
+            ? 'El consentimiento VPN agotó el tiempo. Cierra el diálogo del sistema antes de reintentar.'
+            : 'No pude contactar el motor VPN. Revisa que Aura esté activa.',
         data: <String, dynamic>{
           'ok': false,
           'error': 'operation_failed',
@@ -703,7 +723,8 @@ abstract class AuraTools {
       // Keep unexpected native failures inside the tool boundary and avoid
       // exposing exception messages or device-specific paths to the agent UI.
       return ToolResult(
-        summary: 'No pude completar la operación VPN. No se confirmó ningún cambio.',
+        summary:
+            'No pude completar la operación VPN. No se confirmó ningún cambio.',
         data: <String, dynamic>{
           'ok': false,
           'error': 'operation_failed',
@@ -725,10 +746,9 @@ abstract class AuraTools {
       onProgress?.call(
         'Buscando la firma RSA y el digest SHA-256 publicados...',
       );
-      final digestResponse = await http.get(
-        _modelDigestUri,
-        headers: const <String, String>{},
-      ).timeout(const Duration(seconds: 30));
+      final digestResponse = await http
+          .get(_modelDigestUri, headers: const <String, String>{})
+          .timeout(const Duration(seconds: 30));
       if (digestResponse.statusCode != HttpStatus.ok ||
           digestResponse.bodyBytes.length > 128) {
         throw const HttpException(
@@ -736,10 +756,9 @@ abstract class AuraTools {
         );
       }
 
-      final signatureResponse = await http.get(
-        _modelSignatureUri,
-        headers: const <String, String>{},
-      ).timeout(const Duration(seconds: 30));
+      final signatureResponse = await http
+          .get(_modelSignatureUri, headers: const <String, String>{})
+          .timeout(const Duration(seconds: 30));
       if (signatureResponse.statusCode != HttpStatus.ok ||
           signatureResponse.bodyBytes.isEmpty ||
           signatureResponse.bodyBytes.length > 1024) {
@@ -749,18 +768,13 @@ abstract class AuraTools {
       }
 
       onProgress?.call('Descargando el modelo firmado de 500 árboles... 📥');
-      final modelResponse = await http.get(
-        _modelUri,
-        headers: const <String, String>{},
-      ).timeout(const Duration(seconds: 30));
+      final modelResponse = await http
+          .get(_modelUri, headers: const <String, String>{})
+          .timeout(const Duration(seconds: 30));
       if (modelResponse.statusCode != HttpStatus.ok ||
           modelResponse.bodyBytes.isEmpty ||
           modelResponse.bodyBytes.length > _maxModelBytes) {
-        modelResponse.bodyBytes.fillRange(
-          0,
-          modelResponse.bodyBytes.length,
-          0,
-        );
+        modelResponse.bodyBytes.fillRange(0, modelResponse.bodyBytes.length, 0);
         throw const HttpException(
           'El modelo público está vacío, excede el tamaño permitido o no está disponible.',
         );
@@ -791,9 +805,7 @@ abstract class AuraTools {
       );
       final supportDirectory = await getApplicationSupportDirectory();
       await AuraAIBrain.installDownloadedModel(
-        destination: File(
-          '${supportDirectory.path}/aura_brain_model.enc',
-        ),
+        destination: File('${supportDirectory.path}/aura_brain_model.enc'),
         modelBytes: modelBytes,
         signatureBytes: signatureBytes,
         expectedSha256: expectedDigest,

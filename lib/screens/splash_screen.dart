@@ -74,8 +74,8 @@ class _SplashScreenState extends State<SplashScreen>
       final deviceSecure = status['deviceSecure'] == true;
 
       if (hasStrongBiometric) {
-        final authenticated =
-            await AgentController.instance.authenticateBiometricDevice();
+        final authenticated = await AgentController.instance
+            .authenticateBiometricDevice();
         if (!authenticated) {
           _showAuthenticationFailure('ACCESO DENEGADO - NÚCLEO BLOQUEADO.');
           return;
@@ -85,8 +85,8 @@ class _SplashScreenState extends State<SplashScreen>
           _bootStatusText =
               'HUELLA NO CONFIGURADA; USANDO BLOQUEO DEL TELÉFONO...';
         });
-        final authenticated =
-            await AgentController.instance.authenticateDeviceCredential();
+        final authenticated = await AgentController.instance
+            .authenticateDeviceCredential();
         if (!authenticated) {
           _showAuthenticationFailure('BLOQUEO DEL TELÉFONO NO CONFIRMADO.');
           return;
@@ -217,12 +217,12 @@ class _SplashScreenState extends State<SplashScreen>
             const AuraCoreScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             FadeTransition(
-          opacity: CurvedAnimation(
-            parent: animation,
-            curve: Curves.fastOutSlowIn,
-          ),
-          child: child,
-        ),
+              opacity: CurvedAnimation(
+                parent: animation,
+                curve: Curves.fastOutSlowIn,
+              ),
+              child: child,
+            ),
         transitionDuration: const Duration(milliseconds: 600),
       ),
     );
@@ -292,11 +292,11 @@ class _SplashScreenState extends State<SplashScreen>
                 // unnecessarily difficult to use.
                 final coreSize = compact
                     ? (constraints.maxWidth * 0.38)
-                        .clamp(96.0, 112.0)
-                        .toDouble()
+                          .clamp(96.0, 112.0)
+                          .toDouble()
                     : (constraints.maxWidth * 0.72)
-                        .clamp(220.0, 310.0)
-                        .toDouble();
+                          .clamp(220.0, 310.0)
+                          .toDouble();
                 return SingleChildScrollView(
                   physics: const ClampingScrollPhysics(),
                   child: ConstrainedBox(
@@ -391,7 +391,9 @@ class _SplashScreenState extends State<SplashScreen>
                               color: const Color(0xA6091730),
                               borderRadius: BorderRadius.circular(22),
                               border: Border.all(
-                                color: AuraTokens.accent.withValues(alpha: 0.22),
+                                color: AuraTokens.accent.withValues(
+                                  alpha: 0.22,
+                                ),
                               ),
                               gradient: const LinearGradient(
                                 begin: Alignment.topLeft,
@@ -404,7 +406,9 @@ class _SplashScreenState extends State<SplashScreen>
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: AuraTokens.accentBlue.withValues(alpha: 0.12),
+                                  color: AuraTokens.accentBlue.withValues(
+                                    alpha: 0.12,
+                                  ),
                                   blurRadius: 32,
                                   spreadRadius: 1,
                                 ),
@@ -472,13 +476,15 @@ class _SplashScreenState extends State<SplashScreen>
                                     ),
                                   ),
                                 ],
-                                if (_showLockDecision && !_isAuthenticating) ...[
+                                if (_showLockDecision &&
+                                    !_isAuthenticating) ...[
                                   SizedBox(height: compact ? 8 : 14),
                                   _buildDecisionButton(
                                     label: 'CONFIGURAR BLOQUEO DEL TELÉFONO',
                                     color: AuraTokens.accent,
                                     onPressed: () => unawaited(
-                                      AgentController.instance.openSecuritySettings(),
+                                      AgentController.instance
+                                          .openSecuritySettings(),
                                     ),
                                   ),
                                   SizedBox(height: compact ? 5 : 8),
@@ -489,7 +495,8 @@ class _SplashScreenState extends State<SplashScreen>
                                   ),
                                   const SizedBox(height: 8),
                                   _buildDecisionButton(
-                                    label: 'CONTINUAR SIN BLOQUEO LOCAL (INSEGURO)',
+                                    label:
+                                        'CONTINUAR SIN BLOQUEO LOCAL (INSEGURO)',
                                     color: AuraTokens.danger,
                                     onPressed: _allowUnsecuredLocalAccess,
                                   ),

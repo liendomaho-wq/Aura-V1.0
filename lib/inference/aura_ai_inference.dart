@@ -102,8 +102,9 @@ class AuraAIInference {
   };
   static const int _maximumTreeDepth = 32;
   static bool _warnedInvalidDecisionThreshold = false;
-  static const MethodChannel _blocklistChannel =
-      MethodChannel('com.ciberdefensa.aura/blocklist');
+  static const MethodChannel _blocklistChannel = MethodChannel(
+    'com.ciberdefensa.aura/blocklist',
+  );
   static const int _binaryHeaderLength = 8;
   static const int _binaryTreeHeaderLength = 8;
   static const int _binaryNodeLength = 20;
@@ -112,12 +113,7 @@ class AuraAIInference {
       <String, (int, double, String)>{};
   static final List<(String, List<int>)> _commonDomainCharacters =
       auraCommonDomains
-          .map(
-            (domain) => (
-              domain,
-              domain.runes.toList(growable: false),
-            ),
-          )
+          .map((domain) => (domain, domain.runes.toList(growable: false)))
           .toList(growable: false);
 
   /// Returns true for allowlisted hosts or hosts classified as safe by the model.
@@ -207,8 +203,10 @@ class AuraAIInference {
     final hosts = <String>{};
     var rawAddressInput = rawData.trim();
     if (rawAddressInput.startsWith('[') && rawAddressInput.endsWith(']')) {
-      rawAddressInput =
-          rawAddressInput.substring(1, rawAddressInput.length - 1);
+      rawAddressInput = rawAddressInput.substring(
+        1,
+        rawAddressInput.length - 1,
+      );
     }
     final rawAddress = InternetAddress.tryParse(rawAddressInput);
     if (rawAddress != null) {
@@ -263,7 +261,8 @@ class AuraAIInference {
       return _calculateLegacyFeatures(host);
     }
     throw const FormatException(
-        'El modelo tiene un orden de características no compatible.');
+      'El modelo tiene un orden de características no compatible.',
+    );
   }
 
   static bool _sameFeatureOrder(List<dynamic> actual, List<String> expected) {
@@ -350,11 +349,13 @@ class AuraAIInference {
 
     final labels = host.split('.');
     final tld = labels.last;
-    final nonAsciiCount =
-        characters.where((character) => character > 0x7f).length;
+    final nonAsciiCount = characters
+        .where((character) => character > 0x7f)
+        .length;
     final legacyFeatures = _calculateLegacyFeatures(host);
-    final asciiLetters =
-        characters.where(_isAsciiLetter).toList(growable: false);
+    final asciiLetters = characters
+        .where(_isAsciiLetter)
+        .toList(growable: false);
     var hasConsecutiveDigits = false;
     for (var index = 0; index < characters.length - 1; index++) {
       if (_isAsciiDigit(characters[index]) &&
@@ -386,14 +387,14 @@ class AuraAIInference {
           asciiLetters.isEmpty ? 0 : rareCharacterCount / asciiLetters.length,
           math.min(longestLabelLength, 63) / 63,
           const <String>[
-            'free',
-            'reward',
-            'update',
-            'system',
-            'unlock',
-            'premium',
-            'crack',
-          ].any(host.contains)
+                'free',
+                'reward',
+                'update',
+                'system',
+                'unlock',
+                'premium',
+                'crack',
+              ].any(host.contains)
               ? 1
               : 0,
         ];
@@ -414,8 +415,9 @@ class AuraAIInference {
     final candidate = _normalizeFeatureDomain(domain);
     if (candidate == null) return 0;
 
-    final confusableCount =
-        candidate.runes.where(idnConfusables.containsKey).length;
+    final confusableCount = candidate.runes
+        .where(idnConfusables.containsKey)
+        .length;
     return math.min(confusableCount / 2, 1.0);
   }
 
@@ -446,11 +448,7 @@ class AuraAIInference {
       characterCount += labelCharacters.length;
       final frequencies = <int, int>{};
       for (final character in labelCharacters) {
-        frequencies.update(
-          character,
-          (count) => count + 1,
-          ifAbsent: () => 1,
-        );
+        frequencies.update(character, (count) => count + 1, ifAbsent: () => 1);
       }
       var entropy = 0.0;
       for (final count in frequencies.values) {
@@ -498,8 +496,8 @@ class AuraAIInference {
     var minimumDistance = math.max(hostCharacters.length, 253).toInt();
     var closestDomain = '';
     for (final (commonDomain, domainCharacters) in _commonDomainCharacters) {
-      final lengthDifference =
-          (hostCharacters.length - domainCharacters.length).abs();
+      final lengthDifference = (hostCharacters.length - domainCharacters.length)
+          .abs();
       if (lengthDifference >= minimumDistance) continue;
       final distance = _levenshteinDistance(hostCharacters, domainCharacters);
       if (distance < minimumDistance) {
@@ -532,10 +530,7 @@ class AuraAIInference {
         final substitutionCost = left[leftIndex] == right[rightIndex] ? 0 : 1;
         current[rightIndex + 1] = math
             .min(
-              math.min(
-                current[rightIndex] + 1,
-                previous[rightIndex + 1] + 1,
-              ),
+              math.min(current[rightIndex] + 1, previous[rightIndex + 1] + 1),
               previous[rightIndex] + substitutionCost,
             )
             .toInt();
@@ -572,10 +567,12 @@ class AuraAIInference {
         return null;
       }
       for (final character in characters) {
-        final isAsciiDnsCharacter = _isAsciiLetter(character) ||
+        final isAsciiDnsCharacter =
+            _isAsciiLetter(character) ||
             _isAsciiDigit(character) ||
             character == 0x2d;
-        final isSupportedIdnCharacter = character > 0x7f &&
+        final isSupportedIdnCharacter =
+            character > 0x7f &&
             String.fromCharCode(character).trim().isNotEmpty;
         if (!isAsciiDnsCharacter && !isSupportedIdnCharacter) return null;
       }
@@ -603,11 +600,7 @@ class AuraAIInference {
     final frequencies = existingFrequencies ?? <int, int>{};
     if (existingFrequencies == null) {
       for (final character in characters) {
-        frequencies.update(
-          character,
-          (count) => count + 1,
-          ifAbsent: () => 1,
-        );
+        frequencies.update(character, (count) => count + 1, ifAbsent: () => 1);
       }
     }
     var entropy = 0.0;
@@ -757,7 +750,8 @@ class AuraAIInference {
             rightChild >= nodeCount ||
             !threshold.isFinite) {
           throw const FormatException(
-              'El nodo de decisión binario no es válido.');
+            'El nodo de decisión binario no es válido.',
+          );
         }
       } else {
         throw const FormatException('Tipo de nodo binario desconocido.');
@@ -791,8 +785,9 @@ class AuraAIInference {
       final leftChild = data.getInt32(nodeOffset + 8, Endian.little);
       final rightChild = data.getInt32(nodeOffset + 12, Endian.little);
       final threshold = data.getFloat32(nodeOffset + 16, Endian.little);
-      final childIndex =
-          features[featureIndex] <= threshold ? leftChild : rightChild;
+      final childIndex = features[featureIndex] <= threshold
+          ? leftChild
+          : rightChild;
       return _walkBinaryTree(
         data,
         nodesStart,
@@ -835,8 +830,8 @@ class AuraAIInference {
   }
 
   static bool _isAllowlisted(String host) => auraStaticWhitelist.any(
-        (suffix) => host == suffix || host.endsWith('.$suffix'),
-      );
+    (suffix) => host == suffix || host.endsWith('.$suffix'),
+  );
 
   static bool _evaluateEnsemble(
     Float64List features,

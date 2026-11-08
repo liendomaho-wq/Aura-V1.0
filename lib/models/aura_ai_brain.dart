@@ -35,8 +35,9 @@ abstract final class AuraAIInference {
     required List<String> suspiciousTlds,
     bool blocklistChecked = false,
   }) async {
-    final domains =
-        shared_features.AuraAIInference.extractDomainsForBlocklist(rawData);
+    final domains = shared_features.AuraAIInference.extractDomainsForBlocklist(
+      rawData,
+    );
     final blockedDomains = blocklistChecked
         ? <String>{}
         : await shared_features.AuraAIInference.findBlocklistedDomains(domains);
@@ -54,56 +55,58 @@ abstract final class AuraAIInference {
     if (rawResults is! List) {
       throw const FormatException('El resultado del isolate no es válido.');
     }
-    return rawResults.map((rawResult) {
-      if (rawResult is! Map) {
-        throw const FormatException('Resultado de inferencia inválido.');
-      }
-      final result = Map<String, Object?>.from(rawResult);
-      final host = result['host'];
-      final score = result['threat_score'];
-      final threat = result['is_threat'];
-      final rawFeatures = result['features'];
-      final rawFeatureVector = result['feature_vector'];
-      final rawFeatureOrder = result['feature_order'];
-      final rawDecisionThreshold = result['decision_threshold'];
-      if (host is! String ||
-          score is! num ||
-          threat is! bool ||
-          rawFeatures is! Map ||
-          rawFeatureVector is! List ||
-          rawFeatureOrder is! List ||
-          rawDecisionThreshold is! num) {
-        throw const FormatException('Campos de inferencia incompletos.');
-      }
-      final features = <String, double>{};
-      for (final entry in rawFeatures.entries) {
-        if (entry.key is! String || entry.value is! num) {
-          throw const FormatException(
-            'Las características devueltas por el isolate no son válidas.',
+    return rawResults
+        .map((rawResult) {
+          if (rawResult is! Map) {
+            throw const FormatException('Resultado de inferencia inválido.');
+          }
+          final result = Map<String, Object?>.from(rawResult);
+          final host = result['host'];
+          final score = result['threat_score'];
+          final threat = result['is_threat'];
+          final rawFeatures = result['features'];
+          final rawFeatureVector = result['feature_vector'];
+          final rawFeatureOrder = result['feature_order'];
+          final rawDecisionThreshold = result['decision_threshold'];
+          if (host is! String ||
+              score is! num ||
+              threat is! bool ||
+              rawFeatures is! Map ||
+              rawFeatureVector is! List ||
+              rawFeatureOrder is! List ||
+              rawDecisionThreshold is! num) {
+            throw const FormatException('Campos de inferencia incompletos.');
+          }
+          final features = <String, double>{};
+          for (final entry in rawFeatures.entries) {
+            if (entry.key is! String || entry.value is! num) {
+              throw const FormatException(
+                'Las características devueltas por el isolate no son válidas.',
+              );
+            }
+            features[entry.key as String] = (entry.value as num).toDouble();
+          }
+          if (rawFeatureVector.any((value) => value is! num) ||
+              rawFeatureOrder.any((value) => value is! String)) {
+            throw const FormatException(
+              'El vector u orden de características devuelto por el isolate no es válido.',
+            );
+          }
+          return AuraInferenceResult(
+            host: host,
+            threatScore: score.toDouble(),
+            isThreat: threat,
+            computedFeatures: Map<String, double>.unmodifiable(features),
+            featureVector: List<double>.unmodifiable(
+              rawFeatureVector.cast<num>().map((value) => value.toDouble()),
+            ),
+            featureOrder: List<String>.unmodifiable(
+              rawFeatureOrder.cast<String>(),
+            ),
+            decisionThreshold: rawDecisionThreshold.toDouble(),
           );
-        }
-        features[entry.key as String] = (entry.value as num).toDouble();
-      }
-      if (rawFeatureVector.any((value) => value is! num) ||
-          rawFeatureOrder.any((value) => value is! String)) {
-        throw const FormatException(
-          'El vector u orden de características devuelto por el isolate no es válido.',
-        );
-      }
-      return AuraInferenceResult(
-        host: host,
-        threatScore: score.toDouble(),
-        isThreat: threat,
-        computedFeatures: Map<String, double>.unmodifiable(features),
-        featureVector: List<double>.unmodifiable(
-          rawFeatureVector.cast<num>().map((value) => value.toDouble()),
-        ),
-        featureOrder: List<String>.unmodifiable(
-          rawFeatureOrder.cast<String>(),
-        ),
-        decisionThreshold: rawDecisionThreshold.toDouble(),
-      );
-    }).toList(growable: false);
+        })
+        .toList(growable: false);
   }
 
   static Map<String, Object?> _processInBackground(
@@ -113,8 +116,9 @@ abstract final class AuraAIInference {
     List<String> blockedDomains,
     double decisionThreshold,
   ) {
-    final hosts =
-        shared_features.AuraAIInference.extractDomainsForBlocklist(rawData);
+    final hosts = shared_features.AuraAIInference.extractDomainsForBlocklist(
+      rawData,
+    );
     if (hosts.isEmpty) return <String, Object?>{'results': <Object?>[]};
 
     final blocked = blockedDomains.toSet();
@@ -128,7 +132,8 @@ abstract final class AuraAIInference {
     }
     final suspicious = suspiciousTlds.map((tld) => tld.toLowerCase()).toSet();
     final featureOrder = modelStructure['feature_order'];
-    final usesEnhancedFeatures = featureOrder is List &&
+    final usesEnhancedFeatures =
+        featureOrder is List &&
         _matchesFeatureOrder(
           featureOrder,
           shared_features.AuraAIInference.enhancedFeatureOrder,
@@ -153,8 +158,8 @@ abstract final class AuraAIInference {
       );
       features[5] =
           suspicious.contains(host.substring(host.lastIndexOf('.') + 1))
-              ? 1.0
-              : 0.0;
+          ? 1.0
+          : 0.0;
       var threatVotes = 0;
       for (final tree in trees as List) {
         if (tree is! Map || !tree.containsKey('root')) {
@@ -179,17 +184,19 @@ abstract final class AuraAIInference {
           'vowel_ratio': features[3],
           'consonant_sequence_ratio': features[4],
           'suspicious_tld': features[5],
-          for (var index = 6;
-              usesEnhancedFeatures &&
-                  index <
-                      shared_features
-                          .AuraAIInference.enhancedFeatureOrder.length;
-              index++)
+          for (
+            var index = 6;
+            usesEnhancedFeatures &&
+                index <
+                    shared_features.AuraAIInference.enhancedFeatureOrder.length;
+            index++
+          )
             shared_features.AuraAIInference.enhancedFeatureOrder[index]:
                 features[index],
           'maximum_consonant_streak': maximumConsonantStreak.toDouble(),
-          'maximum_consonant_streak_ratio':
-              host.isEmpty ? 0.0 : maximumConsonantStreak / host.runes.length,
+          'maximum_consonant_streak_ratio': host.isEmpty
+              ? 0.0
+              : maximumConsonantStreak / host.runes.length,
         },
         'feature_vector': features,
         'feature_order': activeFeatureOrder,

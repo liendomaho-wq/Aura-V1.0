@@ -24,10 +24,7 @@ void main() {
       '[CRIT] Downgrade de modelo rechazado '
       '(2.9.9 < 3.0.0): firma válida pero versión inferior a la mínima soportada.',
     );
-    expect(
-      () => compareSemverTriplets('3.0', '3.0.0'),
-      throwsFormatException,
-    );
+    expect(() => compareSemverTriplets('3.0', '3.0.0'), throwsFormatException);
   });
 
   test('accepts enhanced model feature indices when schema matches', () {
@@ -97,47 +94,51 @@ void main() {
     );
   });
 
-  test('verifies the published model asset against its SHA-256 sidecar',
-      () async {
-    const pathProviderChannel =
-        MethodChannel('plugins.flutter.io/path_provider');
-    final messenger =
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    final supportDirectory =
-        await Directory.systemTemp.createTemp('aura-model-integrity-');
-    messenger.setMockMethodCallHandler(
-      pathProviderChannel,
-      (_) async => supportDirectory.path,
-    );
-    addTearDown(() async {
-      messenger.setMockMethodCallHandler(pathProviderChannel, null);
-      await supportDirectory.delete(recursive: true);
-    });
+  test(
+    'verifies the published model asset against its SHA-256 sidecar',
+    () async {
+      const pathProviderChannel = MethodChannel(
+        'plugins.flutter.io/path_provider',
+      );
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      final supportDirectory = await Directory.systemTemp.createTemp(
+        'aura-model-integrity-',
+      );
+      messenger.setMockMethodCallHandler(
+        pathProviderChannel,
+        (_) async => supportDirectory.path,
+      );
+      addTearDown(() async {
+        messenger.setMockMethodCallHandler(pathProviderChannel, null);
+        await supportDirectory.delete(recursive: true);
+      });
 
-    final state = AuraStateProvider();
-    addTearDown(state.dispose);
-    final brain = AuraAIBrain(
-      stateProvider: state,
-      secureVault: _TestSecureVault(),
-    );
-    expect(await brain.preloadModel(), isTrue);
-    await brain.analyzeThreatPayload('goggle.com');
+      final state = AuraStateProvider();
+      addTearDown(state.dispose);
+      final brain = AuraAIBrain(
+        stateProvider: state,
+        secureVault: _TestSecureVault(),
+      );
+      expect(await brain.preloadModel(), isTrue);
+      await brain.analyzeThreatPayload('goggle.com');
 
-    expect(state.explanationHistory, hasLength(1));
-    final explanation = state.explanationHistory.single;
-    expect(explanation.isThreat, isFalse);
-    expect(
-      explanation.signals.single.label,
-      'Posible typosquatting (señal auxiliar)',
-    );
+      expect(state.explanationHistory, hasLength(1));
+      final explanation = state.explanationHistory.single;
+      expect(explanation.isThreat, isFalse);
+      expect(
+        explanation.signals.single.label,
+        'Posible typosquatting (señal auxiliar)',
+      );
 
-    final report = await brain.verifyModelIntegrity();
-    expect(report.verified, isTrue);
-    expect(report.signatureVerified, isTrue);
-    expect(
-      report.sha256,
-      'd190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2',
-    );
-    expect(report.message, contains('firma RSA verificados'));
-  });
+      final report = await brain.verifyModelIntegrity();
+      expect(report.verified, isTrue);
+      expect(report.signatureVerified, isTrue);
+      expect(
+        report.sha256,
+        'd190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2',
+      );
+      expect(report.message, contains('firma RSA verificados'));
+    },
+  );
 }

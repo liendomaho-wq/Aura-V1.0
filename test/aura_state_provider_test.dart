@@ -50,10 +50,7 @@ void main() {
       expect(provider.explanationHistory, hasLength(50));
       expect(provider.explanationHistory.first.id, 'verdict-1');
       provider.markExplanationAsFalsePositive('verdict-1');
-      expect(
-        provider.explanationHistory.first.reportedFalsePositive,
-        isTrue,
-      );
+      expect(provider.explanationHistory.first.reportedFalsePositive, isTrue);
       provider.dispose();
     });
 
@@ -64,12 +61,8 @@ void main() {
         'public_dns_resolver': true,
         'destination_address': '8.8.8.8',
       });
-      provider.addTelemetryEvent(<String, dynamic>{
-        'action': 'BLOCKED',
-      });
-      provider.addTelemetryEvent(<String, dynamic>{
-        'action': 'DGA_ALERT',
-      });
+      provider.addTelemetryEvent(<String, dynamic>{'action': 'BLOCKED'});
+      provider.addTelemetryEvent(<String, dynamic>{'action': 'DGA_ALERT'});
       provider.addTelemetryEvent(<String, dynamic>{
         'action': 'ENCRYPTED_DNS_BLOCKED',
       });
@@ -99,15 +92,17 @@ void main() {
       provider.dispose();
     });
 
-    test('retains the active model threshold and clears it with session data',
-        () {
-      final provider = AuraStateProvider();
-      provider.setActiveDecisionThreshold(0.62);
+    test(
+      'retains the active model threshold and clears it with session data',
+      () {
+        final provider = AuraStateProvider();
+        provider.setActiveDecisionThreshold(0.62);
 
-      expect(provider.activeDecisionThreshold, 0.62);
-      provider.clearTelemetryHistory();
-      expect(provider.activeDecisionThreshold, isNull);
-      provider.dispose();
-    });
+        expect(provider.activeDecisionThreshold, 0.62);
+        provider.clearTelemetryHistory();
+        expect(provider.activeDecisionThreshold, isNull);
+        provider.dispose();
+      },
+    );
   });
 }

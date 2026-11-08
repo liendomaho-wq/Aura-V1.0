@@ -86,24 +86,27 @@ void main() {
     },
   );
 
-  test('dominios o direcciones múltiples no se eligen silenciosamente', () async {
-    for (final text in <String>[
-      'bloquea first.example y second.example',
-      'analiza el dominio first.example y second.example',
-      'bloquea first.example 192.0.2.1',
-      'bloquea first.example 999.999.999.999',
-      'bloquea first.example@second.example',
-    ]) {
-      final intent = await AuraIntentParser.parse(text);
-      expect(intent.kind, AuraIntentKind.unknown, reason: text);
-      expect(intent.entities.containsKey('domain'), isFalse, reason: text);
-    }
-    final repeated = await AuraIntentParser.parse(
-      'analiza el dominio example.com example.com',
-    );
-    expect(repeated.name, 'analyze_domain');
-    expect(repeated.entities['domain'], 'example.com');
-  });
+  test(
+    'dominios o direcciones múltiples no se eligen silenciosamente',
+    () async {
+      for (final text in <String>[
+        'bloquea first.example y second.example',
+        'analiza el dominio first.example y second.example',
+        'bloquea first.example 192.0.2.1',
+        'bloquea first.example 999.999.999.999',
+        'bloquea first.example@second.example',
+      ]) {
+        final intent = await AuraIntentParser.parse(text);
+        expect(intent.kind, AuraIntentKind.unknown, reason: text);
+        expect(intent.entities.containsKey('domain'), isFalse, reason: text);
+      }
+      final repeated = await AuraIntentParser.parse(
+        'analiza el dominio example.com example.com',
+      );
+      expect(repeated.name, 'analyze_domain');
+      expect(repeated.entities['domain'], 'example.com');
+    },
+  );
 
   test('una confirmación solo se reconoce al principio de la orden', () async {
     final intent = await AuraIntentParser.parse(

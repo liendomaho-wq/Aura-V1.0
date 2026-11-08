@@ -1,5 +1,4 @@
 @Skip('requiere dispositivo/entorno local')
-
 import 'dart:convert';
 
 import 'package:aura_mobile_defens/inference/aura_ai_inference.dart';
@@ -42,18 +41,16 @@ void main() {
     ];
     final durations = List<int>.generate(1000, (index) {
       final stopwatch = Stopwatch()..start();
-      AuraAIInference.analyzeHostSecure(
-        domains[index % domains.length],
-        model,
-      );
+      AuraAIInference.analyzeHostSecure(domains[index % domains.length], model);
       stopwatch.stop();
       return stopwatch.elapsedMicroseconds;
-    })
-      ..sort();
+    })..sort();
 
     double percentile(double percentile) {
-      final index = ((percentile * durations.length).ceil() - 1)
-          .clamp(0, durations.length - 1);
+      final index = ((percentile * durations.length).ceil() - 1).clamp(
+        0,
+        durations.length - 1,
+      );
       return durations[index] / 1000;
     }
 

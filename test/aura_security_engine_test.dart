@@ -43,23 +43,25 @@ void main() {
     return AuraSecurityEngine().checkDeviceIntegrity();
   }
 
-  test('invalid signature is critical even if native report says secure',
-      () async {
-    final report = await checkWith(
-      antiTamperingReport: <String, Object?>{
-        'isSecure': true,
-        'signatureValid': false,
-        'localDebugFallback': false,
-        'fridaDetected': false,
-        'debuggerBlocked': false,
-        'adbBlocked': false,
-        'isDebuggerConnected': false,
-      },
-    );
+  test(
+    'invalid signature is critical even if native report says secure',
+    () async {
+      final report = await checkWith(
+        antiTamperingReport: <String, Object?>{
+          'isSecure': true,
+          'signatureValid': false,
+          'localDebugFallback': false,
+          'fridaDetected': false,
+          'debuggerBlocked': false,
+          'adbBlocked': false,
+          'isDebuggerConnected': false,
+        },
+      );
 
-    expect(report['level'], SystemThreatLevel.critical);
-    expect(report['signatureCheckFailed'], isTrue);
-  });
+      expect(report['level'], SystemThreatLevel.critical);
+      expect(report['signatureCheckFailed'], isTrue);
+    },
+  );
 
   test('missing signature verdict fails closed', () async {
     final report = await checkWith(

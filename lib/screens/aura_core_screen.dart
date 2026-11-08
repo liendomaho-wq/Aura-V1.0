@@ -353,7 +353,13 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
           : latestExplanation.decisionThreshold.toStringAsFixed(2);
       _coverageAutotestStatus =
           'Diagnóstico local completado. Túnel VPN: '
-          '${!_shieldStatusKnown ? 'estado no confirmado' : state.isVpnActive ? 'activo' : _shieldServiceActive ? 'sin forwarding' : 'inactivo'}. '
+          '${!_shieldStatusKnown
+              ? 'estado no confirmado'
+              : state.isVpnActive
+              ? 'activo'
+              : _shieldServiceActive
+              ? 'sin forwarding'
+              : 'inactivo'}. '
           'Eventos de sesión: ${state.blockedEvents} señales de bloqueo, '
           '${state.dgaAlertEvents} alertas DGA, '
           '${state.encryptedDnsBlocks} bloqueos de DNS cifrado y '
@@ -756,9 +762,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
           borderRadius: BorderRadius.circular(18),
           onTap: quickActionsEnabled ? onTap : null,
           child: Container(
-            constraints: BoxConstraints(
-              minHeight: compactLayout ? 66 : 88,
-            ),
+            constraints: BoxConstraints(minHeight: compactLayout ? 66 : 88),
             padding: EdgeInsets.symmetric(
               horizontal: 8,
               vertical: compactLayout ? 6 : 10,
@@ -827,11 +831,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
               gradient: RadialGradient(
                 center: Alignment(0, -0.72),
                 radius: 1.35,
-                colors: [
-                  Color(0xFF10294C),
-                  Color(0xFF071326),
-                  AuraTokens.bg,
-                ],
+                colors: [Color(0xFF10294C), Color(0xFF071326), AuraTokens.bg],
                 stops: [0, 0.48, 1],
               ),
             ),
@@ -851,436 +851,457 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
           ),
           SafeArea(
             child: Column(
-          children: [
-            SizedBox(height: compactLayout ? 2 : 12),
-            Row(
               children: [
-                IconButton(
-                  tooltip: 'Privacidad y telemetría opcional',
-                  onPressed: _showTelemetrySettings,
-                  constraints: BoxConstraints.tightFor(
-                    width: 48,
-                    height: compactLayout ? 40 : 48,
-                  ),
-                  icon: const Icon(Icons.tune, color: AuraTokens.accent),
-                ),
-                IconButton(
-                  key: const ValueKey<String>('coverage-audit-toggle'),
-                  tooltip: _showCoverageAudit
-                      ? 'Volver a la consola'
-                      : 'Auditoría de cobertura',
-                  onPressed: () =>
-                      setState(() => _showCoverageAudit = !_showCoverageAudit),
-                  constraints: const BoxConstraints.tightFor(
-                    width: 48,
-                    height: 48,
-                  ),
-                  icon: Icon(
-                    Icons.fact_check_outlined,
-                    color: _showCoverageAudit
-                        ? AuraTokens.accent
-                        : AuraTokens.textMuted,
-                  ),
-                ),
-                const Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'AURA',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: AuraTokens.textPrimary,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 3.2,
-                        ),
+                SizedBox(height: compactLayout ? 2 : 12),
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'Privacidad y telemetría opcional',
+                      onPressed: _showTelemetrySettings,
+                      constraints: BoxConstraints.tightFor(
+                        width: 48,
+                        height: compactLayout ? 40 : 48,
                       ),
-                      SizedBox(height: 2),
-                      Text(
-                        'SISTEMA DE DEFENSA PERSONAL',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: AuraTokens.accent,
-                          fontSize: 8,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1.1,
+                      icon: const Icon(Icons.tune, color: AuraTokens.accent),
+                    ),
+                    IconButton(
+                      key: const ValueKey<String>('coverage-audit-toggle'),
+                      tooltip: _showCoverageAudit
+                          ? 'Volver a la consola'
+                          : 'Auditoría de cobertura',
+                      onPressed: () => setState(
+                        () => _showCoverageAudit = !_showCoverageAudit,
+                      ),
+                      constraints: const BoxConstraints.tightFor(
+                        width: 48,
+                        height: 48,
+                      ),
+                      icon: Icon(
+                        Icons.fact_check_outlined,
+                        color: _showCoverageAudit
+                            ? AuraTokens.accent
+                            : AuraTokens.textMuted,
+                      ),
+                    ),
+                    const Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'AURA',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: AuraTokens.textPrimary,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 3.2,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'SISTEMA DE DEFENSA PERSONAL',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: AuraTokens.accent,
+                              fontSize: 8,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      key: const ValueKey<String>('vpn-toggle'),
+                      onPressed:
+                          _isAuthenticated &&
+                              !_isShieldBusy &&
+                              _shieldStatusKnown
+                          ? _toggleShield
+                          : null,
+                      style: TextButton.styleFrom(
+                        side: BorderSide(
+                          color: _isShieldBusy
+                              ? Colors.grey
+                              : vpnActive
+                              ? AuraTokens.success
+                              : AuraTokens.textMuted,
+                        ),
+                        backgroundColor: vpnActive
+                            ? AuraTokens.success.withValues(alpha: 0.10)
+                            : AuraTokens.surfaceAlt,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        shape: const StadiumBorder(),
+                      ),
+                      child: _isShieldBusy
+                          ? const SizedBox.square(
+                              dimension: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(
+                              !_shieldStatusKnown
+                                  ? 'DEFENSA: ?'
+                                  : vpnActive
+                                  ? 'DEFENSA: ON'
+                                  : _shieldServiceActive
+                                  ? 'DEFENSA: SIN FLUJO'
+                                  : 'DEFENSA: OFF',
+                              style: TextStyle(
+                                color: vpnActive
+                                    ? AuraTokens.success
+                                    : AuraTokens.textMuted,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
+                Container(
+                  margin: EdgeInsets.fromLTRB(
+                    14,
+                    compactLayout ? 2 : 6,
+                    14,
+                    compactLayout ? 6 : 14,
+                  ),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: compactLayout ? 8 : 15,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(26),
+                    border: Border.all(
+                      color: AuraTokens.accent.withValues(alpha: 0.28),
+                    ),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xF20B1B36),
+                        Color(0xE90B1530),
+                        Color(0xC9162050),
+                      ],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AuraTokens.accent.withValues(alpha: 0.07),
+                        blurRadius: 34,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      AuraAvatar(
+                        size: compactLayout ? 88 : 138,
+                        mode: _isListening
+                            ? AuraAvatarMode.listening
+                            : _isRunning
+                            ? AuraAvatarMode.analyzing
+                            : switch (state.securityLevel) {
+                                AuraSecurityLevel.critical =>
+                                  AuraAvatarMode.alert,
+                                AuraSecurityLevel.warning =>
+                                  AuraAvatarMode.warning,
+                                AuraSecurityLevel.safe =>
+                                  state.isVpnActive
+                                      ? AuraAvatarMode.protecting
+                                      : AuraAvatarMode.available,
+                              },
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Hola, soy Aura.',
+                              style: TextStyle(
+                                color: AuraTokens.textPrimary,
+                                fontSize: compactLayout ? 18 : 22,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            SizedBox(height: compactLayout ? 2 : 4),
+                            Text(
+                              _isRunning
+                                  ? 'Estoy ejecutando tu solicitud…'
+                                  : _isListening
+                                  ? 'Te estoy escuchando…'
+                                  : state.securityLevel ==
+                                        AuraSecurityLevel.critical
+                                  ? 'Alerta crítica: revisa los hallazgos de seguridad.'
+                                  : state.securityLevel ==
+                                        AuraSecurityLevel.warning
+                                  ? 'Hay señales que requieren tu atención.'
+                                  : 'Lista para recibir instrucciones y ejecutar comprobaciones locales.',
+                              style: const TextStyle(
+                                color: AuraTokens.accent,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            SizedBox(height: compactLayout ? 3 : 8),
+                            Text(
+                              '${state.blockedEvents} señales de bloqueo en esta sesión',
+                              style: const TextStyle(
+                                color: AuraTokens.textMuted,
+                                fontSize: 10,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'VPN local opcional · ${!_shieldStatusKnown
+                                  ? 'estado no confirmado'
+                                  : state.isVpnActive
+                                  ? 'activa'
+                                  : _shieldServiceActive
+                                  ? 'sin forwarding'
+                                  : 'inactiva'}',
+                              style: const TextStyle(
+                                color: AuraTokens.textMuted,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
-                TextButton(
-                  key: const ValueKey<String>('vpn-toggle'),
-                  onPressed: _isAuthenticated && !_isShieldBusy && _shieldStatusKnown
-                      ? _toggleShield
-                      : null,
-                  style: TextButton.styleFrom(
-                    side: BorderSide(
-                      color: _isShieldBusy
-                          ? Colors.grey
-                          : vpnActive
-                          ? AuraTokens.success
-                          : AuraTokens.textMuted,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                  child: Row(
+                    children: [
+                      featureTile(
+                        icon: Icons.manage_search_rounded,
+                        title: 'Analizar',
+                        subtitle: 'Dispositivo',
+                        onTap: () => _dispatch('audita dispositivo'),
+                      ),
+                      const SizedBox(width: 8),
+                      featureTile(
+                        icon: Icons.wifi_rounded,
+                        title: 'VPN Aura',
+                        subtitle: !_shieldStatusKnown
+                            ? 'Sin confirmar'
+                            : vpnActive
+                            ? 'Conectada'
+                            : _shieldServiceActive
+                            ? 'Sin flujo'
+                            : 'Desconectada',
+                        onTap: _toggleShield,
+                        color: vpnActive
+                            ? AuraTokens.success
+                            : AuraTokens.accentViolet,
+                      ),
+                      const SizedBox(width: 8),
+                      featureTile(
+                        icon: Icons.lock_outline_rounded,
+                        title: 'Privacidad',
+                        subtitle: 'Revisar',
+                        onTap: _showTelemetrySettings,
+                        color: AuraTokens.accentViolet,
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                  child: Row(
+                    children: [
+                      featureTile(
+                        icon: Icons.auto_awesome_rounded,
+                        title: 'Aura AI',
+                        subtitle: 'Asistente',
+                        onTap: () => _dispatch('ayuda'),
+                        color: AuraTokens.accentViolet,
+                      ),
+                      const SizedBox(width: 8),
+                      featureTile(
+                        icon: Icons.query_stats_rounded,
+                        title: 'Informes',
+                        subtitle: 'Actividad',
+                        onTap: () => _dispatch('estado'),
+                      ),
+                      const SizedBox(width: 8),
+                      featureTile(
+                        icon: Icons.fact_check_outlined,
+                        title: 'Auditoría',
+                        subtitle: 'Cobertura',
+                        onTap: () {
+                          setState(() => _showCoverageAudit = true);
+                          _runCoverageAutotest();
+                        },
+                        color: AuraTokens.success,
+                      ),
+                    ],
+                  ),
+                ),
+                if (_untrustedAccessibilityPackages.isNotEmpty)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A00),
+                      border: Border.all(color: _terminalYellow),
                     ),
-                    backgroundColor: vpnActive
-                        ? AuraTokens.success.withValues(alpha: 0.10)
-                        : AuraTokens.surfaceAlt,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    shape: const StadiumBorder(),
-                  ),
-                  child: _isShieldBusy
-                      ? const SizedBox.square(
-                          dimension: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(
-                          !_shieldStatusKnown
-                              ? 'DEFENSA: ?'
-                              : vpnActive
-                              ? 'DEFENSA: ON'
-                              : _shieldServiceActive
-                              ? 'DEFENSA: SIN FLUJO'
-                              : 'DEFENSA: OFF',
-                          style: TextStyle(
-                            color: vpnActive
-                                ? AuraTokens.success
-                                : AuraTokens.textMuted,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.4,
-                          ),
-                        ),
-                ),
-              ],
-            ),
-            Container(
-              margin: EdgeInsets.fromLTRB(
-                14,
-                compactLayout ? 2 : 6,
-                14,
-                compactLayout ? 6 : 14,
-              ),
-              padding: EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: compactLayout ? 8 : 15,
-              ),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(26),
-                border: Border.all(
-                  color: AuraTokens.accent.withValues(alpha: 0.28),
-                ),
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xF20B1B36),
-                    Color(0xE90B1530),
-                    Color(0xC9162050),
-                  ],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AuraTokens.accent.withValues(alpha: 0.07),
-                    blurRadius: 34,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  AuraAvatar(
-                    size: compactLayout ? 88 : 138,
-                    mode: _isListening
-                        ? AuraAvatarMode.listening
-                        : _isRunning
-                        ? AuraAvatarMode.analyzing
-                        : switch (state.securityLevel) {
-                            AuraSecurityLevel.critical => AuraAvatarMode.alert,
-                            AuraSecurityLevel.warning => AuraAvatarMode.warning,
-                            AuraSecurityLevel.safe =>
-                              state.isVpnActive
-                                  ? AuraAvatarMode.protecting
-                                  : AuraAvatarMode.available,
-                          },
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Hola, soy Aura.',
+                        const Text(
+                          'SERVICIOS DE ACCESIBILIDAD ACTIVOS PODRÍAN MANIPULAR LA APP',
                           style: TextStyle(
-                            color: AuraTokens.textPrimary,
-                            fontSize: compactLayout ? 18 : 22,
-                            fontWeight: FontWeight.w600,
+                            color: _terminalYellow,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                        SizedBox(height: compactLayout ? 2 : 4),
                         Text(
-                          _isRunning
-                              ? 'Estoy ejecutando tu solicitud…'
-                              : _isListening
-                              ? 'Te estoy escuchando…'
-                              : state.securityLevel ==
-                                    AuraSecurityLevel.critical
-                              ? 'Alerta crítica: revisa los hallazgos de seguridad.'
-                              : state.securityLevel == AuraSecurityLevel.warning
-                              ? 'Hay señales que requieren tu atención.'
-                              : 'Lista para recibir instrucciones y ejecutar comprobaciones locales.',
+                          'Paquetes: ${_untrustedAccessibilityPackages.join(', ')}',
                           style: const TextStyle(
-                            color: AuraTokens.accent,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
+                            color: _terminalYellow,
+                            fontFamily: 'monospace',
+                            fontSize: 11,
                           ),
                         ),
-                        SizedBox(height: compactLayout ? 3 : 8),
-                        Text(
-                          '${state.blockedEvents} señales de bloqueo en esta sesión',
-                          style: const TextStyle(
-                            color: AuraTokens.textMuted,
-                            fontSize: 10,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          'VPN local opcional · ${!_shieldStatusKnown ? 'estado no confirmado' : state.isVpnActive ? 'activa' : _shieldServiceActive ? 'sin forwarding' : 'inactiva'}',
-                          style: const TextStyle(
-                            color: AuraTokens.textMuted,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-              child: Row(
-                children: [
-                  featureTile(
-                    icon: Icons.manage_search_rounded,
-                    title: 'Analizar',
-                    subtitle: 'Dispositivo',
-                    onTap: () => _dispatch('audita dispositivo'),
-                  ),
-                  const SizedBox(width: 8),
-                  featureTile(
-                    icon: Icons.wifi_rounded,
-                    title: 'VPN Aura',
-                    subtitle: !_shieldStatusKnown
-                        ? 'Sin confirmar'
-                        : vpnActive
-                        ? 'Conectada'
-                        : _shieldServiceActive
-                        ? 'Sin flujo'
-                        : 'Desconectada',
-                    onTap: _toggleShield,
-                    color: vpnActive
-                        ? AuraTokens.success
-                        : AuraTokens.accentViolet,
-                  ),
-                  const SizedBox(width: 8),
-                  featureTile(
-                    icon: Icons.lock_outline_rounded,
-                    title: 'Privacidad',
-                    subtitle: 'Revisar',
-                    onTap: _showTelemetrySettings,
-                    color: AuraTokens.accentViolet,
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-              child: Row(
-                children: [
-                  featureTile(
-                    icon: Icons.auto_awesome_rounded,
-                    title: 'Aura AI',
-                    subtitle: 'Asistente',
-                    onTap: () => _dispatch('ayuda'),
-                    color: AuraTokens.accentViolet,
-                  ),
-                  const SizedBox(width: 8),
-                  featureTile(
-                    icon: Icons.query_stats_rounded,
-                    title: 'Informes',
-                    subtitle: 'Actividad',
-                    onTap: () => _dispatch('estado'),
-                  ),
-                  const SizedBox(width: 8),
-                  featureTile(
-                    icon: Icons.fact_check_outlined,
-                    title: 'Auditoría',
-                    subtitle: 'Cobertura',
-                    onTap: () {
-                      setState(() => _showCoverageAudit = true);
-                      _runCoverageAutotest();
-                    },
-                    color: AuraTokens.success,
-                  ),
-                ],
-              ),
-            ),
-            if (_untrustedAccessibilityPackages.isNotEmpty)
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.fromLTRB(14, 10, 14, 0),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A00),
-                  border: Border.all(color: _terminalYellow),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'SERVICIOS DE ACCESIBILIDAD ACTIVOS PODRÍAN MANIPULAR LA APP',
-                      style: TextStyle(
-                        color: _terminalYellow,
-                        fontFamily: 'monospace',
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      'Paquetes: ${_untrustedAccessibilityPackages.join(', ')}',
-                      style: const TextStyle(
-                        color: _terminalYellow,
-                        fontFamily: 'monospace',
-                        fontSize: 11,
-                      ),
-                    ),
-                    Wrap(
-                      children: [
-                        TextButton(
-                          onPressed: _openAccessibilitySettings,
-                          child: const Text('ABRIR AJUSTES'),
-                        ),
-                        TextButton(
-                          onPressed: _refreshAccessibilityServices,
-                          child: const Text('VERIFICAR DE NUEVO'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              )
-            else if (_accessibilityCheckFailed)
-              Padding(
-                padding: const EdgeInsets.all(10),
-                child: TextButton(
-                  onPressed: _refreshAccessibilityServices,
-                  child: const Text(
-                    '[WARN] No se pudo verificar accesibilidad · REINTENTAR',
-                    style: TextStyle(
-                      color: _terminalYellow,
-                      fontFamily: 'monospace',
-                    ),
-                  ),
-                ),
-              ),
-            SizedBox(height: compactLayout ? 4 : 16),
-            Expanded(
-              child: _isAuthenticated
-                  ? StreamBuilder<AgentEvent>(
-                      stream: AgentController.instance.events,
-                      builder: (context, snapshot) {
-                        final events = AgentController.instance.history;
-                        final explanationCount =
-                            state.explanationHistory.length;
-                        final leadingCardCount =
-                            (_showCoverageAudit || explanationCount > 0
-                                ? 1
-                                : 0) +
-                            (!_telemetryEndpointConfigured ? 1 : 0);
-                        _scrollToLatest(events.length + leadingCardCount);
-                        return ListView(
-                          key: const ValueKey<String>('aura-event-list'),
-                          controller: _scrollController,
-                          padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
+                        Wrap(
                           children: [
-                            if (_showCoverageAudit)
-                              _CoverageAuditCard(
-                                isVpnActive: state.isVpnActive,
-                                sniObserved: state.sniObservedEvents,
-                                encryptedSni: state.encryptedSniEvents,
-                                directIp: state.directIpEvents,
-                                blocked: state.blockedEvents,
-                                dgaAlerts: state.dgaAlertEvents,
-                                encryptedDnsBlocked: state.encryptedDnsBlocks,
-                                quicBlocked: state.quicBlocked,
-                                decisionThreshold:
-                                    state.activeDecisionThreshold,
-                                observedResolvers:
-                                    state.observedPublicDnsResolvers,
-                                autotestStatus: _coverageAutotestStatus,
-                                onRunAutotest: _runCoverageAutotest,
-                              )
-                            else if (explanationCount > 0)
-                              _ExplanationCard(
-                                explanation: state.explanationHistory.last,
-                                onVerifyIntegrity: _verifyModelIntegrity,
-                                onReportFalsePositive: _reportFalsePositive,
-                                onOpenModelCard: _openModelCard,
-                              ),
-                            if (!_telemetryEndpointConfigured)
-                              _LocalTelemetryPanel(
-                                events: _localTelemetryEvents,
-                                enabled: _localTelemetryEnabled,
-                              ),
-                            for (final event in events)
-                              _SyslogLine(event: event),
+                            TextButton(
+                              onPressed: _openAccessibilitySettings,
+                              child: const Text('ABRIR AJUSTES'),
+                            ),
+                            TextButton(
+                              onPressed: _refreshAccessibilityServices,
+                              child: const Text('VERIFICAR DE NUEVO'),
+                            ),
                           ],
-                        );
-                      },
-                    )
-                  : const SizedBox.expand(),
-            ),
-            SizedBox(
-              height: compactLayout ? 38 : 44,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                children: [
-                  quickAction('AYUDA', () => _dispatch('ayuda')),
-                  const SizedBox(width: 8),
-                  quickAction('ESTADO', () => _dispatch('estado')),
-                  const SizedBox(width: 8),
-                  quickAction(
-                    !_shieldStatusKnown
-                        ? 'VPN SIN CONFIRMAR'
-                        : _shieldServiceActive
-                        ? 'DETENER VPN'
-                        : 'ACTIVAR VPN',
-                    _isShieldBusy || !_shieldStatusKnown ? null : _toggleShield,
-                  ),
-                  const SizedBox(width: 8),
-                  quickAction(
-                    'AUDITORÍA',
-                    () => setState(
-                      () => _showCoverageAudit = !_showCoverageAudit,
+                        ),
+                      ],
+                    ),
+                  )
+                else if (_accessibilityCheckFailed)
+                  Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: TextButton(
+                      onPressed: _refreshAccessibilityServices,
+                      child: const Text(
+                        '[WARN] No se pudo verificar accesibilidad · REINTENTAR',
+                        style: TextStyle(
+                          color: _terminalYellow,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
                     ),
                   ),
-                ],
-              ),
+                SizedBox(height: compactLayout ? 4 : 16),
+                Expanded(
+                  child: _isAuthenticated
+                      ? StreamBuilder<AgentEvent>(
+                          stream: AgentController.instance.events,
+                          builder: (context, snapshot) {
+                            final events = AgentController.instance.history;
+                            final explanationCount =
+                                state.explanationHistory.length;
+                            final leadingCardCount =
+                                (_showCoverageAudit || explanationCount > 0
+                                    ? 1
+                                    : 0) +
+                                (!_telemetryEndpointConfigured ? 1 : 0);
+                            _scrollToLatest(events.length + leadingCardCount);
+                            return ListView(
+                              key: const ValueKey<String>('aura-event-list'),
+                              controller: _scrollController,
+                              padding: const EdgeInsets.fromLTRB(
+                                14,
+                                14,
+                                14,
+                                18,
+                              ),
+                              children: [
+                                if (_showCoverageAudit)
+                                  _CoverageAuditCard(
+                                    isVpnActive: state.isVpnActive,
+                                    sniObserved: state.sniObservedEvents,
+                                    encryptedSni: state.encryptedSniEvents,
+                                    directIp: state.directIpEvents,
+                                    blocked: state.blockedEvents,
+                                    dgaAlerts: state.dgaAlertEvents,
+                                    encryptedDnsBlocked:
+                                        state.encryptedDnsBlocks,
+                                    quicBlocked: state.quicBlocked,
+                                    decisionThreshold:
+                                        state.activeDecisionThreshold,
+                                    observedResolvers:
+                                        state.observedPublicDnsResolvers,
+                                    autotestStatus: _coverageAutotestStatus,
+                                    onRunAutotest: _runCoverageAutotest,
+                                  )
+                                else if (explanationCount > 0)
+                                  _ExplanationCard(
+                                    explanation: state.explanationHistory.last,
+                                    onVerifyIntegrity: _verifyModelIntegrity,
+                                    onReportFalsePositive: _reportFalsePositive,
+                                    onOpenModelCard: _openModelCard,
+                                  ),
+                                if (!_telemetryEndpointConfigured)
+                                  _LocalTelemetryPanel(
+                                    events: _localTelemetryEvents,
+                                    enabled: _localTelemetryEnabled,
+                                  ),
+                                for (final event in events)
+                                  _SyslogLine(event: event),
+                              ],
+                            );
+                          },
+                        )
+                      : const SizedBox.expand(),
+                ),
+                SizedBox(
+                  height: compactLayout ? 38 : 44,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    children: [
+                      quickAction('AYUDA', () => _dispatch('ayuda')),
+                      const SizedBox(width: 8),
+                      quickAction('ESTADO', () => _dispatch('estado')),
+                      const SizedBox(width: 8),
+                      quickAction(
+                        !_shieldStatusKnown
+                            ? 'VPN SIN CONFIRMAR'
+                            : _shieldServiceActive
+                            ? 'DETENER VPN'
+                            : 'ACTIVAR VPN',
+                        _isShieldBusy || !_shieldStatusKnown
+                            ? null
+                            : _toggleShield,
+                      ),
+                      const SizedBox(width: 8),
+                      quickAction(
+                        'AUDITORÍA',
+                        () => setState(
+                          () => _showCoverageAudit = !_showCoverageAudit,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _TerminalInput(
+                  controller: _inputController,
+                  isListening: _isListening,
+                  isRunning: _isRunning || !_isAuthenticated,
+                  onSubmitted: _dispatch,
+                  onVoice: _captureVoice,
+                ),
+              ],
             ),
-            _TerminalInput(
-              controller: _inputController,
-              isListening: _isListening,
-              isRunning: _isRunning || !_isAuthenticated,
-              onSubmitted: _dispatch,
-              onVoice: _captureVoice,
-            ),
-          ],
-        ),
-      ),
+          ),
         ],
       ),
     );
@@ -1457,9 +1478,7 @@ class _ExplanationCardState extends State<_ExplanationCard> {
         iconColor: AuraTokens.accent,
         collapsedIconColor: AuraTokens.accent,
         title: Text(
-          key: ValueKey<String>(
-            'verdict-explanation-title-${explanation.id}',
-          ),
+          key: ValueKey<String>('verdict-explanation-title-${explanation.id}'),
           explanation.isThreat
               ? '¿Por qué se bloqueó?'
               : '¿Por qué se consideró seguro?',

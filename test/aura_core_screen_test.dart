@@ -38,8 +38,9 @@ void main() {
     const telemetryChannel = MethodChannel('com.ciberdefensa.aura/telemetry');
     const securityChannel = MethodChannel('com.ciberdefensa.aura/security');
     const biometricChannel = MethodChannel('com.aura.cyberdefense/biometrics');
-    const networkEventChannel =
-        EventChannel('com.aura.cyberdefense/network_stream');
+    const networkEventChannel = EventChannel(
+      'com.aura.cyberdefense/network_stream',
+    );
     final calls = <String>[];
     var vpnActive = false;
     var vpnServiceActive = false;
@@ -90,10 +91,7 @@ void main() {
     });
     messenger.setMockMethodCallHandler(telemetryChannel, (call) async {
       if (call.method == 'domainTelemetryStatus') {
-        return <String, Object>{
-          'optedIn': false,
-          'endpointConfigured': false,
-        };
+        return <String, Object>{'optedIn': false, 'endpointConfigured': false};
       }
       return true;
     });
@@ -164,7 +162,9 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
     await _pumpAuraFrames(tester);
-    expect(calls.where((call) => call != 'getShieldStatus'), <String>['startShield']);
+    expect(calls.where((call) => call != 'getShieldStatus'), <String>[
+      'startShield',
+    ]);
     expect(state.isVpnActive, isTrue);
     // The status is rendered as one complete label, not a standalone 'ON'.
     expect(find.text('DEFENSA: ON'), findsOneWidget);
@@ -182,7 +182,9 @@ void main() {
     await _pumpAuraFrames(tester);
     expect(find.text('DEFENSA: ?'), findsOneWidget);
     expect(
-      tester.widget<TextButton>(find.byKey(const ValueKey<String>('vpn-toggle'))).onPressed,
+      tester
+          .widget<TextButton>(find.byKey(const ValueKey<String>('vpn-toggle')))
+          .onPressed,
       isNull,
     );
 
@@ -202,10 +204,12 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
     await _pumpAuraFrames(tester);
-    expect(
-      calls.where((call) => call != 'getShieldStatus'),
-      <String>['startShield', 'stopShield', 'startShield', 'stopShield'],
-    );
+    expect(calls.where((call) => call != 'getShieldStatus'), <String>[
+      'startShield',
+      'stopShield',
+      'startShield',
+      'stopShield',
+    ]);
     expect(state.isVpnActive, isFalse);
 
     await tester.tap(find.byKey(const ValueKey<String>('vpn-toggle')));
@@ -227,7 +231,9 @@ void main() {
     expect(state.isVpnActive, isFalse);
     expect(find.text('DEFENSA: ?'), findsOneWidget);
     expect(
-      tester.widget<TextButton>(find.byKey(const ValueKey<String>('vpn-toggle'))).onPressed,
+      tester
+          .widget<TextButton>(find.byKey(const ValueKey<String>('vpn-toggle')))
+          .onPressed,
       isNull,
     );
     statusVerified = true;
@@ -249,9 +255,7 @@ void main() {
     final semantics = tester.ensureSemantics();
     try {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(body: AuraAvatar(size: 96)),
-        ),
+        const MaterialApp(home: Scaffold(body: AuraAvatar(size: 96))),
       );
       expect(find.bySemanticsLabel('Aura está disponible'), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 100));
@@ -300,9 +304,7 @@ void main() {
         ),
       );
       expect(
-        find.bySemanticsLabel(
-          'Aura detectó señales que requieren atención',
-        ),
+        find.bySemanticsLabel('Aura detectó señales que requieren atención'),
         findsOneWidget,
       );
 
@@ -330,9 +332,7 @@ void main() {
       await tester.pumpWidget(
         const MediaQuery(
           data: MediaQueryData(disableAnimations: true),
-          child: MaterialApp(
-            home: Scaffold(body: AuraAvatar(size: 96)),
-          ),
+          child: MaterialApp(home: Scaffold(body: AuraAvatar(size: 96))),
         ),
       );
       await tester.pump(const Duration(seconds: 2));

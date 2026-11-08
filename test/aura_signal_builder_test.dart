@@ -26,41 +26,49 @@ void main() {
       expect(explanation.signatureVerified, isTrue);
       expect(explanation.signals, hasLength(1));
       expect(
-          explanation.signals.single.featureName, 'min_normalized_levenshtein');
+        explanation.signals.single.featureName,
+        'min_normalized_levenshtein',
+      );
       expect(explanation.signals.single.value, closeTo(0.1, 1e-12));
       expect(explanation.signals.single.description, contains('Índice 6'));
       expect(explanation.signals.single.description, contains('google.com'));
-      expect(explanation.signals.single.description.length,
-          lessThanOrEqualTo(120));
+      expect(
+        explanation.signals.single.description.length,
+        lessThanOrEqualTo(120),
+      );
     });
 
-    test('labels typo signal as auxiliary for the published six-feature model',
-        () {
-      final explanation = AuraSignalBuilder.buildExplanation(
-        host: 'goggle.com',
-        esThreat: true,
-        features: AuraAIInference.extractLegacyFeatures('goggle.com'),
-        featureOrder: AuraAIInference.legacyFeatureOrder,
-        modelVersion: '3.0.0',
-        modelSha256: modelSha256,
-      );
+    test(
+      'labels typo signal as auxiliary for the published six-feature model',
+      () {
+        final explanation = AuraSignalBuilder.buildExplanation(
+          host: 'goggle.com',
+          esThreat: true,
+          features: AuraAIInference.extractLegacyFeatures('goggle.com'),
+          featureOrder: AuraAIInference.legacyFeatureOrder,
+          modelVersion: '3.0.0',
+          modelSha256: modelSha256,
+        );
 
-      expect(explanation.signals, hasLength(1));
-      expect(
-        explanation.signals.single.label,
-        'Posible typosquatting (señal auxiliar)',
-      );
-      expect(
-        explanation.signals.single.description,
-        contains('Auxiliar, fuera del vector'),
-      );
-      expect(
-        explanation.signals.single.description,
-        contains('min_normalized_levenshtein'),
-      );
-      expect(explanation.signals.single.description.length,
-          lessThanOrEqualTo(120));
-    });
+        expect(explanation.signals, hasLength(1));
+        expect(
+          explanation.signals.single.label,
+          'Posible typosquatting (señal auxiliar)',
+        );
+        expect(
+          explanation.signals.single.description,
+          contains('Auxiliar, fuera del vector'),
+        );
+        expect(
+          explanation.signals.single.description,
+          contains('min_normalized_levenshtein'),
+        );
+        expect(
+          explanation.signals.single.description.length,
+          lessThanOrEqualTo(120),
+        );
+      },
+    );
 
     test('limits threat signals to six and safe signals to two', () {
       final threatFeatures =

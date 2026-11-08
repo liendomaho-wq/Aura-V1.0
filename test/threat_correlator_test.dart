@@ -133,7 +133,8 @@ void main() {
         );
       }
       expect(correlator.alerts.single.severity, AuraThreatSeverity.medium);
-      now = baseTimestamp +
+      now =
+          baseTimestamp +
           AuraThreatCorrelator.correlationWindow.inMilliseconds +
           21000;
       expect(correlator.alerts, isEmpty);

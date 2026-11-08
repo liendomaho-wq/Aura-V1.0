@@ -3,7 +3,14 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 /// Activity states for Aura's abstract, non-human identity mark.
-enum AuraAvatarMode { available, listening, analyzing, protecting, warning, alert }
+enum AuraAvatarMode {
+  available,
+  listening,
+  analyzing,
+  protecting,
+  warning,
+  alert,
+}
 
 class AuraAvatar extends StatefulWidget {
   const AuraAvatar({
@@ -55,30 +62,30 @@ class _AuraAvatarState extends State<AuraAvatar>
 
   @override
   Widget build(BuildContext context) => Semantics(
-        container: true,
-        excludeSemantics: true,
-        label: switch (widget.effectiveMode) {
-          AuraAvatarMode.available => 'Aura está disponible',
-          AuraAvatarMode.listening => 'Aura está escuchando',
-          AuraAvatarMode.analyzing => 'Aura está analizando',
-          AuraAvatarMode.protecting => 'Aura está protegiendo el dispositivo',
-          AuraAvatarMode.warning => 'Aura detectó señales que requieren atención',
-          AuraAvatarMode.alert => 'Aura detectó una alerta de seguridad',
-        },
-        image: true,
-        child: SizedBox.square(
-          dimension: widget.size,
-          child: AnimatedBuilder(
-            animation: _controller,
-            builder: (context, child) => CustomPaint(
-              painter: _AuraCorePainter(
-                phase: _controller.value,
-                mode: widget.effectiveMode,
-              ),
-            ),
+    container: true,
+    excludeSemantics: true,
+    label: switch (widget.effectiveMode) {
+      AuraAvatarMode.available => 'Aura está disponible',
+      AuraAvatarMode.listening => 'Aura está escuchando',
+      AuraAvatarMode.analyzing => 'Aura está analizando',
+      AuraAvatarMode.protecting => 'Aura está protegiendo el dispositivo',
+      AuraAvatarMode.warning => 'Aura detectó señales que requieren atención',
+      AuraAvatarMode.alert => 'Aura detectó una alerta de seguridad',
+    },
+    image: true,
+    child: SizedBox.square(
+      dimension: widget.size,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) => CustomPaint(
+          painter: _AuraCorePainter(
+            phase: _controller.value,
+            mode: widget.effectiveMode,
           ),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 /// Aura's own geometric A-core: luminous rails, data nodes and circuit traces.
@@ -90,16 +97,17 @@ class _AuraCorePainter extends CustomPainter {
   final AuraAvatarMode mode;
 
   Color get _primary => switch (mode) {
-        AuraAvatarMode.available => const Color(0xFF39D9FF),
-        AuraAvatarMode.listening => const Color(0xFFB36BFF),
-        AuraAvatarMode.analyzing => const Color(0xFF40BFFF),
-        AuraAvatarMode.protecting => const Color(0xFF39E6B0),
-        AuraAvatarMode.warning => const Color(0xFFFFC45E),
-        AuraAvatarMode.alert => const Color(0xFFFF557A),
-      };
+    AuraAvatarMode.available => const Color(0xFF39D9FF),
+    AuraAvatarMode.listening => const Color(0xFFB36BFF),
+    AuraAvatarMode.analyzing => const Color(0xFF40BFFF),
+    AuraAvatarMode.protecting => const Color(0xFF39E6B0),
+    AuraAvatarMode.warning => const Color(0xFFFFC45E),
+    AuraAvatarMode.alert => const Color(0xFFFF557A),
+  };
 
-  Color get _secondary =>
-      mode == AuraAvatarMode.alert ? const Color(0xFFFF9BAE) : const Color(0xFF925BFF);
+  Color get _secondary => mode == AuraAvatarMode.alert
+      ? const Color(0xFFFF9BAE)
+      : const Color(0xFF925BFF);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -138,10 +146,14 @@ class _AuraCorePainter extends CustomPainter {
 
     for (var i = 0; i < 12; i++) {
       final a = math.pi * 2 * i / 12 + angle * 0.035;
-      final start = Offset(center.dx + math.cos(a) * outer * 1.03,
-          center.dy + math.sin(a) * outer * 1.03);
-      final end = Offset(center.dx + math.cos(a) * outer * 1.22,
-          center.dy + math.sin(a) * outer * 1.22);
+      final start = Offset(
+        center.dx + math.cos(a) * outer * 1.03,
+        center.dy + math.sin(a) * outer * 1.03,
+      );
+      final end = Offset(
+        center.dx + math.cos(a) * outer * 1.22,
+        center.dy + math.sin(a) * outer * 1.22,
+      );
       canvas.drawLine(start, end, trace);
       canvas.drawCircle(
         end,
@@ -156,8 +168,9 @@ class _AuraCorePainter extends CustomPainter {
     for (var i = 0; i < 3; i++) {
       ring
         ..strokeWidth = math.max(1, unit * (0.012 - i * 0.002))
-        ..color = (i.isEven ? primary : secondary)
-            .withValues(alpha: 0.72 - i * 0.14);
+        ..color = (i.isEven ? primary : secondary).withValues(
+          alpha: 0.72 - i * 0.14,
+        );
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius * (1.32 + i * 0.19)),
         angle * (i.isEven ? 0.035 : -0.025) + i,

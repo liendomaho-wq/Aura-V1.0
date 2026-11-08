@@ -37,17 +37,17 @@ void main() {
     test('ignores invalid DNS labels, ports, and URL credentials', () async {
       final results =
           await model_inference.AuraAIInference.analyzeThreatPayload(
-        rawData: jsonEncode(<String, Object>{
-          'hosts': <Map<String, String>>[
-            <String, String>{'host': 'bad.-label.example'},
-            <String, String>{'host': 'bad..example'},
-            <String, String>{'host': 'good.example:443'},
-            <String, String>{'host': 'https://user@good.example/path'},
-          ],
-        }),
-        modelStructure: <String, dynamic>{},
-        suspiciousTlds: <String>[],
-      );
+            rawData: jsonEncode(<String, Object>{
+              'hosts': <Map<String, String>>[
+                <String, String>{'host': 'bad.-label.example'},
+                <String, String>{'host': 'bad..example'},
+                <String, String>{'host': 'good.example:443'},
+                <String, String>{'host': 'https://user@good.example/path'},
+              ],
+            }),
+            modelStructure: <String, dynamic>{},
+            suspiciousTlds: <String>[],
+          );
 
       expect(results, isEmpty);
     });
@@ -55,35 +55,42 @@ void main() {
     test('normalizes a valid HTTPS URL to its DNS host', () async {
       final results =
           await model_inference.AuraAIInference.analyzeThreatPayload(
-        rawData: '{"host":"https://good.example/path"}',
-        modelStructure: _safeForest(),
-        suspiciousTlds: <String>[],
-      );
+            rawData: '{"host":"https://good.example/path"}',
+            modelStructure: _safeForest(),
+            suspiciousTlds: <String>[],
+          );
 
       expect(results.single.host, 'good.example');
       expect(results.single.featureVector, hasLength(6));
       expect(results.single.featureOrder, AuraAIInference.legacyFeatureOrder);
     });
 
-    test('returns the exact enhanced feature vector and matching schema',
-        () async {
-      final model = _safeForest()
-        ..['feature_order'] = AuraAIInference.enhancedFeatureOrder;
-      final results =
-          await model_inference.AuraAIInference.analyzeThreatPayload(
-        rawData: '{"host":"goggle.com"}',
-        modelStructure: model,
-        suspiciousTlds: <String>[],
-      );
+    test(
+      'returns the exact enhanced feature vector and matching schema',
+      () async {
+        final model = _safeForest()
+          ..['feature_order'] = AuraAIInference.enhancedFeatureOrder;
+        final results =
+            await model_inference.AuraAIInference.analyzeThreatPayload(
+              rawData: '{"host":"goggle.com"}',
+              modelStructure: model,
+              suspiciousTlds: <String>[],
+            );
 
-      expect(results.single.featureVector, hasLength(18));
-      expect(results.single.featureOrder, AuraAIInference.enhancedFeatureOrder);
-      expect(
-        results.single.featureVector[6],
-        closeTo(results.single.computedFeatures['min_normalized_levenshtein']!,
-            1e-12),
-      );
-    });
+        expect(results.single.featureVector, hasLength(18));
+        expect(
+          results.single.featureOrder,
+          AuraAIInference.enhancedFeatureOrder,
+        );
+        expect(
+          results.single.featureVector[6],
+          closeTo(
+            results.single.computedFeatures['min_normalized_levenshtein']!,
+            1e-12,
+          ),
+        );
+      },
+    );
 
     test('published model retains its safe goggle.com v3 verdict', () async {
       final decoded = jsonDecode(
@@ -94,11 +101,11 @@ void main() {
       }
       final results =
           await model_inference.AuraAIInference.analyzeThreatPayload(
-        rawData: '{"host":"goggle.com"}',
-        modelStructure: Map<String, dynamic>.from(decoded),
-        suspiciousTlds: AuraAIInference.suspiciousTlds,
-        blocklistChecked: true,
-      );
+            rawData: '{"host":"goggle.com"}',
+            modelStructure: Map<String, dynamic>.from(decoded),
+            suspiciousTlds: AuraAIInference.suspiciousTlds,
+            blocklistChecked: true,
+          );
 
       expect(results, hasLength(1));
       expect(results.single.isThreat, isFalse);
@@ -106,75 +113,79 @@ void main() {
     });
 
     test(
-        'accepts IPv6 literals as addresses but does not score them as domains',
-        () async {
-      final results =
-          await model_inference.AuraAIInference.analyzeThreatPayload(
-        rawData: '{"hosts":[{"host":"https://[2001:0db8::1]/"}]}',
-        modelStructure: _safeForest(),
-        suspiciousTlds: <String>[],
-      );
+      'accepts IPv6 literals as addresses but does not score them as domains',
+      () async {
+        final results =
+            await model_inference.AuraAIInference.analyzeThreatPayload(
+              rawData: '{"hosts":[{"host":"https://[2001:0db8::1]/"}]}',
+              modelStructure: _safeForest(),
+              suspiciousTlds: <String>[],
+            );
 
-      expect(results, isEmpty);
-    });
+        expect(results, isEmpty);
+      },
+    );
   });
 
   group('AuraAIInference feature calculations', () {
-    test('preserves legacy values and normalizes the twelve added features',
-        () {
-      final features = AuraAIInference.extractFeatures('ABBB3.XYZ');
-      final enhanced = AuraAIInference.extractEnhancedFeatures('ABBB3.XYZ');
-      const length = 9;
-      final expectedEntropy =
-          -((3 / length) * (math.log(3 / length) / math.ln2) +
-              6 * (1 / length) * (math.log(1 / length) / math.ln2));
+    test(
+      'preserves legacy values and normalizes the twelve added features',
+      () {
+        final features = AuraAIInference.extractFeatures('ABBB3.XYZ');
+        final enhanced = AuraAIInference.extractEnhancedFeatures('ABBB3.XYZ');
+        const length = 9;
+        final expectedEntropy =
+            -((3 / length) * (math.log(3 / length) / math.ln2) +
+                6 * (1 / length) * (math.log(1 / length) / math.ln2));
 
-      expect(enhanced, hasLength(18));
-      expect(AuraAIInference.enhancedFeatureOrder, <String>[
-        'length',
-        'shannon_entropy',
-        'digit_ratio',
-        'vowel_ratio',
-        'consonant_sequence_ratio',
-        'suspicious_tld',
-        'min_normalized_levenshtein',
-        'bigram_repeat_ratio',
-        'trigram_repeat_ratio',
-        'subdomain_depth',
-        'tld_length_ratio',
-        'idn_homograph_indicator',
-        'non_ascii_ratio',
-        'consecutive_digits_indicator',
-        'conditional_entropy',
-        'rare_character_ratio',
-        'longest_label_length_ratio',
-        'suspicious_keyword_indicator',
-      ]);
-      expect(features['length'], 9);
-      expect(features['shannon_entropy'], closeTo(expectedEntropy, 1e-12));
-      expect(features['digit_ratio'], closeTo(1 / 9, 1e-12));
-      expect(features['vowel_ratio'], closeTo(1 / 7, 1e-12));
-      expect(features['consonant_sequence_ratio'], closeTo(6 / 7, 1e-12));
-      expect(features['suspicious_tld'], 1);
-      expect(enhanced[0], 9);
-      expect(enhanced[1], closeTo(expectedEntropy, 1e-12));
-      expect(enhanced[2], closeTo(1 / 9, 1e-12));
-      expect(enhanced[3], closeTo(1 / 7, 1e-12));
-      expect(enhanced[4], closeTo(6 / 7, 1e-12));
-      expect(enhanced[5], 1);
-      expect(
-        enhanced.skip(6).every((value) => value >= 0 && value <= 1),
-        isTrue,
-      );
-      expect(enhanced[11], 0);
-      expect(enhanced[13], 0);
-      expect(enhanced[15], closeTo(2 / 7, 1e-12));
-      expect(features['length'], 9);
-    });
+        expect(enhanced, hasLength(18));
+        expect(AuraAIInference.enhancedFeatureOrder, <String>[
+          'length',
+          'shannon_entropy',
+          'digit_ratio',
+          'vowel_ratio',
+          'consonant_sequence_ratio',
+          'suspicious_tld',
+          'min_normalized_levenshtein',
+          'bigram_repeat_ratio',
+          'trigram_repeat_ratio',
+          'subdomain_depth',
+          'tld_length_ratio',
+          'idn_homograph_indicator',
+          'non_ascii_ratio',
+          'consecutive_digits_indicator',
+          'conditional_entropy',
+          'rare_character_ratio',
+          'longest_label_length_ratio',
+          'suspicious_keyword_indicator',
+        ]);
+        expect(features['length'], 9);
+        expect(features['shannon_entropy'], closeTo(expectedEntropy, 1e-12));
+        expect(features['digit_ratio'], closeTo(1 / 9, 1e-12));
+        expect(features['vowel_ratio'], closeTo(1 / 7, 1e-12));
+        expect(features['consonant_sequence_ratio'], closeTo(6 / 7, 1e-12));
+        expect(features['suspicious_tld'], 1);
+        expect(enhanced[0], 9);
+        expect(enhanced[1], closeTo(expectedEntropy, 1e-12));
+        expect(enhanced[2], closeTo(1 / 9, 1e-12));
+        expect(enhanced[3], closeTo(1 / 7, 1e-12));
+        expect(enhanced[4], closeTo(6 / 7, 1e-12));
+        expect(enhanced[5], 1);
+        expect(
+          enhanced.skip(6).every((value) => value >= 0 && value <= 1),
+          isTrue,
+        );
+        expect(enhanced[11], 0);
+        expect(enhanced[13], 0);
+        expect(enhanced[15], closeTo(2 / 7, 1e-12));
+        expect(features['length'], 9);
+      },
+    );
 
     test('detects IDN homographs and suspicious keyword patterns', () {
-      final features =
-          AuraAIInference.extractEnhancedFeatures('раypal-free123.com');
+      final features = AuraAIInference.extractEnhancedFeatures(
+        'раypal-free123.com',
+      );
 
       expect(features, hasLength(18));
       expect(features[11], 1);
@@ -188,29 +199,18 @@ void main() {
         AuraAIInference.extractEnhancedFeatures('xn--80ak6aa92e.com')[11],
         0,
       );
-      expect(
-        AuraAIInference.extractEnhancedFeatures('xn--fsqu00a.com')[11],
-        0,
-      );
+      expect(AuraAIInference.extractEnhancedFeatures('xn--fsqu00a.com')[11], 0);
     });
 
     test('scores mapped Cyrillic homoglyphs as a capped indicator', () {
       expect(AuraAIInference.detectIdnHomoglyphs('apple.com'), 0);
-      expect(
-        AuraAIInference.detectIdnHomoglyphs('\u0430pple.com'),
-        0.5,
-      );
-      expect(
-        AuraAIInference.detectIdnHomoglyphs('\u0430\u0440ple.com'),
-        1,
-      );
-      expect(
-        AuraAIInference.detectIdnHomoglyphs('xn--pypal-4ve.com'),
-        0,
-      );
+      expect(AuraAIInference.detectIdnHomoglyphs('\u0430pple.com'), 0.5);
+      expect(AuraAIInference.detectIdnHomoglyphs('\u0430\u0440ple.com'), 1);
+      expect(AuraAIInference.detectIdnHomoglyphs('xn--pypal-4ve.com'), 0);
       expect(
         AuraAIInference.detectIdnHomoglyphs(
-            '\u0430\u0440\u0441\u0435\u0430.com'),
+          '\u0430\u0440\u0441\u0435\u0430.com',
+        ),
         1,
       );
       expect(AuraAIInference.detectIdnHomoglyphs(''), 0);
@@ -223,10 +223,7 @@ void main() {
 
       expect(auraCommonDomains, hasLength(5000));
       expect(auraCommonDomains, source);
-      expect(
-        AuraAIInference.extractEnhancedFeatures('google.com')[6],
-        0.0,
-      );
+      expect(AuraAIInference.extractEnhancedFeatures('google.com')[6], 0.0);
       expect(
         AuraAIInference.levenshteinDistanceToTopDomains('goggle.com'),
         closeTo(0.1, 1e-12),
@@ -248,29 +245,32 @@ void main() {
       expect(AuraAIInference.levenshteinDistanceToTopDomains(''), 1);
     });
 
-    test('registra una medición diagnóstica de distancia a dominios de marca', () {
-      final domains = List<String>.generate(
-        100,
-        (index) => '${'x' * (index + 1)}google.com',
-      );
-      final stopwatch = Stopwatch()..start();
-      for (final domain in domains) {
-        AuraAIInference.levenshteinDistanceToTopDomains(domain);
-      }
-      stopwatch.stop();
-      final averageMilliseconds =
-          stopwatch.elapsedMicroseconds / domains.length / 1000;
+    test(
+      'registra una medición diagnóstica de distancia a dominios de marca',
+      () {
+        final domains = List<String>.generate(
+          100,
+          (index) => '${'x' * (index + 1)}google.com',
+        );
+        final stopwatch = Stopwatch()..start();
+        for (final domain in domains) {
+          AuraAIInference.levenshteinDistanceToTopDomains(domain);
+        }
+        stopwatch.stop();
+        final averageMilliseconds =
+            stopwatch.elapsedMicroseconds / domains.length / 1000;
 
-      print(
-        'MAJESTIC_DISTANCE_BENCHMARK calls=${domains.length} '
-        'average_ms=${averageMilliseconds.toStringAsFixed(3)}',
-      );
-      // Timing varies substantially across hosted CI runners. Keep this as a
-      // diagnostic benchmark rather than a flaky functional test; performance
-      // budgets should be evaluated on a controlled benchmark environment.
-      expect(averageMilliseconds.isFinite, isTrue);
-      expect(averageMilliseconds, greaterThanOrEqualTo(0));
-    });
+        print(
+          'MAJESTIC_DISTANCE_BENCHMARK calls=${domains.length} '
+          'average_ms=${averageMilliseconds.toStringAsFixed(3)}',
+        );
+        // Timing varies substantially across hosted CI runners. Keep this as a
+        // diagnostic benchmark rather than a flaky functional test; performance
+        // budgets should be evaluated on a controlled benchmark environment.
+        expect(averageMilliseconds.isFinite, isTrue);
+        expect(averageMilliseconds, greaterThanOrEqualTo(0));
+      },
+    );
 
     test('does not treat a suspicious-looking substring as the TLD', () {
       final features = AuraAIInference.extractFeatures('notxyz.example');
@@ -362,7 +362,9 @@ void main() {
       );
       expect(
         AuraAIInference.analyzeHostSecure(
-            'ordinary.example', safeMajorityModel),
+          'ordinary.example',
+          safeMajorityModel,
+        ),
         isTrue,
       );
     });
@@ -371,14 +373,14 @@ void main() {
       final model = _forest(<int>[
         ...List<int>.filled(300, 1),
         ...List<int>.filled(200, 0),
-      ])
-        ..['decision_threshold'] = 0.62;
-      final results = await model_inference.AuraAIInference.analyzeThreatPayload(
-        rawData: '{"host":"ordinary.example"}',
-        modelStructure: model,
-        suspiciousTlds: <String>[],
-        blocklistChecked: true,
-      );
+      ])..['decision_threshold'] = 0.62;
+      final results =
+          await model_inference.AuraAIInference.analyzeThreatPayload(
+            rawData: '{"host":"ordinary.example"}',
+            modelStructure: model,
+            suspiciousTlds: <String>[],
+            blocklistChecked: true,
+          );
 
       expect(results.single.threatScore, 0.6);
       expect(results.single.decisionThreshold, 0.62);
@@ -387,7 +389,9 @@ void main() {
 
     test('rejects unverified hosts when no model is loaded', () {
       expect(
-          AuraAIInference.analyzeHostSecure('ordinary.example', {}), isFalse);
+        AuraAIInference.analyzeHostSecure('ordinary.example', {}),
+        isFalse,
+      );
     });
   });
 
@@ -426,29 +430,31 @@ void main() {
       );
     });
 
-    test('distinguishes little-endian float thresholds from byte-swapped data',
-        () {
-      final model = _binaryForest(<_BinaryTree>[
-        _BinaryTree(
-          rootIndex: 0,
-          nodes: <_BinaryNode>[
-            _BinaryNode.split(
-              featureIndex: 2,
-              threshold: 0.5,
-              leftChild: 1,
-              rightChild: 2,
-            ),
-            const _BinaryNode.leaf(0),
-            const _BinaryNode.leaf(1),
-          ],
-        ),
-      ]);
+    test(
+      'distinguishes little-endian float thresholds from byte-swapped data',
+      () {
+        final model = _binaryForest(<_BinaryTree>[
+          _BinaryTree(
+            rootIndex: 0,
+            nodes: <_BinaryNode>[
+              _BinaryNode.split(
+                featureIndex: 2,
+                threshold: 0.5,
+                leftChild: 1,
+                rightChild: 2,
+              ),
+              const _BinaryNode.leaf(0),
+              const _BinaryNode.leaf(1),
+            ],
+          ),
+        ]);
 
-      expect(
-        AuraAIInference.evaluateHostFromBinary('abc1.example', model),
-        isTrue,
-      );
-    });
+        expect(
+          AuraAIInference.evaluateHostFromBinary('abc1.example', model),
+          isTrue,
+        );
+      },
+    );
 
     test('loads and evaluates a .bin file', () async {
       final directory = await Directory.systemTemp.createTemp('aura-model-');
@@ -581,29 +587,27 @@ void main() {
 }
 
 Map<String, dynamic> _safeForest() => <String, dynamic>{
-      'trees': List<Map<String, Object>>.generate(
-        500,
-        (_) => <String, Object>{
-          'root': <String, Object>{'type': 'leaf', 'value': 0},
-        },
-      ),
-    };
+  'trees': List<Map<String, Object>>.generate(
+    500,
+    (_) => <String, Object>{
+      'root': <String, Object>{'type': 'leaf', 'value': 0},
+    },
+  ),
+};
 
 Map<String, dynamic> _forest(List<int> leafVotes) => <String, dynamic>{
-      'trees': <Map<String, Object>>[
-        for (final vote in leafVotes)
-          <String, Object>{
-            'root': <String, Object>{'type': 'leaf', 'value': vote},
-          },
-      ],
-    };
+  'trees': <Map<String, Object>>[
+    for (final vote in leafVotes)
+      <String, Object>{
+        'root': <String, Object>{'type': 'leaf', 'value': vote},
+      },
+  ],
+};
 
 Uint8List _binaryForest(List<_BinaryTree> trees) {
-  final byteLength = 8 +
-      trees.fold<int>(
-        0,
-        (total, tree) => total + 8 + tree.nodes.length * 20,
-      );
+  final byteLength =
+      8 +
+      trees.fold<int>(0, (total, tree) => total + 8 + tree.nodes.length * 20);
   final bytes = Uint8List(byteLength);
   final data = ByteData.sublistView(bytes);
   data
@@ -633,9 +637,9 @@ Uint8List _binaryForest(List<_BinaryTree> trees) {
 }
 
 _BinaryTree _leafTree(int classification) => _BinaryTree(
-      rootIndex: 0,
-      nodes: <_BinaryNode>[_BinaryNode.leaf(classification)],
-    );
+  rootIndex: 0,
+  nodes: <_BinaryNode>[_BinaryNode.leaf(classification)],
+);
 
 class _BinaryTree {
   const _BinaryTree({required this.rootIndex, required this.nodes});
@@ -646,11 +650,11 @@ class _BinaryTree {
 
 class _BinaryNode {
   const _BinaryNode.leaf(int classification)
-      : type = 1,
-        featureIndex = classification,
-        leftChild = -1,
-        rightChild = -1,
-        threshold = 0;
+    : type = 1,
+      featureIndex = classification,
+      leftChild = -1,
+      rightChild = -1,
+      threshold = 0;
 
   const _BinaryNode.split({
     required this.featureIndex,
