@@ -44,8 +44,13 @@ public final class SecureStorageIntegrityTest {
     }
 
     private FlutterSecureStorageConfig config(String namespace) {
+        return config(namespace, null);
+    }
+
+    private FlutterSecureStorageConfig config(String namespace, String keyAlgorithm) {
         HashMap<String, Object> options = new HashMap<>();
         options.put("storageNamespace", namespace + "_" + UUID.randomUUID());
+        if (keyAlgorithm != null) options.put("keyCipherAlgorithm", keyAlgorithm);
         options.put("resetOnError", "false");
         options.put("migrateOnAlgorithmChange", "true");
         options.put("migrateWithBackup", "true");
@@ -227,7 +232,9 @@ public final class SecureStorageIntegrityTest {
     @Test
     public void refusesDestructiveRsaToAesAliasReplacementAndPreservesSecret() throws Exception {
         Context context = guardedContext();
-        FlutterSecureStorageConfig config = config("aura_alias_preservation_test");
+        // RSA18/PKCS1 shares the AES alias. Default RSA-OAEP uses a
+        // DIFFERENT "PluginKeyOAEP" alias and would not exercise this guard.
+        FlutterSecureStorageConfig config = config("aura_alias_preservation_test", "RSA_ECB_PKCS1Padding");
         String key = config.getSharedPreferencesKeyPrefix() + "_alias_preserved_secret";
         FlutterSecureStorage current = initialize(context, config, false);
         current.write(key, "secret-whose-rsa-key-must-survive");
@@ -235,7 +242,8 @@ public final class SecureStorageIntegrityTest {
         java.security.KeyStore keystore = java.security.KeyStore.getInstance("AndroidKeyStore");
         keystore.load(null);
         String alias = context.getPackageName() + ".FlutterSecureStoragePluginKey" + config.getKeyAliasSuffix();
-        assertTrue(keystore.getKey(alias, null) instanceof java.security.PrivateKey);
+        assertTrue("A genuine legacy RSA18 private key must exist at " + alias,
+                keystore.getKey(alias, null) instanceof java.security.PrivateKey);
         byte[] certificate = keystore.getCertificate(alias).getEncoded();
         SharedPreferences raw = context.getSharedPreferences(config.getEffectiveDataPrefsName(), Context.MODE_PRIVATE);
         Map<String, ?> before = raw.getAll();
@@ -254,6 +262,47 @@ public final class SecureStorageIntegrityTest {
         // A fresh instance must really unwrap the persisted AES key; a cached
         // plaintext key from the first instance cannot satisfy this assertion.
         assertEquals("secret-whose-rsa-key-must-survive", initialize(context, config, false).read(key));
+    }
+
+    @Test
+    public void refusesDestructiveAesToRsaAliasReplacementAndPreservesSecret() throws Exception {
+        Context context = guardedContext();
+        // Non-auth-required test key ONLY. This tests non-destructive key type
+        // handling, and is deliberately NOT CryptoObject/vault-auth evidence.
+        FlutterSecureStorageConfig config = config("aura_inverse_alias_test", "AES_GCM_NoPadding");
+        NamespacedConfigSource source = new NamespacedConfigSource(context, config.getEffectiveDataPrefsName());
+        new StorageCipherFactory(source, "AES_GCM_NoPadding", "AES_GCM_NoPadding", config)
+                .getCurrentKeyCipher(context);
+        java.security.KeyStore keystore = java.security.KeyStore.getInstance("AndroidKeyStore");
+        keystore.load(null);
+        String alias = context.getPackageName() + ".FlutterSecureStoragePluginKey" + config.getKeyAliasSuffix();
+        java.security.Key original = keystore.getKey(alias, null);
+        assertTrue("A genuine AndroidKeystore AES key must exist", original instanceof javax.crypto.SecretKey);
+        assertNull("AndroidKeystore key material must be non-exportable", original.getEncoded());
+        byte[] secret = "persisted-aes-secret-must-survive".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        javax.crypto.Cipher encrypt = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+        encrypt.init(javax.crypto.Cipher.ENCRYPT_MODE, original);
+        SharedPreferences raw = context.getSharedPreferences(config.getEffectiveDataPrefsName(), Context.MODE_PRIVATE);
+        assertTrue(raw.edit().putString("guard_ciphertext", Base64.encodeToString(encrypt.doFinal(secret), Base64.NO_WRAP))
+                .putString("guard_iv", Base64.encodeToString(encrypt.getIV(), Base64.NO_WRAP)).commit());
+        Map<String, ?> before = raw.getAll();
+        try {
+            new StorageCipherFactory(source, "RSA_ECB_PKCS1Padding", "AES_GCM_NoPadding", config)
+                    .getCurrentKeyCipher(context);
+            fail("RSA must never silently destroy the existing AES alias");
+        } catch (java.security.InvalidKeyException expected) {
+            assertTrue(expected.getMessage().contains("destructive RSA replacement refused"));
+        }
+        assertEquals(before, raw.getAll());
+        java.security.KeyStore fresh = java.security.KeyStore.getInstance("AndroidKeyStore");
+        fresh.load(null);
+        java.security.Key retained = fresh.getKey(alias, null);
+        assertTrue(retained instanceof javax.crypto.SecretKey);
+        assertNull(retained.getEncoded());
+        javax.crypto.Cipher decrypt = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+        decrypt.init(javax.crypto.Cipher.DECRYPT_MODE, retained,
+                new javax.crypto.spec.GCMParameterSpec(128, Base64.decode(raw.getString("guard_iv", null), Base64.DEFAULT)));
+        assertArrayEquals(secret, decrypt.doFinal(Base64.decode(raw.getString("guard_ciphertext", null), Base64.DEFAULT)));
     }
 
     @Test

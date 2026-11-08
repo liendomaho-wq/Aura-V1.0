@@ -112,7 +112,7 @@ def test_accepts_additional_real_result_class_identity(tmp_path):
         ET.SubElement(suite, "testcase", classname=INTEGRITY_CLASS, name=name)
     (tmp_path / "TEST-integrity-parser-fixture.xml").write_bytes(ET.tostring(suite))
     report = verify_results(tmp_path, require_vault_integrity=True)
-    assert report["total_cases"] == 7
+    assert report["total_cases"] == 8
     assert report["required_vault_integrity_cases"] == sorted(EXPECTED_INTEGRITY_CASES)
 
 

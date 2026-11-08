@@ -1,6 +1,6 @@
 # Aura: narrowly scoped Android v9 ESP migration fixes
 
-Upstream runtime: **v10.3.4**, commit `692a374a5071c0b60939f624ede58d666b6b645c` of https://github.com/juliansteenbakker/flutter_secure_storage. Original BSD license and embedded notices are preserved. `UPSTREAM.json` records the archive digest, every included upstream file digest and the four functional Android patch digests plus explicitly marked whitespace-only differences; `AURA_PATCHES.json` stores the exact unified patch as JSON text. All production Dart implementation files are unmodified. Example applications, upstream test suites and dev-only analyzer configuration are not copied or represented as executed Aura tests. The published SDK helper imported by its production Dart library is retained byte-for-byte for API compatibility; it is not used to replace Android/Keystore tests.
+Upstream runtime: **v10.3.4**, commit `692a374a5071c0b60939f624ede58d666b6b645c` of https://github.com/juliansteenbakker/flutter_secure_storage. Original BSD license and embedded notices are preserved. `UPSTREAM.json` records the archive digest, every included upstream file digest and the five functional Android patch digests plus explicitly marked whitespace-only differences; `AURA_PATCHES.json` stores the exact unified patch as JSON text. All production Dart implementation files are unmodified. Example applications, upstream test suites and dev-only analyzer configuration are not copied or represented as executed Aura tests. The published SDK helper imported by its production Dart library is retained byte-for-byte for API compatibility; it is not used to replace Android/Keystore tests.
 
 ## Actual defect, not an assertion change
 
@@ -17,10 +17,12 @@ In 10.3.4, `migrateWithBackup=true` skips the early ESP migration, while `canSki
 5. If legacy/current secrets differ, retain both and report an error. If they match, preserve the exact existing current ciphertext. Do not silently choose a root key, overwrite either secret or reset the vault.
 6. Check durable wrapped-AES-key storage before committing migrated data. An ESP authentication failure in the general backup flow aborts before backup cleanup.
 7. Prevent authenticated initialization from calling success after it already called error.
-8. Refuse replacing an existing RSA private key with a new AES key at the same alias. That destructive provider shortcut is not a data-preserving authenticated migration; a distinct alias and verified recovery are required. A real Android regression must show that the original certificate/key and freshly unwrapped secret survive.
+8. Refuse replacing an existing legacy RSA18/PKCS1 private key with a new AES key at the same alias. RSA-OAEP uses a different alias; it does not collide with this AES alias. That destructive provider shortcut is not a data-preserving authenticated migration; a distinct alias and verified recovery are required. A real Android regression must show that the original certificate/key and freshly unwrapped secret survive.
+
+9. Refuse the inverse implicit AES-to-RSA replacement too. Preserve the existing non-exportable AES key and its persisted ciphertext rather than treating a missing RSA certificate as permission to delete it.
 
 ## Verification boundaries
 
-`tool/test_secure_storage_vendor.py` verifies provenance and source invariants, not Android. The Android workflow must execute the two original migration cases and five additional real provider/data-integrity cases. Android 16 additionally requires the five real VPN cases (including a zero-application-payload TCP control-only negative). API 29 is additional regression coverage, never a substitute for Android 16 acceptance or the reference phone.
+`tool/test_secure_storage_vendor.py` verifies provenance and source invariants, not Android. The Android workflow must execute the two original migration cases and six additional real provider/data-integrity cases. Android 16 additionally requires the five real VPN cases (including a zero-application-payload TCP control-only negative). API 29 is additional regression coverage, never a substitute for Android 16 acceptance or the reference phone.
 
 This patch **does not configure the application's vault keys to use biometric CryptoObject protection**, certify all failure/power-loss scenarios, recover already-lost cryptographic material, or prove compatibility with a physical Redmi. Those remain separate acceptance work. Conflicting legacy/current secrets require deliberate recovery; failing closed preserves both rather than inventing a resolution.

@@ -356,3 +356,12 @@ El código de aplicación/tests Android permanece idéntico a `a3e9b2d`; este aj
 
 
 Suite local del ajuste de orquestación: **220 passed, 8 skipped, 124 subtests**. Se conserva también el `adb shell getprop ro.build.version.sdk` original; el preflight añade comprobaciones, no elimina ese log ni su guard. YAML y diff-check aprobados. Las diez nuevas pruebas son fixtures/guards de preflight, no diez ejecuciones Android.
+
+
+### API29 ejecutó siete casos: Tink corregido aprobado; test del alias necesitaba el algoritmo legacy real
+
+`a3e9b2d` / `128792953127`: **7 ejecutados / 0 skips / 1 fallo**, XML **`a3acb2ebc9bbcac0a1bc0480d8b39c05906305e4e370ed027101aa10a79dd35d`**. Los dos originales y los cuatro casos previos de integridad, incluido el cross-check Tink corregido, **pasaron**. Falló únicamente el nuevo caso del alias: creaba el RSA-OAEP por defecto, cuyo alias es `PluginKeyOAEP`, pero buscaba `PluginKey`, que corresponde a **RSA18/PKCS1** y AES. No ejercitaba la colisión que pretendía comprobar.
+
+Se fija la precondición con el algoritmo legacy **RSA_ECB_PKCS1Padding** y se conserva cada assert de clave/certificado/ciphertext/lectura nueva. La ruta normal OAEP no comparte ese alias: se corrige esta precisión en el alcance del hallazgo, no se proclama destrucción del alias OAEP por el constructor AES.
+
+La revisión del código simétrico encontró además el mismo borrado implícito **AES→RSA18**. Ahora ambos constructores rechazan tipos incompatibles sin borrar datos. Se añade una sexta regresión de integridad que crea AES real no-exportable en AndroidKeystore, persiste un ciphertext GCM, exige rechazo RSA y lo descifra mediante un handle recuperado de **un KeyStore nuevo**. La clave de esa prueba no exige autenticación y **no es evidencia CryptoObject**. Proveedor: 43 archivos / **5 cambios funcionales** / 3 whitespace. API36 exige ahora **13 casos** (2 originales + 6 integridad + 5 VPN); API29 **8**. Requiere CI nueva; no convierte el caso anterior en éxito.

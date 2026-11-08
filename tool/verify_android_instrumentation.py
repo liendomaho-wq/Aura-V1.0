@@ -16,6 +16,7 @@ EXPECTED_CASES = frozenset({
 })
 INTEGRITY_CLASS = "com.ciberdefensa.aura.SecureStorageIntegrityTest"
 EXPECTED_INTEGRITY_CASES = frozenset({
+    "refusesDestructiveAesToRsaAliasReplacementAndPreservesSecret",
     "rejectsTamperedGcmValueWithoutResettingOtherSecrets",
     "corruptedLegacyFailsWithoutResetAndCanRetryAfterExactRestoration",
     "conflictingLegacyAndCurrentSecretsFailWithoutOverwritingEither",

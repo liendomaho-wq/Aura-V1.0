@@ -124,15 +124,10 @@ class KeyCipherImplementationRSA18 implements KeyCipher {
 
         Key existingKey = ks.getKey(keyAlias, null);
         if (existingKey != null && !(existingKey instanceof PrivateKey)) {
-            // KeyCipherImplementationAES23 uses this exact same alias, so a sibling instance's
-            // SecretKey can end up here. A SecretKey has no certificate, so the null-cert check
-            // below would otherwise treat this as "no key yet" and regenerate over it, destroying
-            // the sibling's key. Replace it explicitly instead, with a clear log line.
-            Log.w(TAG, "Alias " + keyAlias + " holds a " + existingKey.getClass().getSimpleName()
-                    + ", not a PrivateKey, replacing it with a fresh RSA key pair");
-            ks.deleteEntry(keyAlias);
-            createKeys(context);
-            return;
+            // A legacy RSA18/AES sibling can still protect persisted data.
+            // A missing RSA certificate is not permission to destroy its key.
+            throw new java.security.InvalidKeyException(
+                    "Existing AES alias still protects data; destructive RSA replacement refused");
         }
 
         Certificate cert = ks.getCertificate(keyAlias);

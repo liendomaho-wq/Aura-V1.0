@@ -23,7 +23,7 @@ def test_pinned_upstream_runtime_and_every_changed_file_are_explicit():
             (formatting if entry.get("whitespace_only") else changed).append(entry["path"])
             assert entry["change"]
     assert len(manifest["files"]) == 43
-    assert len(changed) == 4
+    assert len(changed) == 5
     assert len(formatting) == 3
     assert all(path.startswith("android/") for path in changed)
     assert "Copyright" in (VENDOR / "LICENSE").read_text()
@@ -103,3 +103,14 @@ def test_legacy_tamper_is_cross_checked_against_original_crypto_provider():
     assert 'legacyRoot.getClass(), actualRoot.getClass()' in source
     assert 'legacyRoot.getMessage(), actualRoot.getMessage()' in source
     assert 'assertEquals("Failure must not remove, overwrite or add data records", before, raw.getAll())' in source
+
+
+def test_alias_guards_cover_legacy_rsa18_collision_in_both_directions():
+    source = (JAVA / "ciphers/KeyCipherImplementationRSA18.java").read_text()
+    guard = source.split("private void createRSAKeysIfNeeded", 1)[1].split("private void setLocale", 1)[0]
+    assert "destructive RSA replacement refused" in guard
+    assert "deleteEntry" not in guard
+    test = (ROOT / "android/app/src/androidTest/java/com/ciberdefensa/aura/SecureStorageIntegrityTest.java").read_text()
+    assert 'config("aura_alias_preservation_test", "RSA_ECB_PKCS1Padding")' in test
+    assert "refusesDestructiveAesToRsaAliasReplacementAndPreservesSecret" in test
+    assert "retained.getEncoded()" in test
