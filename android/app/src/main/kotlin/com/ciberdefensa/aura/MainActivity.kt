@@ -89,6 +89,8 @@ object AuraAntiTampering {
             "isDebuggerConnected" to debuggerConnected,
             "debuggerBlocked" to debuggerBlocked,
             "adbEnabled" to adbEnabled,
+            // Retained for existing Dart consumers; ADB is never an integrity veto.
+            "adbBlocked" to false,
             "localDebugFallback" to localDebugFallback,
         )
     }

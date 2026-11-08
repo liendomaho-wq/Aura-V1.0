@@ -443,9 +443,12 @@ integrity_policy = re.search(
 if (
     not integrity_policy
     or "adbEnabled" in integrity_policy.group(1)
-    or "adbBlocked" in anti_tampering
+    or "adbBlocked" in integrity_policy.group(1)
     or '"adbEnabled" to adbEnabled' not in anti_tampering
-    or "debuggerBlocked" not in integrity_policy.group(1)
+    or '"adbBlocked" to false' not in anti_tampering
+    or any(signal not in integrity_policy.group(1) for signal in (
+        "!signatureValid", "!mapsInspectionSucceeded", "fridaDetected", "debuggerBlocked",
+    ))
 ):
     sys.exit("FAIL: ADB must remain diagnostic while signature/debugger tampering checks stay enforced")
 

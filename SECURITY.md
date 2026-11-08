@@ -18,6 +18,24 @@ La arquitectura aplica los controles siguientes. Describen las medidas presentes
 
 3. **Inspección nativa TLS SNI.** El firewall C inspecciona el ClientHello TLS y puede rechazar conexiones que coincidan con las reglas SNI instaladas, antes de reenviar ese tráfico a través del túnel. Los eventos de bloqueo se comunican al nivel Android para auditoría y notificación. Esta inspección no descifra TLS ni cubre universalmente DNS cifrado, SNI cifrado (ECH), IPv6, DoH/DoT, resolvedores personalizados u otros protocolos; la cobertura depende del tráfico visible para el túnel y de las reglas configuradas. Véanse [aura_sni_firewall.c](android/app/src/main/cpp/aura_sni_firewall.c) y [hev-socks5-session-tcp.c](android/app/src/main/cpp/hev-socks5-tunnel/src/hev-socks5-session-tcp.c).
 
+## Integridad del cliente y depuración USB
+
+`AuraAntiTampering.inspect` conserva `adbEnabled` como dato informativo y la
+clave de compatibilidad `adbBlocked=false` que consume Dart. Activar opciones
+de desarrollador o depuración USB no es evidencia de manipulación y no debe
+apagar la VPN. Se mantienen la validación de firma, la detección de depurador
+adjunto en builds no debug y las señales de instrumentación; si no se puede
+inspeccionar el mapa del proceso, el informe no confirma integridad. El fallback
+de firma local solo se permite en debug sin una lista de certificados configurada.
+
+Estas comprobaciones se ejecutan en el cliente y **no son un límite de
+seguridad**: un proceso o sistema comprometido puede modificarlas o esquivarlas.
+No demuestran que un teléfono esté libre de malware. `BiometricPrompt` se usa
+actualmente como puerta de interfaz, sin `CryptoObject`; no se afirma que la
+autenticación biométrica esté ligada criptográficamente a cada descifrado de
+SecureVault. Cambiar ese contrato requiere autorización y un diseño de migración
+que conserve los datos existentes.
+
 ## Reporte privado de vulnerabilidades
 
 No publiques detalles de una vulnerabilidad, credenciales, claves, datos personales ni un exploit en un issue o pull request público. Comunica el hallazgo de forma privada al mantenedor principal mediante un canal directo cuya identidad hayas verificado. Incluye los pasos mínimos para reproducirlo, el componente afectado, el impacto observado y, si existe, una mitigación; no incluyas secretos ni datos de terceros.
