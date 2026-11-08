@@ -435,34 +435,47 @@ class AuraVpnService : VpnService() {
             updateForegroundNotification()
             Log.i("AuraVPN", "Hev tun2socks conectado al proxy SOCKS5.")
         } catch (e: Exception) {
-            Log.e("AuraVPN", "No se pudo iniciar el escudo VPN.", e)
-            val stopConfirmed = stopNativeWorker()
-            tunnelStarted = false
-            lifecycleGate.runIfOpen {
-                try {
-                    established?.close()
-                    if (vpnInterface === established) vpnInterface = null
-                } catch (closeError: Exception) {
-                    // Keep the descriptor for the destruction path to retry.
-                    Log.e("AuraVPN", "No se pudo cerrar la interfaz tras fallar el arranque.", closeError)
-                }
-                true
-            }
-            underlyingNetwork = null
-            startRequested.set(false)
-            val failureMessage = e.message ?: "No se pudo iniciar el túnel."
-            reportState(
-                false,
-                if (stopConfirmed) {
-                    failureMessage
-                } else {
-                    "$failureMessage El cierre del motor nativo no está confirmado."
-                },
-                requestId = requestId,
-            )
-            updateForegroundNotification()
-            stopSelf()
+            handleTunnelStartFailure(e, established, requestId)
+        } catch (error: LinkageError) {
+            // JNI can fail before the native worker is created (missing ABI/library
+            // or an unresolved native symbol). Treat that as a failed startup and
+            // run the same descriptor/worker cleanup instead of crashing the service.
+            handleTunnelStartFailure(error, established, requestId)
         }
+    }
+
+    private fun handleTunnelStartFailure(
+        error: Throwable,
+        established: ParcelFileDescriptor?,
+        requestId: String?,
+    ) {
+        Log.e("AuraVPN", "No se pudo iniciar el escudo VPN.", error)
+        val stopConfirmed = stopNativeWorker()
+        tunnelStarted = false
+        lifecycleGate.runIfOpen {
+            try {
+                established?.close()
+                if (vpnInterface === established) vpnInterface = null
+            } catch (closeError: Exception) {
+                // Keep the descriptor for the destruction path to retry.
+                Log.e("AuraVPN", "No se pudo cerrar la interfaz tras fallar el arranque.", closeError)
+            }
+            true
+        }
+        underlyingNetwork = null
+        startRequested.set(false)
+        val failureMessage = error.message ?: "No se pudo iniciar el túnel."
+        reportState(
+            false,
+            if (stopConfirmed) {
+                failureMessage
+            } else {
+                "$failureMessage El cierre del motor nativo no está confirmado."
+            },
+            requestId = requestId,
+        )
+        updateForegroundNotification()
+        stopSelf()
     }
 
     @Synchronized
