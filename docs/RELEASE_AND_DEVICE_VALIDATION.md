@@ -52,7 +52,9 @@ bash tool/compile_aura.sh
 # Pruebas JVM de correlación y coordinación del ciclo de vida VPN:
 (cd android && AURA_ALLOW_DEBUG_SIGNING=true ./gradlew :app:testDebugUnitTest \
   --tests com.ciberdefensa.aura.VpnStartRequestGateTest \
-  --tests com.ciberdefensa.aura.VpnLifecycleGateTest)
+  --tests com.ciberdefensa.aura.VpnLifecycleGateTest \
+  --tests com.ciberdefensa.aura.AuraSocks5CredentialsTest \
+  --tests com.ciberdefensa.aura.Socks5AuthProtocolTest)
 ```
 
 Las pruebas JVM verifican la máquina de correlación y la exclusión entre inicio

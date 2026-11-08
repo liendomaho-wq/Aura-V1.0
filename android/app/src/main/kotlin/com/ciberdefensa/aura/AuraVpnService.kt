@@ -375,6 +375,7 @@ class AuraVpnService : VpnService() {
     private fun startTunnel(requestId: String?) {
         var established: ParcelFileDescriptor? = null
         try {
+            requireUnderlyingNetworkMonitor()
             underlyingNetwork = findUnderlyingNetwork()
                 ?: throw IOException("No se encontró una red física de salida para el túnel.")
 
@@ -509,6 +510,7 @@ class AuraVpnService : VpnService() {
         if (!panicIsolationActive) return tunnelStarted
 
         return try {
+            requireUnderlyingNetworkMonitor()
             val tun = vpnInterface
                 ?: throw IOException("La interfaz VPN no está disponible para reanudar el forwarding.")
             val (configFile, socks5Credentials) = prepareTunnelConfiguration()
@@ -608,6 +610,21 @@ class AuraVpnService : VpnService() {
         .addRoute("::", 0)
         .addDnsServer("10.0.0.3")
 
+    /**
+     * Forwarding sockets are pinned to a physical Network. Without the callback
+     * that reports handovers, Aura cannot safely recover those sockets when the
+     * selected network disappears or changes; do not start or resume forwarding
+     * if Android rejected the monitor registration.
+     */
+    private fun requireUnderlyingNetworkMonitor() {
+        if (!networkCallbackRegistered) {
+            throw IOException(
+                "No se pudo registrar el seguimiento de la red física; " +
+                    "el forwarding no se iniciará sin recuperación de handover."
+            )
+        }
+    }
+
     private fun registerUnderlyingNetworkCallback() {
         val connectivity = getSystemService(ConnectivityManager::class.java) ?: return
         val request = NetworkRequest.Builder()
@@ -650,7 +667,6 @@ class AuraVpnService : VpnService() {
         val selected = findUnderlyingNetwork(excludedNetwork)
         if (selected == previous) return
 
-        underlyingNetwork = selected
         val underlayUpdated = try {
             // Keep Android's VPN routing metadata aligned with the physical network.
             // An empty array explicitly means there is currently no usable underlay.
@@ -661,13 +677,18 @@ class AuraVpnService : VpnService() {
         }
 
         if (!underlayUpdated) {
-            // Keep the full-route TUN installed and stop native forwarding. Traffic
-            // must not silently bypass Aura when underlay synchronization fails.
+            // Keep the full-route TUN installed and stop native forwarding. Retain
+            // the previous Network so the next callback retries this handover
+            // instead of mistaking the failed candidate for an applied underlay.
             stopTunnelForwardingForNetworkFailure(
                 "No se pudo sincronizar la red física; forwarding detenido por seguridad.",
             )
             return
         }
+
+        // Commit the selected Network only after Android confirms the metadata
+        // update. If that update failed, a later callback must try it again.
+        underlyingNetwork = selected
 
         if (selected == null) {
             Log.w("AuraVPN", "Se perdió la red física; forwarding detenido hasta recuperar salida.")
@@ -720,6 +741,7 @@ class AuraVpnService : VpnService() {
         }
 
         try {
+            requireUnderlyingNetworkMonitor()
             val (configFile, socks5Credentials) = prepareTunnelConfiguration()
             if (!restartNativeWorker(configFile.absolutePath, tun)) {
                 throw IOException("El motor VPN no pudo reiniciarse en la nueva red.")

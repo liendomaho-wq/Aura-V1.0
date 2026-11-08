@@ -472,6 +472,60 @@ if "network == excludedNetwork" not in network_selection.group(1):
 
 print("PASS: VPN tracks physical network availability and unregisters callbacks safely.")
 
+# Forwarding relies on sockets bound to the selected Network. If Android rejects
+# callback registration, Aura cannot safely recover after a handover, so startup,
+# panic-isolation resume and network recovery must refuse to report forwarding.
+monitor_guard = re.search(
+    r"private fun requireUnderlyingNetworkMonitor\(\) \{(.*?)\n    \}",
+    text,
+    re.DOTALL,
+)
+if not monitor_guard:
+    sys.exit("FAIL: VPN must fail closed when physical-network monitoring is unavailable")
+monitor_guard_body = monitor_guard.group(1)
+if "!networkCallbackRegistered" not in monitor_guard_body or "throw IOException(" not in monitor_guard_body:
+    sys.exit("FAIL: failed physical-network monitoring must prevent forwarding")
+start_tunnel_region = text.split("private fun startTunnel(", 1)[1].split(
+    "private fun handleTunnelStartFailure", 1
+)[0]
+resume_tunnel_region = text.split("private fun resumeTunnelForwarding()", 1)[1].split(
+    "private fun handleResumeFailure", 1
+)[0]
+recovery_region = text.split("private fun recoverTunnelAfterNetworkChange()", 1)[1].split(
+    "private fun handleNetworkRecoveryFailure", 1
+)[0]
+for region_name, region in (
+    ("startup", start_tunnel_region),
+    ("resume", resume_tunnel_region),
+    ("handover recovery", recovery_region),
+):
+    if "requireUnderlyingNetworkMonitor()" not in region:
+        sys.exit(f"FAIL: VPN {region_name} must require a registered physical-network callback")
+
+print("PASS: VPN fails closed when physical-network monitoring cannot be registered.")
+
+# A failed setUnderlyingNetworks call must not commit the candidate Network;
+# keeping the previous value makes the next callback retry the same handover.
+refresh_network_region = text.split(
+    "private fun refreshUnderlyingNetwork(excludedNetwork: Network? = null)", 1
+)[1].split("private fun stopTunnelForwardingForNetworkFailure", 1)[0]
+metadata_update_position = refresh_network_region.find("setUnderlyingNetworks(")
+metadata_failure_position = refresh_network_region.find("if (!underlayUpdated)")
+metadata_failure_return_position = refresh_network_region.find("return", metadata_failure_position)
+network_commit_position = refresh_network_region.find("underlyingNetwork = selected")
+if (
+    metadata_update_position < 0
+    or metadata_failure_position < metadata_update_position
+    or metadata_failure_return_position < metadata_failure_position
+    or network_commit_position <= metadata_failure_return_position
+):
+    sys.exit(
+        "FAIL: a failed underlay update must stop before committing its candidate Network, "
+        "so a later callback can retry recovery"
+    )
+
+print("PASS: failed physical-network metadata updates remain retryable on a later callback.")
+
 # The legacy shield query must expose real active feed rules, not a permanent
 # empty placeholder or a claim that these rules are observed traffic events.
 MAIN_ACTIVITY = Path(
