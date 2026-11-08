@@ -559,26 +559,26 @@ class AuraVpnService : VpnService() {
             updateForegroundNotification()
             true
         } catch (exception: Exception) {
-            var stopConfirmed = false
-            try {
-                stopConfirmed = stopNativeWorker()
-            } catch (stopException: Exception) {
-                Log.e("AuraVPN", "No se pudo detener el motor tras fallar la reanudación.", stopException)
-            } finally {
-                tunnelStarted = false
-            }
-            Log.e("AuraVPN", "No se pudo reanudar el forwarding del túnel.", exception)
-            reportState(
-                false,
-                if (stopConfirmed) {
-                    "No se pudo reanudar el túnel; el forwarding permanece detenido."
-                } else {
-                    "No se pudo reanudar el túnel; el cierre nativo no está confirmado."
-                },
-            )
-            updateForegroundNotification()
-            false
+            handleResumeFailure(exception)
+        } catch (error: LinkageError) {
+            handleResumeFailure(error)
         }
+    }
+
+    private fun handleResumeFailure(error: Throwable): Boolean {
+        val stopConfirmed = stopNativeWorker()
+        tunnelStarted = false
+        Log.e("AuraVPN", "No se pudo reanudar el forwarding del túnel.", error)
+        reportState(
+            false,
+            if (stopConfirmed) {
+                "No se pudo reanudar el túnel; el forwarding permanece detenido."
+            } else {
+                "No se pudo reanudar el túnel; el cierre nativo no está confirmado."
+            },
+        )
+        updateForegroundNotification()
+        return false
     }
 
     private fun establishPanicIsolationInterface() {
@@ -593,19 +593,28 @@ class AuraVpnService : VpnService() {
             reportState(false, "Aislamiento de emergencia activo; tráfico en descarte.")
             updateForegroundNotification()
         } catch (exception: Exception) {
-            Log.e("AuraVPN", "No se pudo restablecer la interfaz aislada.", exception)
-            lifecycleGate.runIfOpen {
-                try {
-                    established?.close()
-                    if (vpnInterface === established) vpnInterface = null
-                } catch (closeError: Exception) {
-                    Log.e("AuraVPN", "No se pudo cerrar la interfaz aislada.", closeError)
-                }
-                true
-            }
-            startRequested.set(false)
-            reportState(false, exception.message ?: "Falló el aislamiento de red.")
+            handlePanicInterfaceFailure(exception, established)
+        } catch (error: LinkageError) {
+            handlePanicInterfaceFailure(error, established)
         }
+    }
+
+    private fun handlePanicInterfaceFailure(
+        error: Throwable,
+        established: ParcelFileDescriptor?,
+    ) {
+        Log.e("AuraVPN", "No se pudo restablecer la interfaz aislada.", error)
+        lifecycleGate.runIfOpen {
+            try {
+                established?.close()
+                if (vpnInterface === established) vpnInterface = null
+            } catch (closeError: Exception) {
+                Log.e("AuraVPN", "No se pudo cerrar la interfaz aislada.", closeError)
+            }
+            true
+        }
+        startRequested.set(false)
+        reportState(false, error.message ?: "Falló el aislamiento de red.")
     }
 
     private fun createVpnBuilder(): Builder = Builder()
