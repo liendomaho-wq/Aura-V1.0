@@ -1,6 +1,7 @@
 package com.ciberdefensa.aura;
 
 import android.app.Activity;
+import android.app.KeyguardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.net.ConnectivityManager;
@@ -25,6 +26,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.io.DataInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -72,19 +74,45 @@ public final class VpnForwardingInstrumentationTest {
         assertTrue("The test must run as a normal application UID", android.os.Process.myUid() >= 10000);
         context.stopService(new Intent(context, AuraVpnService.class));
         eventually("previous test service stopped", () -> !flag("service_active") && flag("status_verified"), 120_000);
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        device.wakeUp();
         Intent activityIntent = new Intent(context, VpnInstrumentationActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(activityIntent);
+        KeyguardManager keyguard = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
+        assertNotNull(keyguard);
+        assertFalse("This CI fixture must be unsecured; never bypass a real PIN/biometric lock",
+                keyguard.isDeviceSecure());
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+                keyguard.requestDismissKeyguard(activity, null));
+        eventually("unsecured emulator keyguard dismissed", () -> !keyguard.isKeyguardLocked(), 30_000);
+        assertTrue("A real consent UI requires an awake display", device.isScreenOn());
+        assertNotNull("The isolated consent host must really be visible",
+                device.wait(Until.findObject(By.text("Aura: real VPN integration in isolated test application")
+                        .pkg(TEST_APPLICATION_ID)), 30_000));
         Intent consent = VpnService.prepare(context);
         if (consent != null) {
             InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> activity.startActivity(consent));
-            UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
             UiObject2 checkbox = device.wait(Until.findObject(
                     By.clazz("android.widget.CheckBox").pkg("com.android.vpndialogs")), 1_000);
             if (checkbox != null && !checkbox.isChecked()) checkbox.click();
             UiObject2 accept = device.wait(Until.findObject(
                     By.res("android", "button1").pkg("com.android.vpndialogs")), 30_000);
-            assertNotNull("Real system VPN consent dialog was not displayed", accept);
+            if (accept == null) {
+                ByteArrayOutputStream hierarchy = new ByteArrayOutputStream();
+                String details;
+                try {
+                    device.dumpWindowHierarchy(hierarchy);
+                    String xml = new String(hierarchy.toByteArray(), StandardCharsets.UTF_8);
+                    details = xml.substring(0, Math.min(xml.length(), 16_000));
+                } catch (IOException error) {
+                    details = "UI hierarchy capture failed: " + error;
+                }
+                fail("Real system VPN consent dialog was not displayed; component=" + consent.getComponent()
+                        + "; visiblePackage=" + device.getCurrentPackageName()
+                        + "; screenOn=" + device.isScreenOn()
+                        + "; keyguardLocked=" + keyguard.isKeyguardLocked() + "; hierarchy=" + details);
+            }
             accept.click();
             eventually("system VPN consent", () -> VpnService.prepare(context) == null, 30_000);
         }
