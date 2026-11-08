@@ -23,9 +23,9 @@ separadas. Ninguna prueba física fue ejecutada en esta sesión.
 - Continuación publicada: [PR #11, DRAFT](https://github.com/liendomaho-wq/Aura-V1.0/pull/11),
   destino `main`. No autoriza merge; siguen pendientes criterios de esta auditoría.
 - Esta auditoría distingue el **SHA realmente ejecutado** del código posterior.
-  La última evidencia remota cerrada al redactar esta instantánea es
-  `e8b2db7554355d3eecd10f196a49b2ea47c38abe`; las correcciones posteriores
-  se identifican abajo y no heredan resultados sin reejecución. El HEAD final
+  Las instantáneas remotas se atribuyen abajo a su SHA y comando, sin heredar
+  resultados de una revisión anterior. El resumen de PR #11 conserva la
+  reejecución del candidato final sin un bucle de pushes sólo documentales. El HEAD final
   se obtiene con `git rev-parse HEAD` y con `SOURCE_COMMIT.txt` del artefacto.
 
 Comandos de identidad:
@@ -470,6 +470,52 @@ sus anotaciones de comandos reales y los manifiestos del artefacto
 `aura-debug-<SHA>`. El resumen final de la PR identifica explícitamente esos
 resultados, incluido cualquier criterio todavía fallido.
 
+### `1844ec8` / `64167f8`: overflow resuelto; navegación del overview pendiente
+
+El [quality de `1844ec8`](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42482843454/job/128738342663)
+confirmó formato 58/0, análisis limpio, **134 pytest + 124 subtests, cero
+omisiones**, ocho pruebas AAB directas y la prueba compacta 320×568 **pasando**,
+con desplazamiento y controles fijados. Su suite Flutter siguió en
+**193 pasan / 1 falla / 1 benchmark de dispositivo omitido**; no era ya el
+overflow. Android volvió a compilar ambos APKs de migración, 19 JVM y el debug;
+KVM siguió fallando. El candidato ML volvió a rechazarse en 10m32s
+(run 42482843323), sin promover ni alterar el modelo base.
+
+La cola de 60 líneas del comando no contenía la primera excepción, desplazada
+por los tests que sí pasaban. `64167f8` conserva además el primer grupo fallido
+**real** del reporter de Flutter, sin alterar salida completa ni exit code.
+Su regresión usa un proceso hijo real que sale 9 tras 100 líneas posteriores;
+la excepción se conserva y el fallo sigue siendo fallo. El full pytest local
+fue 127/8 omitidas/124 subtests (`21-first-failure-preservation-local-python.log`),
+no una validación AAB local.
+
+El [quality de `64167f8`](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42483753574/job/128741044975)
+ejecutó de verdad **135 pytest + 124 subtests / cero omisiones**, ocho AAB
+directas en 3.262s, formato 58/0 y análisis limpio (6.1s). Flutter repitió
+193/1/1 y recuperó íntegra esta primera excepción:
+
+```text
+flutter test --no-pub
+activates and stops VPN through the native shield channel (failed)
+Expected: exactly one matching candidate
+Actual: Found 0 widgets with text "Hola, soy Aura."
+file:///home/runner/work/Aura-V1.0/Aura-V1.0/test/aura_core_screen_test.dart:149:5
+```
+
+Después de llevar el panel de telemetría a pantalla, el overview queda fuera del
+viewport. Se coordina ahora cabecera/consola con `NestedScrollView` y su
+controlador interno primario, en vez de scrollables independientes. Se conserva
+la imagen inicial del avatar; los nuevos eventos continúan desplazando la
+consola. La regresión original **añade un gesto real de regreso desde la consola**
+antes de sus aserciones originales de saludo/avatar/estado: no se borran ni
+relajan, ni se usa `skipOffstage: false`. Barra VPN y entrada siguen fuera del
+área desplazable; ni el protocolo nativo ni datos/criptografía cambian.
+
+La corrección posterior sólo tiene guards y 25 políticas/wrapper locales
+verificados al escribir este punto (`22-coordinated-scroll-vpn-guards.log`).
+Su formateo y ejecución Flutter reales aún deben confirmarse en el siguiente CI;
+la excepción anterior no se convierte retroactivamente en éxito.
+
 ## 5. Registro local reproducible
 
 Los logs de trabajo se escriben en `tool/reports/android-closeout/`, ignorado
@@ -652,12 +698,13 @@ solicitan contraseñas, tokens, 2FA ni secretos en chat.
 Se separan avances reales de aceptación final; los checks del próximo SHA y su
 `SOURCE_COMMIT.txt` son la autoridad para ese candidato, no este historial.
 
-- [x] `flutter pub get`, formato y análisis en `e8b2db7`, también en sus predecesores indicados.
-- [x] Guards y pytest/JDK de CI: `f1e2e1b` confirmó 133 pruebas y cero omisiones, incluidas ocho AAB reales.
+- [x] `flutter pub get`, formato 58/0 y análisis limpio en `64167f8`; no sustituye su test Flutter fallido.
+- [x] Guards y pytest/JDK de CI: `64167f8` confirmó 135 pruebas + 124 subtests y cero omisiones, incluidas ocho AAB reales.
 - [x] JVM de credenciales/RFC 1929/ciclo de vida/correlación/recuperación: 19 pruebas sin migración de Keystore.
 - [x] Primer C/JNI/NDK y APK debug real `e8b2db7`, publicado y con SHA-256 registrado.
 - [x] Firma negativa/positiva con clave efímera y SBOM de `e8b2db7`.
-- [ ] `flutter test` completo del SHA posterior con layout compacto corregido; caché/boot ya confirmados en `f1e2e1b`.
+- [x] Arranque compacto 320×568 sin overflow, con scroll y controles fijados, ejecutado en `1844ec8` y `64167f8`.
+- [ ] `flutter test` completo del SHA posterior: falta confirmar la navegación coordinada; el único fallo `64167f8` está transcrito arriba.
 - [x] APKs de instrumentación compilados y ELF/modelo del APK real verificados en `3e56b23`; no equivale a ejecutar AndroidKeyStore.
 - [ ] Migración real Android instrumentada — **bloqueada por KVM/runner autorizado**.
 - [ ] Codemagic ejecutado sobre el SHA final — requiere propietario y destino Android.
@@ -671,7 +718,7 @@ Se separan avances reales de aceptación final; los checks del próximo SHA y su
 - [x] Compatibilidad **documentada con límites**, no certificada universalmente.
 - [x] README de producto/ingeniería y auditoría interna separados.
 
-Sí existe el APK debug de `e8b2db7` identificado arriba. **Funciones verificadas
-en dispositivo: ninguna.** No se atribuyen a ese artefacto los cambios posteriores
+Existen APKs debug históricos identificados arriba, incluido `3e56b23`. **Funciones
+verificadas en dispositivo: ninguna.** No se atribuyen a esos artefactos los cambios posteriores
 ni una validación Flutter completa. No hacer merge, publicar ni declarar Aura
 terminada mientras los criterios pendientes no tengan evidencia del SHA correcto.
