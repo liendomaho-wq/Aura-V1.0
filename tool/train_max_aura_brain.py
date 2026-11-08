@@ -953,6 +953,17 @@ def train_mobile_preset():
         "failures": candidate_quality_gate_failures(metrics),
     }
     write_metrics(metrics, MOBILE_METRICS_JSON, MOBILE_METRICS_MARKDOWN)
+    # Public dataset evaluation only; expose concise evidence even when the
+    # candidate is rejected and report downloads are unavailable to the agent.
+    summary = {key: metrics[key] for key in (
+        "metrics_model_sha256", "model_bytes", "tree_count", "hyperparameters",
+        "dataset_manifest_sha256", "test_rows", "test_class_counts", "test_metrics",
+        "adversarial_test_rows", "adversarial_test_class_counts", "adversarial_test_metrics",
+        "runtime_versions", "quality_gate",
+    )}
+    notice = json.dumps(summary, separators=(",", ":"), allow_nan=False)
+    notice = notice.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    print(f"::notice title=Actual serialized mobile candidate metrics::{notice}", flush=True)
     try:
         enforce_candidate_quality_gate(metrics)
     except RuntimeError as error:
