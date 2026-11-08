@@ -188,9 +188,8 @@ void main() {
                 })
               : AuraLocalTelemetry.recordDomainOutcome(
                   domain: 'private.example',
-                  securityScore: 50,
-                  prediction: 'suspicious',
-                  action: 'BLOCKED',
+                  outcome: 'blocked',
+                  source: 'ml',
                 );
           await vault.started.future;
           if (resetType == 'revocación') {
