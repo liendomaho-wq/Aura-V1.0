@@ -89,6 +89,38 @@ fixtures y benchmarks no son métricas holdout de producción. Véanse
 [Model Card](docs/model_card.md), `tool/dataset/`, `tool/train_max_aura_brain.py` y
 `tool/bench_aura_brain.py`.
 
+### Contrato de características del extractor
+
+El orden compartido por Python y Dart es parte del contrato de ingeniería.
+**Solo los campos 1–6 alimentan el modelo activo 3.0.0**; los campos 7–18
+pertenecen al contrato candidato, no son una promoción del modelo ni causas
+adicionales de su predicción actual.
+
+| # | Característica | Alcance |
+|---:|---|---|
+| 1 | `length` | Longitud total del host normalizado. |
+| 2 | `shannon_entropy` | Entropía de Shannon de los caracteres del host. |
+| 3 | `digit_ratio` | Proporción de dígitos ASCII. |
+| 4 | `vowel_ratio` | Proporción de vocales sobre letras ASCII. |
+| 5 | `consonant_sequence_ratio` | Proporción de letras en secuencias de tres o más consonantes. |
+| 6 | `suspicious_tld` | Indicador de TLD incluido en la lista léxica de sospecha. |
+| 7 | `min_normalized_levenshtein` | Distancia de edición mínima normalizada frente a dominios comunes. |
+| 8 | `bigram_repeat_ratio` | Proporción de bigramas repetidos. |
+| 9 | `trigram_repeat_ratio` | Proporción de trigramas repetidos. |
+| 10 | `subdomain_depth` | Profundidad de subdominios normalizada. |
+| 11 | `tld_length_ratio` | Longitud del TLD normalizada. |
+| 12 | `idn_homograph_indicator` | Señal acotada de caracteres cirílicos confundibles. |
+| 13 | `non_ascii_ratio` | Proporción de caracteres no ASCII. |
+| 14 | `consecutive_digits_indicator` | Indicador de dígitos consecutivos. |
+| 15 | `conditional_entropy` | Entropía ponderada de etiquetas normalizada. |
+| 16 | `rare_character_ratio` | Proporción de letras poco frecuentes definidas por el extractor. |
+| 17 | `longest_label_length_ratio` | Longitud de la etiqueta más larga normalizada. |
+| 18 | `suspicious_keyword_indicator` | Indicador de palabras clave léxicas de sospecha. |
+
+Las señales describen el nombre del dominio, no el contenido del sitio. Las doce
+últimas solo pueden usarse para inferencia si un modelo evaluado declara el
+orden completo de 18 campos. No alterar el vector de 3.0.0 para acomodar al candidato.
+
 ### Red y recuperación
 
 El listener Android es `127.0.0.1:18763`. Usa usuario `aura` y contraseña aleatoria
