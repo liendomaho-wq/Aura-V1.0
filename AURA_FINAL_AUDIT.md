@@ -22,9 +22,11 @@ separadas. Ninguna prueba física fue ejecutada en esta sesión.
   posterior a las correcciones.
 - Continuación publicada: [PR #11, DRAFT](https://github.com/liendomaho-wq/Aura-V1.0/pull/11),
   destino `main`. No autoriza merge; siguen pendientes criterios de esta auditoría.
-- Último código local de esta revisión: `cfbbfbe9db12207e7a54b7b15e350f4f406c5d0a` (identidad completa registrada
-  con los commits y checks). La evidencia remota que sigue identifica siempre
-  el SHA efectivamente ejecutado; no se atribuye a un descendiente sin reejecución.
+- Esta auditoría distingue el **SHA realmente ejecutado** del código posterior.
+  La última evidencia remota cerrada al redactar esta instantánea es
+  `e8b2db7554355d3eecd10f196a49b2ea47c38abe`; las correcciones posteriores
+  se identifican abajo y no heredan resultados sin reejecución. El HEAD final
+  se obtiene con `git rev-parse HEAD` y con `SOURCE_COMMIT.txt` del artefacto.
 
 Comandos de identidad:
 
@@ -153,7 +155,8 @@ La anotación de `tool/ci_run.py` contiene esa salida real; no es una inferencia
 `use` cierra solo esa copia, **no el socket que pertenece a JNI**. No se usa
 `adoptFd`. Se conserva `protect` previo al bind y el retorno falso ante fallo.
 El guard exige tanto la sobrecarga válida como la propiedad correcta. La
-compilación Android posterior aún debe confirmar la corrección.
+compilación de producción y de tests Kotlin **sí terminó** en `ca2c10a`,
+`50349c2`, `622b459` y en el build/APK real de `e8b2db7` descrito abajo.
 
 ## 4. CI, formato y errores secundarios
 
@@ -188,8 +191,10 @@ reprodujo localmente, no se inventó como una línea descargada de ese log.
   `results-receiver.actions.githubusercontent.com`, fuera de la red permitida:
   `gh run view ... --log-failed` termina en **EOF**. `tool/ci_run.py` conserva
   stdout/stderr y el código real; publica la cola del fallo en anotaciones,
-  accesibles con `gh api repos/liendomaho-wq/Aura-V1.0/check-runs/128661033462/annotations`. Sus cuatro tests ejecutan
-  subprocesos reales y verifican que un exit 17 sigue siendo exit 17.
+  accesibles con `gh api repos/liendomaho-wq/Aura-V1.0/check-runs/128661033462/annotations?per_page=100`.
+  Sus seis tests incluyen subprocesos reales: un exit 17 sigue siendo exit 17,
+  las colas largas se reconstruyen sin truncar UTF-8 y los resúmenes positivos
+  contienen solamente líneas realmente emitidas, no contadores inferidos.
 
 ### Formato Dart sin reimplementar el formateador
 
@@ -218,7 +223,9 @@ encoding=xz+base64
 
 `96d35d77647feb8801fc03d6551b920b15ce29eb` aplica exactamente ese patch tras verificar hash, bytes y
 `git apply --check`: 33 archivos, solo formato. No se quitaron aserciones ni se
-rediseñó la UI. Falta exigir formato sin cambios en un run del nuevo SHA.
+rediseñó la UI. El formato sin cambios ya consta **success** en `ca2c10a`,
+`50349c2`, `622b459` y `e8b2db7`; la nueva corrección de fixture también debe
+pasar el comando real en su propio SHA.
 
 ### Regresión documental detectada, no prueba debilitada
 
@@ -236,10 +243,121 @@ que solo los primeros seis campos pertenecen al modelo activo 3.0.0. La siguient
 suite local pasó con 118 tests y ocho omisiones AAB conocidas, no con un falso
 verde completo.
 
+### Fallos completos recuperados, no suposiciones
+
+- **`ca2c10a` y `50349c2`:** pub get, formato, guards, las pruebas AAB con JDK,
+  pytest completo y `flutter analyze` terminaron con éxito. Flutter terminó con
+  **189 passed / 1 failed / 1 skipped**. La omisión ya existente es el benchmark
+  que requiere dispositivo/entorno local, no una prueba AAB omitida.
+  [Quality `50349c2`, job 128664476522](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42459146789/job/128664476522)
+  recuperó el error real: **Found 0 widgets with type "AuraCoreScreen"** en
+  `compact unsecured access reaches a core without layout errors`. No era una
+  excepción demostrada de overflow.
+- [Android `50349c2`, job 128664476675](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42459146842/job/128664476675)
+  compiló producción/tests Kotlin y ejecutó **21 tests JVM, 2 fallidos**. La
+  primera excepción JUnit XML recuperada íntegra fue:
+
+  ```text
+  SecureStorageMigrationTest.restartsAnInterruptedBackupAndStillMigratesVersion9Secret
+  java.security.KeyStoreException: AndroidKeyStore not found
+    at java.security.KeyStore.getInstance(KeyStore.java:877)
+    at androidx.security.crypto.MasterKeys.keyExists(MasterKeys.java:155)
+    at androidx.security.crypto.MasterKeys.getOrCreate(MasterKeys.java:99)
+    at androidx.security.crypto.MasterKey$Builder$Api23Impl.build(MasterKey.java:380)
+    at SecureStorageMigrationTest.seedVersion9EncryptedSharedPreferences(SecureStorageMigrationTest.java:103)
+  Caused by: java.security.NoSuchAlgorithmException: AndroidKeyStore KeyStore not available
+  ```
+
+  `f7c4c9b` mueve **las dos pruebas y todas sus aserciones originales** a
+  `androidTest`/AndroidJUnit4; no añade un proveedor Keystore sustituto. La
+  variante `storageMigration` usa `com.ciberdefensa.aura.vaultmigrationtest`
+  (otro UID) y preferencias namespaced. El test rechaza otro paquete **antes**
+  de limpiar nada. Esto también aísla el alias ESP que v10 fija por defecto;
+  sólo un namespace de preferencias no habría aislado ese alias.
+- [Android `622b459`, job 128727819933](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42479398575/job/128727819933):
+  las **19 pruebas JVM restantes** y el guard VPN pasaron. La prueba real
+  instrumentada no se ejecutó: el runner no tiene acceso KVM sin privilegios.
+  El error se mantiene y no se usa sudo/root, un proveedor falso ni
+  `continue-on-error`. `09051a9` separa ese job de la generación del APK; una
+  compilación correcta **no convierte la migración pendiente en aprobada**.
+- [Quality `622b459`, job 128727820075](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42479398591/job/128727820075)
+  dejó visible el estado del fallo: **ACCESO LOCAL VALIDADO; INICIALIZANDO
+  BÓVEDA SEGURA...**. Se comprobó el código real de Dart: los listeners tardíos
+  de un Future se programan en su zona de origen. La cola estática retenía un
+  Future completado de un scheduler de boot/test ya terminado.
+  `79cc0a9` libera la cola al quedar inactiva, conserva la reserva del siguiente
+  solicitante, la serialización entre instancias, la propagación de errores y
+  el borrado de buffers. No cambia algoritmos, claves ni formatos guardados.
+- [Quality `e8b2db7`, job 128730479788](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42480272282/job/128730479788)
+  pasó formato, guards, Python/JDK y análisis. Flutter: **192 passed / 2 failed /
+  1 skipped**. Las cuatro regresiones nuevas de cola pasaron; los dos tests de
+  boot posteriores se detuvieron ahora en **VALIDANDO MODELO LOCAL E
+  INTEGRIDAD...**. Se fortaleció el test de credencial para exigir navegación
+  completa y no quedarse en el mensaje intermedio que antes aceptaba.
+  Flutter `CachingAssetBundle` conserva un `Future<String>` del digest entre
+  tests. `361a8fc` evicta **sólo esa caché de fixture** entre schedulers: el
+  loader, JSON, digest y firma reales siguen ejecutándose, sin bundle falso,
+  ampliación de timeout ni bypass. Su validación remota posterior no se da por
+  hecha en esta instantánea.
+
+### Primer APK real y firma/SBOM comprobados
+
+[Build `e8b2db7`, run 42480272489 / job 128730480572](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42480272489/job/128730480572):
+**success, 7m52s**. Pasaron JVM, guard VPN, `flutter build apk --debug`, existencia,
+SHA-256 y upload. El preBuild real incluye `buildHevSocks5Tunnel` con NDK
+`28.2.13676358`; esto es compilación/artefacto, no ejecución de JNI en teléfono.
+
+```text
+SOURCE_COMMIT=e8b2db7554355d3eecd10f196a49b2ea47c38abe
+APK SHA256=d35246748ac6e32f9a8e5fa5947a7b64b08bd2626a27039a88afd1438f40c4a0
+artifact=aura-debug-e8b2db7554355d3eecd10f196a49b2ea47c38abe
+artifact_id=13617676231
+artifact ZIP size=86004454 bytes
+artifact ZIP digest=sha256:b707e20cf4124cfd50b6b9f765237b6c3aed9594d522f026cda103edcb704d92
+```
+
+[Descarga del artefacto](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42480272489/artifacts/13617676231)
+(según permisos de GitHub). El digest del **ZIP de Actions no es el hash del
+APK**. No se afirma que este APK incluya cambios posteriores a `e8b2db7`, ni que
+sus pruebas Flutter hayan pasado: los dos fallos anteriores siguen registrados.
+
+[El job de migración del mismo run](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42480272489/job/128732371325)
+terminó **failure, 8s**, antes de SDK/test por el requisito KVM, con:
+
+```text
+This runner has no unprivileged KVM access. Provide a KVM-enabled runner;
+no root/device bypass is used.
+```
+
+[Release signing integrity `e8b2db7`, run 42480272339](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42480272339)
+tuvo **los tres jobs success**: guard 2m27s, positivo 2m43s, SBOM 3m15s. La
+verificación positiva usa una clave efímera de CI, **no** la identidad de
+producción del propietario ni la firma de publicación del APK debug.
+`e8b2db7` corrigió el viejo awk que rechazaba incluso el ternario de fallback
+**ya existente y opt-in**. El script anterior se reprodujo localmente: exit 1,
+`Missing release block or debug signing reference found in it.`. Se conservan
+la prueba negativa real de credenciales ausentes y la positiva real que exige
+`IS_DEBUG_SIGNING=false`, certificado/alias esperados; la suite completa exige
+el default-deny de producción. No se relajó el código de firma productiva.
+Los fallos previos SBOM/positivo de `622b459` sólo tenían detalle genérico/timeout;
+no se les inventa una causa retrospectiva.
+
+`c893108` añade colas **reales** de éxito en anotaciones, contadores leídos de
+JUnit XML, comprobación del ELF HEV empaquetado de las cuatro ABIs y comparación
+byte a byte del modelo/digest/firma del APK con el checkout; además el hash usa
+un nombre portable. `f840951` exige compilar los APKs aislados de instrumentación
+antes de publicarlos como código compilable. **Su ejecución Android y la
+inspección de un APK posterior siguen pendientes de su propio CI.**
+
 ## 5. Registro local reproducible
 
-Los logs completos de trabajo están en `tool/reports/android-closeout/` (ignorado
-por Git; no se suben toolchains, datasets, secretos ni artefactos grandes).
+Los logs de trabajo se escriben en `tool/reports/android-closeout/`, ignorado
+por Git. Los archivos ignorados/cachés no garantizan persistencia entre sandboxes;
+los IDs, comandos y extractos esenciales se conservan aquí. En esta continuación
+se regeneraron realmente `14-instrumentation-policy-tests.log`,
+`15-full-python-suite.log`, `16-original-release-static-guard.log` y
+`17-full-python-with-evidence.log`. No se suben toolchains, datasets, secretos ni
+artefactos grandes al repositorio. Los APK/SBOM quedan en artefactos de Actions.
 
 | Código / alcance | Comando real | Salida / límite |
 |---|---|---|
@@ -250,7 +368,10 @@ por Git; no se suben toolchains, datasets, secretos ni artefactos grandes).
 | `dce217bbecdad54aeafb715f109498e8ab5be149` | `python -m pytest -q tool/test_release_signing_policy.py` | **12 passed**; YAML `android-build` parseado y JDK/targets/DEBUG comprobados. No ejecuta Codemagic. |
 | `b3a3bfb2b33b073390c6b6cc4d6cbfb121b4a79a` | `python3 -m py_compile tool/device_socks5_probe.py`; `python3 tool/device_socks5_probe.py --help` | Exit 0. Solo sintaxis/CLI: **no se ejecutó el probe en teléfono**. |
 | Asset sin cambios | Inspección JSON + SHA-256 con Python | **3.0.0, 500 árboles, 6 campos**, digest `d190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2`. No son métricas ML. |
-| `cfbbfbe9db12207e7a54b7b15e350f4f406c5d0a` | `python3 tool/test_vpn_config_template.py`; `git diff --check` | PASS / exit 0 después del cambio FileDescriptor; Android pendiente de siguiente run. |
+| `cfbbfbe9db12207e7a54b7b15e350f4f406c5d0a` | `python3 tool/test_vpn_config_template.py`; `git diff --check` | PASS / exit 0; compilación Android ya confirmada posteriormente, ver sección 4. |
+| `f7c4c9b` | pytest de políticas de firma/instrumentación y wrapper | **21 passed in 0.15s**; todas las aserciones originales Java conservadas verbatim; YAML/AST válidos. Sólo fuente/wrapper, no Keystore. |
+| Código de `c893108` | `/home/user/.cache/aura-closeout-venv/bin/python -m pytest -q -rs` | **125 passed, 8 skipped, 124 subtests passed in 6.21s**, log 17. Omisiones locales AAB por javac ausente; no se heredan a CI. |
+| Workflows actuales | PyYAML + `ast.parse` de los scripts Python inline; `git diff --check` | Cinco YAML/AST válidos y diff limpio. No simula un APK ni una ejecución Android. |
 
 Comando exacto de la compilación Kotlin pura (cinco clases reales, sin Android):
 
@@ -307,16 +428,42 @@ results-receiver). La anotación solo contiene `Process completed with exit code
 El propietario debe descargar y facilitar el log de ese paso, redactando secretos.
 Un nuevo entrenamiento no sustituye la evidencia del fallo histórico.
 
-No existe aquí dataset externo verificable ni una evaluación independiente del
+Sí se recuperó un **fallo nuevo real**, sin atribuírselo al 27-oct:
+[model `622b459`, job 128727819816](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42479398566/job/128727819816),
+y volvió a observarse en [model `e8b2db7`, job 128730479644](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42480272202/job/128730479644).
+Los pasos de dataset/splits y golden tests terminaron; el entrenamiento del
+candidato fue rechazado por **el presupuesto de tamaño**, no un verde fingido:
+
+```text
+Training Aura mobile forest: 500 trees, max_depth=10, min_samples_leaf=512,
+train=334761, val=64327, test=88219.
+MOBILE_TRIAL trees=500 max_depth=10 observed_depth=10 min_samples_leaf=512
+leaves=76255 bytes=7207922
+Mobile preset still exceeds 4194304 bytes at max_depth=8 with aggressive pruning;
+see tool/reports/mobile_size_trials.json. No base asset was changed.
+```
+
+Son contadores/salidas del entrenamiento, **no métricas independientes de
+calidad**. Benchmark quedó omitido por rechazo previo; no se inventan FP/FN,
+accuracy, latencia ni causa histórica. No se aumenta el límite de 4 MiB para
+obtener verde ni se promueve 3.1.0. El modelo activo sigue intacto, 3.0.0 y SHA-256
+`d190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2`.
+
+No hay en esta auditoría una evaluación externa independiente y verificable del
 modelo activo. Un candidato que pase CI no queda automáticamente aprobado.
 
 ### SecureVault y formatos
 
 `lib/secure_vault.dart` mantiene v9→v10, backup y `resetOnError=false`; conserva
 secretos inválidos para evitar pérdida silenciosa. v10 usa RSA-OAEP/AES-GCM del
-plugin. Los tests Robolectric siembran EncryptedSharedPreferences v9 con
-AES256-SIV/AES256-GCM y verifican lectura v10 y backup interrumpido: ejecución
-Android pendiente, no prueba de Keystore físico.
+plugin. Las dos pruebas ahora instrumentadas siembran **EncryptedSharedPreferences
+real v9** con AES256-SIV/AES256-GCM y exigen lectura v10, cifrado, limpieza del
+legado y backup interrumpido. Conservaron sus aserciones, pero **su ejecución
+Android está bloqueada por KVM**; tampoco hay prueba de Keystore físico. La
+compilación de los nuevos APKs de test debe comprobarse aparte: no se confunde
+la compilación de las 19 pruebas JVM con la de `androidTest`.
+La cola de mutaciones cambió sólo en su liberación/propiedad entre schedulers;
+los formatos y opciones de migración no cambiaron.
 
 No confundir con el sobre de modelo v2: **AES-256-CBC + HMAC**. El código valida
 estructura/tamaños y etiqueta antes de descifrar, incluida la ruta JNI. El JSON
@@ -361,10 +508,17 @@ El propietario debe:
    destino main, head/SHA correctos, respuesta HTTP y mensaje de rechazo si lo
    hubo. Un 2xx no prueba que un build haya terminado. Si no hay entrega/build,
    lanzar manualmente y conservar el enlace y logs completos.
-4. Comprobar toolchain, formato, análisis, tests sin omisiones AAB, migración,
+4. Proporcionar un destino Android autorizado y accesible por `adb`
+   (`ANDROID_SERIAL`) para el nuevo paso de migración aislada; Codemagic falla
+   si falta, sin sustituirlo por Robolectric. Para Actions, suministrar un runner
+   con acceso KVM sin privilegios conforme a su política; el runner observado
+   no lo tiene y no se alteran sus permisos desde este trabajo.
+5. Comprobar toolchain, formato, análisis, tests sin omisiones AAB, migración,
    JNI, APK y su hash; comparar el SHA real del build antes de instalar.
-5. Proporcionar dispositivo autorizado y servidor controlado para la matriz de
-   tráfico; no se puede reemplazar ese acceso desde este sandbox.
+6. Proporcionar dispositivo autorizado y servidor controlado para la matriz de
+   tráfico; no se puede reemplazar ese acceso desde este sandbox. No desinstalar
+   ni vaciar una instalación con datos para probar: el APK debug no es una
+   migración productiva validada y el test de bóveda usa **otro applicationId**.
 
 Actions sí está ejecutando en esta revisión. Solo si vuelve a responder
 `Actions has been disabled for this repository`, el propietario debe ir a
@@ -372,24 +526,31 @@ Actions sí está ejecutando en esta revisión. Solo si vuelve a responder
 **Aura Flutter Quality** y **Aura Android Debug Build** sobre esta rama. No se
 solicitan contraseñas, tokens, 2FA ni secretos en chat.
 
-## 8. Criterios de terminado (situación antes del siguiente run)
+## 8. Criterios de terminado (instantánea previa al run posterior)
 
-- [ ] `flutter analyze` limpio en el SHA final.
-- [ ] `flutter test` en el SHA final.
-- [ ] pytest completo con **cero AAB omitidos en CI**.
-- [ ] JVM: credenciales, RFC 1929, ciclo de vida, correlación, recuperación y migración.
-- [ ] C/JNI compilado por NDK para el candidato.
-- [ ] APK debug generado desde el SHA final, publicado y con SHA-256.
-- [ ] APK instalado en dispositivo real — requiere propietario.
+Se separan avances reales de aceptación final; los checks del próximo SHA y su
+`SOURCE_COMMIT.txt` son la autoridad para ese candidato, no este historial.
+
+- [x] `flutter pub get`, formato y análisis en `e8b2db7`, también en sus predecesores indicados.
+- [x] Guards y pytest completo/JDK de CI en esos SHAs; JDK y pruebas AAB reales configurados y ejecutados.
+- [x] JVM de credenciales/RFC 1929/ciclo de vida/correlación/recuperación: 19 pruebas sin migración de Keystore.
+- [x] Primer C/JNI/NDK y APK debug real `e8b2db7`, publicado y con SHA-256 registrado.
+- [x] Firma negativa/positiva con clave efímera y SBOM de `e8b2db7`.
+- [ ] Formato/análisis/Python y `flutter test` completos del SHA posterior con cache de fixture corregida.
+- [ ] Compilación de APKs de instrumentación y verificación ELF/modelo del nuevo APK en su CI.
+- [ ] Migración real Android instrumentada — **bloqueada por KVM/runner autorizado**.
+- [ ] Codemagic ejecutado sobre el SHA final — requiere propietario y destino Android.
+- [ ] APK del SHA final instalado en un dispositivo real sin pérdida de datos.
 - [ ] VPN inicia/detiene y libera recursos en hardware.
 - [ ] SOCKS5 autenticado conectado al forwarding TUN real.
 - [ ] TCP/UDP/DNS/IPv4/IPv6 y fugas.
-- [ ] Cambio de red y reactivación tras fallo, incluido callback de la misma red.
-- [ ] IA con dataset/métricas reproducibles y evaluación independiente.
-- [ ] SecureVault/migración preserva datos en hardware y suites requeridas.
+- [ ] Cambio de red y recuperación tras fallo, incluido callback de la misma red.
+- [ ] IA con dataset/métricas reproducibles, tamaño aceptado y revisión independiente FP/FN; no promover 3.1.0.
+- [ ] SecureVault/migración preserva datos en hardware.
 - [x] Compatibilidad **documentada con límites**, no certificada universalmente.
-- [x] README de producto/ingeniería y auditoría interna separados y actualizados.
+- [x] README de producto/ingeniería y auditoría interna separados.
 
-No hay APK ni SHA-256 de APK atribuible aún a esta revisión. **Funciones
-verificadas en dispositivo: ninguna.** No hacer merge, publicar ni declarar Aura
+Sí existe el APK debug de `e8b2db7` identificado arriba. **Funciones verificadas
+en dispositivo: ninguna.** No se atribuyen a ese artefacto los cambios posteriores
+ni una validación Flutter completa. No hacer merge, publicar ni declarar Aura
 terminada mientras los criterios pendientes no tengan evidencia del SHA correcto.
