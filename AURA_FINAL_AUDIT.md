@@ -2,7 +2,7 @@
 
 **Fecha:** 2026-11-08 (UTC)
 **Repositorio:** `liendomaho-wq/Aura-V1.0`
-**Rama de trabajo:** `fix/vpn-recovery-and-security-closeout` (derivada del HEAD `09876be56b4c1beca4c2ef16a7cd6557e701e7b6` de la PR #10)
+**Rama de la PR #10:** `arena/623642b7-aura-v1-0` (actualizada mediante fast-forward desde `fix/vpn-recovery-and-security-closeout`)
 **`main` verificado al inicio:** `77617f32a016608e3869fd7144e153005c9e3b38` — merge de la PR #9
 **Estado:** correcciones adicionales en rama aislada; no integradas en `main`.
 **Dictamen:** **no listo para release**. Las pruebas Python disponibles pasan, y en esta pasada se endureció el manejo de cambios de red. No se pudo ejecutar Flutter, Gradle/JVM, NDK, Codemagic ni una prueba en teléfono; por tanto, no se afirma que este SHA compile Android, que exista un APK verificable o que la VPN transporte tráfico real.
@@ -165,3 +165,21 @@ Se añadieron guards estáticos para el gate single-flight, el reintento sobre l
 - El modo de firma de producción, el keystore/credenciales, la verificación de APK/AAB reales y la matriz física en Redmi Note 15 Pro Plus 5G / Android 16 siguen pendientes.
 
 **Dictamen actualizado:** la recuperación manual y automática sobre TUN retenida tiene una corrección de código y guards añadidos, pero no está validada por ejecución. Aura continúa **no lista para release** hasta que CI, Codemagic, firma y pruebas en dispositivo aporten evidencia sobre el SHA exacto.
+
+
+### Revisión de concurrencia de recuperación — 2026-11-08
+
+Una segunda revisión del helper single-flight detectó que el gate no debía rechazar `tunnelStarted == true`: durante un handover normal el worker está activo, pero sus sockets upstream pertenecen a la red física anterior y deben reiniciarse. Se corrigió para que:
+
+- un cambio real de red física pueda reiniciar el worker incluso si el túnel estaba activo;
+- el reintento sobre la misma red solo ocurra cuando el forwarding esté detenido;
+- aislamiento de emergencia y destrucción sigan bloqueando la recuperación;
+- el gate atómico impida que dos callbacks ejecuten reinicios simultáneos.
+
+Se añadió un guard que falla si el helper vuelve a descartar una recuperación únicamente porque `tunnelStarted` está activo.
+
+Commits adicionales:
+- `2fff4bb`: permite recuperar el worker activo después de un handover.
+- `e395f55`: añade regresión para handovers con worker previamente activo.
+
+La corrección continúa pendiente de ejecución de los workflows sobre el SHA final y de pruebas de handover en Android real.
