@@ -52,7 +52,10 @@ def main(args):
         status = process.wait()
 
     if status and os.environ.get("GITHUB_ACTIONS") == "true":
-        annotate("error", "Command failed", " ".join(args) + "\n" + "".join(tail))
+        failure = " ".join(args) + "\n" + "".join(tail)
+        for index, chunk in enumerate(annotation_chunks(failure), 1):
+            title = "Command failed" if index == 1 else f"Command failure details {index}"
+            annotate("error", title, chunk)
         if format_diff:
             diff = subprocess.run(
                 ["git", "diff", "--no-ext-diff", "--", "*.dart"],

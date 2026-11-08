@@ -30,6 +30,19 @@ class CiRunTests(unittest.TestCase):
         self.assertIn("actual failure", result.stdout)
         self.assertIn("::error title=Command failed::", result.stdout)
 
+    def test_long_actual_failure_output_is_reconstructible_from_annotations(self):
+        import re
+
+        result = self.run_command("print('ACTUAL-' * 1200); raise SystemExit(7)")
+        self.assertEqual(result.returncode, 7, result.stderr)
+        messages = re.findall(r"^::error title=[^:]+::(.*)$", result.stdout, re.MULTILINE)
+        self.assertGreater(len(messages), 1)
+        restored = "".join(
+            message.replace("%0D", "\r").replace("%0A", "\n").replace("%25", "%")
+            for message in messages
+        )
+        self.assertIn("ACTUAL-" * 1200, restored)
+
     def test_patch_chunks_are_lossless_and_below_the_real_annotation_limit(self):
         from ci_run import annotation_chunks
 
