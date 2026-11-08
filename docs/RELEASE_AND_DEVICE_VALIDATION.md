@@ -57,6 +57,9 @@ bash tool/compile_aura.sh
   --tests com.ciberdefensa.aura.VpnRecoveryGateTest \
   --tests com.ciberdefensa.aura.AuraSocks5CredentialsTest \
   --tests com.ciberdefensa.aura.Socks5AuthProtocolTest)
+# Compila la app/test aislados; NO ejecuta ni valida AndroidKeyStore.
+(cd android && AURA_ALLOW_DEBUG_SIGNING=true ./gradlew \
+  :app:assembleStorageMigration :app:assembleStorageMigrationAndroidTest)
 # Requiere un Android/emulador autorizado y accesible por adb (ANDROID_SERIAL).
 # Instala SOLO com.ciberdefensa.aura.vaultmigrationtest, no la app del usuario.
 (cd android && AURA_ALLOW_DEBUG_SIGNING=true ./gradlew \

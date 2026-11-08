@@ -349,6 +349,71 @@ un nombre portable. `f840951` exige compilar los APKs aislados de instrumentaci�
 antes de publicarlos como código compilable. **Su ejecución Android y la
 inspección de un APK posterior siguen pendientes de su propio CI.**
 
+### Reejecución `f1e2e1b`: contadores positivos y siguientes errores reales
+
+[Quality run 42481253389 / job 128733462079](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42481253389/job/128733462079)
+publicó ahora la salida real de los comandos correctos:
+
+```text
+dart format --set-exit-if-changed .
+Formatted 58 files (0 changed) in 0.28 seconds.
+python3 tool/test_verify_aab.py
+Ran 8 tests in 1.960s
+OK
+python3 -m pytest -q -rs
+133 passed, 124 subtests passed in 9.37s
+flutter analyze --no-pub
+No issues found! (ran in 9.1s)
+```
+
+No hubo AAB/Python omitidos. Flutter mejoró a **193 passed / 1 failed / 1
+skipped**: ambos boots completaron carga y navegación, y la prueba de credencial
+más estricta pasó. El error siguiente fue real, no inferido por el nombre:
+
+```text
+Expected: null
+Actual: FlutterError:<A RenderFlex overflowed by 212 pixels on the bottom.>
+aura_splash_auth_test.dart:180
+compact unsecured access reaches a core without layout errors
+```
+
+`80b3d59` hace desplazable únicamente el overview/features/warnings mediante
+slivers; conserva la barra VPN y entrada/acciones fijadas, el ListView/controller
+de eventos y los colores/avatar. El test mantiene la aserción de ausencia de
+excepciones y añade scroll y límites visibles de los controles. No se oculta ni
+recorta la excepción, ni se rediseña el producto. Validación posterior pendiente.
+
+[Android run 42481253396 / job 128733462399](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42481253396/job/128733462399)
+reportó desde **XML JUnit real**:
+
+```text
+tests=19, failures=0, errors=0, skipped=0
+AuraSocks5CredentialsTest: 1; Socks5AuthProtocolTest: 3;
+VpnLifecycleGateTest: 3; VpnRecoveryGateTest: 7; VpnStartRequestGateTest: 5
+```
+
+La compilación de los APKs aislados encontró después el primer error de
+`androidTest` antes inaccesible por KVM:
+
+```text
+Execution failed for task ':app:processStorageMigrationAndroidTestManifest'.
+Could not resolve androidx.test:runner:1.7.0.
+Constraint: androidx.test:runner:{strictly 1.3.0}
+version resolved in ':app:storageMigrationRuntimeClasspath' by consistent resolution
+```
+
+`1e2d067` alinea runner/JUnit en las dos classpaths **sólo de la app aislada**;
+no desactiva la consistencia de AGP, modifica el runtime productivo ni cambia
+aserciones/proveedor. No se generó/publicó un APK nuevo desde `f1e2e1b`: el fallo
+anterior detuvo correctamente ese build. El APK `e8b2db7` sigue siendo evidencia
+histórica, no se atribuye al nuevo código.
+
+[Signing/SBOM run 42481253416](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42481253416)
+volvió a pasar los tres jobs: guard 1m52s, positivo 3m07s, SBOM 3m30s. El modelo
+[run 42481253401](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42481253401)
+terminó **failure, 10m04s**, por el mismo presupuesto de 4 MiB; golden tests y
+upload de reportes pasaron. El rechazo no se silenció ni cambió el asset 3.0.0.
+
 ## 5. Registro local reproducible
 
 Los logs de trabajo se escriben en `tool/reports/android-closeout/`, ignorado
@@ -532,11 +597,11 @@ Se separan avances reales de aceptación final; los checks del próximo SHA y su
 `SOURCE_COMMIT.txt` son la autoridad para ese candidato, no este historial.
 
 - [x] `flutter pub get`, formato y análisis en `e8b2db7`, también en sus predecesores indicados.
-- [x] Guards y pytest completo/JDK de CI en esos SHAs; JDK y pruebas AAB reales configurados y ejecutados.
+- [x] Guards y pytest/JDK de CI: `f1e2e1b` confirmó 133 pruebas y cero omisiones, incluidas ocho AAB reales.
 - [x] JVM de credenciales/RFC 1929/ciclo de vida/correlación/recuperación: 19 pruebas sin migración de Keystore.
 - [x] Primer C/JNI/NDK y APK debug real `e8b2db7`, publicado y con SHA-256 registrado.
 - [x] Firma negativa/positiva con clave efímera y SBOM de `e8b2db7`.
-- [ ] Formato/análisis/Python y `flutter test` completos del SHA posterior con cache de fixture corregida.
+- [ ] `flutter test` completo del SHA posterior con layout compacto corregido; caché/boot ya confirmados en `f1e2e1b`.
 - [ ] Compilación de APKs de instrumentación y verificación ELF/modelo del nuevo APK en su CI.
 - [ ] Migración real Android instrumentada — **bloqueada por KVM/runner autorizado**.
 - [ ] Codemagic ejecutado sobre el SHA final — requiere propietario y destino Android.
