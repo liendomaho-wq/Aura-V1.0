@@ -11,7 +11,7 @@ workflows:
         - ~/.gradle/caches
     environment:
       groups:
-        - production_keys # Puedes dejarlo o quitarlo, ya no fallará si está vacío
+        - production_keys # This group must exist; values are managed by the owner in Codemagic.
       vars:
         # applicationId real definido en android/app/build.gradle: com.ciberdefensa.aura
         AURA_BUILD_FORMAT: "apk"
@@ -48,6 +48,11 @@ workflows:
           cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
           flutter --version
           flutter pub get
+      - name: Check Dart formatting
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          dart format --set-exit-if-changed .
       - name: Analyze Flutter and Dart code
         script: |
           set -euo pipefail
@@ -76,9 +81,7 @@ workflows:
           trap 'rm -rf "$VENV_DIR"' EXIT
           python3 -m venv "$VENV_DIR"
           "$VENV_DIR/bin/python" -m pip install -r tool/requirements-train.txt
-          "$VENV_DIR/bin/python" -m pytest -q \
-            tool/test_aura_brain.py tool/test_adversarial.py \
-            tool/test_adversarial_split_builder.py tool/test_grouped_splits.py
+          "$VENV_DIR/bin/python" -m pytest -q -rs
       - name: Test VPN request correlation on Android JVM
         script: |
           set -euo pipefail
@@ -90,7 +93,8 @@ workflows:
             --tests com.ciberdefensa.aura.VpnLifecycleGateTest \
             --tests com.ciberdefensa.aura.VpnRecoveryGateTest \
             --tests com.ciberdefensa.aura.AuraSocks5CredentialsTest \
-            --tests com.ciberdefensa.aura.Socks5AuthProtocolTest
+            --tests com.ciberdefensa.aura.Socks5AuthProtocolTest \
+            --tests com.ciberdefensa.aura.SecureStorageMigrationTest
       - name: Build Android Release artifact
         script: |
           set -euo pipefail

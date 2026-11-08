@@ -115,6 +115,20 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
         )[0]
         self.assertIn("- pull_request", events)
 
+    def test_codemagic_pr_patterns_select_destination_branches(self):
+        for branch in ("main", "principal"):
+            self.assertRegex(
+                self.codemagic_workflow,
+                rf"pattern: '{branch}'\s+include: true\s+source: false",
+            )
+
+    def test_codemagic_keeps_full_validation_and_vault_recovery_tests(self):
+        self.assertIn("dart format --set-exit-if-changed .", self.codemagic_workflow)
+        self.assertIn('"$VENV_DIR/bin/python" -m pytest -q -rs', self.codemagic_workflow)
+        self.assertIn("python3 tool/test_verify_aab.py", self.codemagic_workflow)
+        self.assertIn("--tests com.ciberdefensa.aura.VpnRecoveryGateTest", self.codemagic_workflow)
+        self.assertIn("--tests com.ciberdefensa.aura.SecureStorageMigrationTest", self.codemagic_workflow)
+
     def test_release_and_privacy_guides_preserve_honest_limits(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         privacy = (ROOT / "docs/PRIVACY.md").read_text(encoding="utf-8")
