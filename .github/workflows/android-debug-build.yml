@@ -36,8 +36,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Setup Android SDK command-line tools
+        uses: android-actions/setup-android@v3
+
       - name: Install declared Android toolchain
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+        run: python3 tool/ci_run.py sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
 
       - name: Setup Flutter stable
         uses: subosito/flutter-action@v2
