@@ -86,3 +86,10 @@ def test_auth_algorithm_change_never_deletes_a_legacy_rsa_alias():
     assert "destructive AES replacement refused" in guard
     assert "throw new InvalidKeyException" in guard
     assert "deleteEntry" not in guard
+
+
+def test_real_alias_regression_uses_the_original_public_provider_factory():
+    source = (ROOT / "android/app/src/androidTest/java/com/ciberdefensa/aura/SecureStorageIntegrityTest.java").read_text()
+    assert "new StorageCipherFactory(" in source
+    assert "requested.getCurrentKeyCipher(context)" in source
+    assert "import com.it_nomads.fluttersecurestorage.ciphers.KeyCipherImplementationAES23" not in source

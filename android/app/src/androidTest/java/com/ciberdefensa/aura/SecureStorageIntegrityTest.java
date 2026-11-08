@@ -14,7 +14,8 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import com.it_nomads.fluttersecurestorage.FlutterSecureStorage;
 import com.it_nomads.fluttersecurestorage.FlutterSecureStorageConfig;
 import com.it_nomads.fluttersecurestorage.SecurePreferencesCallback;
-import com.it_nomads.fluttersecurestorage.ciphers.KeyCipherImplementationAES23;
+import com.it_nomads.fluttersecurestorage.NamespacedConfigSource;
+import com.it_nomads.fluttersecurestorage.ciphers.StorageCipherFactory;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -212,7 +213,10 @@ public final class SecureStorageIntegrityTest {
         SharedPreferences raw = context.getSharedPreferences(config.getEffectiveDataPrefsName(), Context.MODE_PRIVATE);
         Map<String, ?> before = raw.getAll();
         try {
-            new KeyCipherImplementationAES23(context, config);
+            StorageCipherFactory requested = new StorageCipherFactory(
+                    new NamespacedConfigSource(context, config.getEffectiveDataPrefsName()),
+                    "AES_GCM_NoPadding", "AES_GCM_NoPadding", config);
+            requested.getCurrentKeyCipher(context);
             fail("A new AES algorithm must never destroy the existing RSA alias");
         } catch (java.security.InvalidKeyException expected) {
             assertTrue(expected.getMessage().contains("destructive AES replacement refused"));
