@@ -72,7 +72,11 @@ La variante `storageMigration` tiene un applicationId/UID separado y las
 preferencias de prueba están namespaced. Esto aísla también el alias ESP que
 v10 aún fija globalmente dentro del UID; sólo namespacing no sería suficiente.
 La prueba rechaza el paquete de producción **antes** de borrar preferencias.
-GitHub Actions requiere acceso KVM sin privilegios y ejecuta Android 16/API 36;
+El job separado de GitHub Actions requiere acceso KVM sin privilegios para
+Android 16/API 36. En `622b459` el runner falló ese requisito y **no ejecutó** la
+migración. El propietario debe proporcionar un runner autorizado con KVM; no se
+habilita root ni se convierte ese bloqueo en éxito. El build/APK es independiente:
+un artefacto generado no aprueba este job ni certifica migración/forwarding.
 Codemagic exige que el propietario proporcione un destino `adb` autorizado y
 falla si falta. Un emulador no demuestra migración en el Redmi ni hardware-backed
 Keystore. La ejecución y verificación física siguen **PENDIENTES**.
