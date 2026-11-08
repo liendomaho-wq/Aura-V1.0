@@ -1,5 +1,19 @@
 # Aura Android: auditoría y cierre verificable — 2026-11-08
 
+## Resumen al corte — último código Android compilado `a3e9b2d`; ajuste adicional de orquestación en curso
+
+**Aura no está terminada ni autorizada para distribución.** La implementación real de CryptoObject del vault continúa técnicamente pendiente; no es sólo una falta de teléfono. Los candidatos IA siguen rechazados. El setup de consentimiento VPN falló en la ejecución Android16 previa y se está repitiendo con UI despierta/diagnóstico; todavía no hay tráfico TUN Android aprobado.
+
+- Código publicado sólo en `arena/6c919530-aura-v1-0`; main sigue `11d50fbc6944b00496499182b3b61e92c2259a31` (reconsultado). **779 archivos versionados tras el ajuste de orquestación, 90 distintos respecto a main**; inventario completo abajo. Modelo activo 3.0.0 y los dos tests originales conservan sus bytes exactos.
+- CI actual Flutter [42500083182](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42500083182): **SUCCESS**, **218 Python + 124 subtests, sin skips**; **194 Flutter / 1 skip de dispositivo**; analyze sin issues; **67 archivos / 0 cambios** en formato. Los ocho AAB reales también se ejecutaron en CI; los ocho skips locales no se cuentan como éxito local.
+- CI actual Android [42500083179](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42500083179), build `128790737452`: **SUCCESS**, **26 JVM / 0 fallos/errores/skips**, incluidas siete LocalAuthRequestGate; APK e instrumentación compilados, cuatro ABI HEV reales, lock sin delta, modelo/digest/firma iguales al checkout. APK debug SHA-256 **`eceada013b02ec5427b9f183664f55f0f5eaf33bfa8e5b34e6e43097ae22b51a`**. No es distribución.
+- Las ejecuciones Android actuales, API36 `128792953218` y API29 `128792953127`, y modelo [42500083158](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42500083158) siguen pendientes al corte. El candidato anterior fue rechazado por recall adversarial **0,0202 < 0,60**. Nada de 3.1.0 fue promovido/firmado.
+- Ejecutados en Android16 y Android10 de `1195e46`: los **dos originales de migración pasaron**. La suite total quedó roja por cuatro setups de VPN sin diálogo y el assert adicional incompatible con Tink. No se oculta ni se hereda como aprobación de la suite actual de **12 casos**; API29 exige siete de almacenamiento.
+- Linux real: cierre TCP sin payload `[ACK2,RX1,segsOut0,segsIn0]` ya no activa egress; TLS verificado sí y caduca a **60,100436 s**. **No es TUN/Android/Redmi**. RSA→AES en mismo alias ahora rechaza borrar la PrivateKey; su prueba real y el cross-check Tink esperan repetición Android.
+- Local actual: **210 passed, 8 skipped, 124 subtests / 10.56s**. Los ocho skips son AAB por falta de JDK completo, no fallos escondidos. Firma CI más reciente completada (`dcead91` / `42498431877`) es efímera; **no identidad de distribución**. Teléfono de referencia/Codemagic no verificados.
+
+Los registros que siguen son cronológicos y están ligados a su SHA. Sus resultados anteriores no aprueban código o pruebas modificados después. No se presenta un porcentaje final mientras las lanes obligatorias de la revisión actual no hayan concluido; pendiente/parcial sigue aportando cero al denominador de nueve.
+
 ## Base y alcance antes de modificar código
 
 - Repositorio oficial: `liendomaho-wq/Aura-V1.0`.
@@ -49,17 +63,17 @@ CI consultada de `main` (`11d50fb`): Flutter Quality `42487666661` y Release sig
 
 El porcentaje de cierre se calculará como **criterios completamente demostrados / 9 × 100**, con peso igual. Un criterio parcial, omitido o pendiente aporta **0**, no medio punto. Esto mide aceptación verificada, **no porcentaje de líneas implementadas ni una estimación de madurez**.
 
-| # | Criterio solicitado | Evidencia exigida | Estado de esta corrección |
+| # | Criterio solicitado | Evidencia exigida | Estado al corte |
 |---|---|---|---|
-| 1 | Compilación Android/JNI | Compilación del SHA corregido y artefacto identificado | Pendiente |
-| 2 | Todas las pruebas automáticas | Flutter/analyze/format/Python/JVM/instrumentación/modelo sin fallos ocultos | Pendiente |
-| 3 | Migración ejecutada | v9→v10 y reinicio interrumpido en Android Keystore real | Pendiente |
-| 4 | VPN tráfico y recuperación | Flujo real y handover/worker/stop, sin falsos estados | Pendiente |
-| 5 | IA integrada y métricas verificables | Modelo serializado evaluado en holdout, límites y gates aprobados | Pendiente |
-| 6 | Sin altas/críticas sin resolver | Cerrar hallazgos y verificar regresiones, incluidos VPN-01 y VAULT-01 | Pendiente |
-| 7 | Teléfono Android de referencia | Registro de ejecución física; no inferir compatibilidad | Pendiente externo |
-| 8 | Firma de distribución | Identidad real, APK/AAB verificado y evidencia Codemagic | Pendiente externo |
-| 9 | Documentación actualizada | Informe final coherente con SHA, archivos, pruebas y bloqueos | En curso |
+| 1 | Compilación Android/JNI | APK del código corregido, cuatro ABI y artefacto identificado | **Aprobado `a3e9b2d`**, build `128790737452`; hash arriba |
+| 2 | Todas las pruebas automáticas | Flutter/analyze/format/Python/JVM/instrumentación/modelo sin fallos ocultos | **No aprobado**: Flutter/Python/JVM actuales positivos pero device skip, instrumentación pendiente/fallida y modelo rechazado |
+| 3 | Migración ejecutada | Dos originales con Android Keystore real, sin sustituirlos | Originales aprobados en API29/API36 de `1195e46`; repetición de la revisión actual pendiente |
+| 4 | VPN tráfico y recuperación | TCP/UDP/v4/v6 TUN real, handover/worker/stop, sin falsos estados | **No aprobado**: Android previo falló antes del TUN, cinco casos actuales pendientes; handover/Redmi no probados |
+| 5 | IA integrada y métricas verificables | Modelo serializado, holdout y gates aprobados | **No aprobado**: candidato cabe pero recall adversarial 0,0202; revisión por dominio FP/FN pendiente; activo 3.0.0 intacto |
+| 6 | Sin altas/críticas sin resolver | Cerrar y verificar hallazgos, incluido vault autorizado criptográficamente | **No aprobado**: VAULT-01 sigue abierta; correcciones nativas/proveedor requieren aceptación dinámica completa |
+| 7 | Teléfono Android de referencia | Registro físico, rendimiento/consumo/OEM; no inferir compatibilidad | **Pendiente externo**, ninguna función validada en Redmi Note15 Pro Plus 5G / Android16 |
+| 8 | Firma de distribución | Identidad real, APK/AAB verificado y Codemagic | **Pendiente externo**; firma CI efímera no cuenta |
+| 9 | Documentación actualizada | SHA, todos los archivos, resultados/fallos y bloqueos coherentes | **Actualizada al corte**, no una certificación de producto ni aprobación de lanes pendientes |
 
 Esta tabla describe la nueva corrección; los éxitos históricos no se transfieren como aprobación automática de cambios nuevos.
 
@@ -92,7 +106,7 @@ Esta tabla describe la nueva corrección; los éxitos históricos no se transfie
 
 - Primera falla real: run `42491355979`, job `128766339515`, `SecureStorageMigrationTest.java:74`: `expected:<v9-real-keystore-secret-preserved> but was:<null>`. Android 16 ejecutó **2/2 casos, 0 skips, 1 failure**; el caso de reinicio interrumpido pasó. Compilar el APK no había detectado esto.
 - Causa verificada en el tag upstream **v10.3.4**, commit `692a374a5071c0b60939f624ede58d666b6b645c`: con `migrateWithBackup=true` se aplaza ESP, pero `canSkipMarkerlessMigration()` interpreta la ausencia de claves con prefijo en claro como instalación vacía. ESP cifra los nombres; la ruta puede devolver `null` aunque exista el secreto. Una aplicación que crea claves cuando recibe `null` queda expuesta a usar una clave nueva sobre datos antiguos.
-- Corrección `0bdd79b`: runtime fijado localmente mediante `dependency_overrides`, 43 archivos de runtime/compatibilidad/metadatos con procedencia completa en `third_party/flutter_secure_storage/UPSTREAM.json`; **3 archivos Android con cambios funcionales, 3 cambios sólo de whitespace**. No hay cambios funcionales Dart del proveedor. Licencia original preservada. No se modifica la caché global de paquetes ni se depende de un parche remoto mutable.
+- Corrección `0bdd79b`: runtime fijado localmente mediante `dependency_overrides`, inicialmente 42 archivos (el helper SDK omitido se restauró después en `1195e46`, total actual 43) con procedencia completa en `third_party/flutter_secure_storage/UPSTREAM.json`; **3 archivos Android con cambios funcionales, 3 cambios sólo de whitespace**. No hay cambios funcionales Dart del proveedor. Licencia original preservada. No se modifica la caché global de paquetes ni se depende de un parche remoto mutable.
 - Se detecta ESP antes de la ruta rápida; se autentican datos antes de mutar; una conversión escribe todos los ciphertext destino y elimina sus claves ESP correspondientes en **un solo commit síncrono del mismo archivo**. La clave AES envuelta debe persistirse con commit comprobado antes. Datos corruptos o raíces legacy/current distintas producen error, conservando evidencia; una raíz igual conserva el ciphertext actual exacto. Un fallo ESP no llega a limpiar backups como si hubiera sido éxito.
 - El caso puro ESP no intenta desenvolver una clave CBC adivinada. El caso con backups sigue la ruta de recuperación; no se inventan flags de backup interrumpido para hacer pasar el test.
 - Los **dos tests originales y todas sus aserciones siguen byte por byte idénticos** a main: SHA-256 `049bcdd4a140d1b2d05e30c0501d9821e55a4ab592fcf9fe5662d7c907b807be`.
@@ -133,13 +147,14 @@ Esta tabla describe la nueva corrección; los éxitos históricos no se transfie
 
 ### Bloqueos que siguen abiertos
 
-1. Obtener ejecución CI del código corregido (Android/JNI/JVM/Flutter y los 10 casos reales); diagnosticar/corregir el primer error real, no eliminar aserciones. Aprobar repetición normal/interrumpida más integridad antes de cerrar VAULT-02.
-2. Atar material real del vault a CryptoObject y verificar acceso antiguo, cancelación, invalidación/enrollment, background y recuperación sin backup descifrable que eluda autenticación. **VAULT-01 alta abierta.**
-3. Tráfico/recovery/handover/stop/consumo Android: código y pruebas nuevos todavía sin ejecución Android. Sin aceptación anticipada de IPv6, UDP o Redmi.
-4. Modelo candidato rechazado: no promover 3.1.0, no rebajar gates ni reutilizar el test observado para escoger hiperparámetros. Falta revisión FP/FN independiente y calidad aprobada; 3.0.0 sigue activo.
-5. Lock restante de dependencias federadas debe reflejar la resolución real de CI; se conserva evidencia reproducible para actualizarlo sin hashes inventados.
-6. Dispositivo de referencia no conectado: ninguna función validada físicamente. Propietario debe proporcionar ejecución/registro del Redmi Android 16.
-7. Firma de producción y Codemagic pendientes: claves de CI efímeras no son identidad de distribución. Codemagic no ofrece conector utilizable en esta sesión; propietario debe configurar/ejecutar su proyecto por canal seguro, sin claves en chat. No hay publicación ni merge nuevo en main.
+1. Completar la CI actual: API36 exige los **12 casos** y API29 los siete de almacenamiento. Diagnosticar el primer error real; nunca borrar originales, suavizar guards de seguridad ni convertir omisiones en éxito. Repetir el cross-check de integridad contra AndroidX/Tink y el alias RSA intacto.
+2. **VAULT-01: implementación técnica pendiente**, no sólo hardware. Atar material real a CryptoObject con alias distinto, preservar datos anteriores y verificar cancelación, invalidación/enrollment, background y recuperación sin una copia descifrable que eluda autenticación. La serialización de prompts y rechazar un alias destructivo no lo resuelven.
+3. Tráfico Android: validar el consentimiento en UI realmente visible; ejecutar TUN TCP/UDP/IPv4/IPv6, worker/reanudación/stop y SYN/FIN sin falso active. Handover real y consumo siguen sin prueba. No presentar Linux ni fixture host como Android.
+4. IA: candidato rechazado, no promover 3.1.0, no bajar gates ni ajustar usando el test observado. Falta revisión FP/FN por dominio independiente y calidad aprobada; 3.0.0 sigue activo. El adversarial es sintético/disjunto, no un feed de incidentes confirmados.
+5. Dispositivo de referencia no conectado: **ninguna función validada físicamente**. Hace falta ejecución/registro del Redmi Android16, incluido CPU/RAM/batería y restricciones OEM.
+6. Firma de producción y Codemagic: configurar/verificar por canal seguro del propietario. CI efímera no es identidad de distribución; no se piden claves en chat. Sin nueva integración a main ni publicación.
+
+El lock federado **ya no es un bloqueo abierto**: se incorporó la resolución pública real y el siguiente build emitió delta vacío, SHA-256 `9958a5fa02a610e113d4be0c3061e9c6eee2667a39af066c60aa22ef8c80bb99`. La toolchain y las firmas completas aún no se declaran herméticamente reproducibles.
 
 Los nueve criterios conservan el denominador original y pesos iguales; ninguno parcial se redondea a completo. El cierre definitivo se actualiza con resultados reales posteriores, no con promesas de esta implementación.
 
@@ -219,18 +234,24 @@ third_party/flutter_secure_storage/lib/options/linux_options.dart
 third_party/flutter_secure_storage/lib/options/macos_options.dart
 third_party/flutter_secure_storage/lib/options/web_options.dart
 third_party/flutter_secure_storage/lib/options/windows_options.dart
+third_party/flutter_secure_storage/lib/test/test_flutter_secure_storage_platform.dart
 third_party/flutter_secure_storage/pubspec.yaml
+tool/bench_aura_brain.py
 tool/run_android_vpn_instrumentation.py
+tool/test_android_runtime_ready.py
+tool/test_aura_brain.py
 tool/test_forwarding_health_native.py
 tool/test_mobile_budget.py
 tool/test_secure_storage_instrumentation_policy.py
 tool/test_secure_storage_vendor.py
 tool/test_verify_android_instrumentation.py
 tool/test_vpn_config_template.py
+tool/test_vpn_consent_policy.py
 tool/test_vpn_echo_fixture.py
 tool/test_vpn_instrumentation_driver.py
 tool/train_max_aura_brain.py
 tool/verify_android_instrumentation.py
+tool/verify_android_runtime_ready.py
 tool/vpn_echo_fixture.py
 ```
 
@@ -318,3 +339,20 @@ El run `1195e46` / `42496511706` / `128781731430` terminó **FAILURE**, **10 cas
 El harness no despertaba la pantalla ni gestionaba el keyguard de swipe tras una larga compilación por software. Se añaden precondiciones de UI reales: despertar, host de test visible/keep-screen-on, pedir descartar **sólo keyguard sin PIN** mediante API pública y comprobar pantalla encendida. Se conservan el click del botón real y la comprobación `VpnService.prepare()==null`; no hay appops, permiso concedido por shell ni skip. Si sigue sin aparecer, el assert expone componente OS, paquete visible, estado pantalla/keyguard y jerarquía real (acotada) para diagnosticar el siguiente error. **La causa UI exacta y el resultado de esta corrección siguen pendientes de repetición; no se afirma que despertar por sí solo haya resuelto el caso.** La Activity de test sólo existe en `.vaultmigrationtest`, no en la app de distribución.
 
 APK debug `f5b5168`: SHA-256 **`5b04bcd093716ad957c704731c8db7f27c589758126cefd5275c87f067cca252`**. Las cuatro ELF nuevas tienen los mismos hashes que `dcead91` (mismo código C), incluyendo arm64 **`81d1f7dc188e0bab051801422ec3fb1d20b003e8dceabfba91e9bb84e4cb370c`**. Esto demuestra empaquetado/compilación, no aprobación del TUN.
+
+
+### Benchmark real de runner, sin inferir rendimiento móvil
+
+`dcead91` / `42498290165` / `128785294792`: benchmark del candidato rechazado ejecutado, **500 cold con recarga JSON**; p50 **120,791885 ms**, p95 **132,230261 ms**, p99 **135,746021 ms**, throughput **9,18 dominios/s**. Linux7.0.0-1019-azure / x86_64 / cuatro CPU lógicas. La salida compacta conservada no incluye los valores warm: no se inventan; el artefacto `benchmark_mobile.json` contiene el informe completo. Estos números no son del modelo activo 3.0.0 ni del Redmi y **no aprueban el presupuesto móvil**.
+
+
+### Nueva causa real de cero casos: framework Android no disponible al instalar
+
+`dcead91` / `42498290239`: API36 `128787418254` y API29 `128787418242` terminaron **FAILURE con cero casos**, no aprobaciones. El primer error real de API36 fue instalar el APK: `cmd: Can't find service: package`; API29: `Device emulator-5554 API level=1. Cannot install split APKs with API level < 21`, tras fallo de consulta ddmlib. No es un test del proveedor ni demuestra que Android real fuera API1. XML vacíos hashes `47f3c23b18d8f3a520d9702609ace98ca124241947f2cb891e6cf668e4323c07` y `54732f4e3325e70f53c9eb3c6ae84622a09ab74cbd87b35f4bfb8394bacd9792`; el verificador los rechazó correctamente. **No se confirma OOM ni causa del system_server sin logs adicionales.**
+
+Se evita compilar de nuevo HEV/Flutter/Gradle mientras arranca el emulador por software: ambas lanes ensamblan primero las mismas APKs reales y después ejecutan el connected test sin quitar tareas, clases ni asserts. Antes de instalar se leen **SDK exacta, ABI exacta, boot completed, fingerprint y resolución real del framework APK mediante Package Manager**. El preflight es de sólo lectura, una sola toma con timeouts, sin reiniciar Android/Keystore, sin appops ni retries de tests. Un estado falso/incompleto devuelve error y mantiene cero casos como fracaso. Sus fixtures Python validan el parser, **no son Android**. El resultado de esta orquestación todavía necesita CI; no se proclama que haya estabilizado el emulador.
+
+El código de aplicación/tests Android permanece idéntico a `a3e9b2d`; este ajuste afecta sólo workflow y preflight host. Se exige su propia ejecución antes de cerrar la lane completa. La documentación no debe usarse para heredar una aprobación de runtime.
+
+
+Suite local del ajuste de orquestación: **220 passed, 8 skipped, 124 subtests**. Se conserva también el `adb shell getprop ro.build.version.sdk` original; el preflight añade comprobaciones, no elimina ese log ni su guard. YAML y diff-check aprobados. Las diez nuevas pruebas son fixtures/guards de preflight, no diez ejecuciones Android.

@@ -229,6 +229,14 @@ jobs:
       - name: Install dependencies
         run: python3 tool/ci_run.py flutter pub get
 
+      # Avoid competing native/Gradle compilation with a software-emulated
+      # Android system_server. No installation/test result is inferred here.
+      - name: Compile exact migration APKs before starting Android 16
+        working-directory: android
+        env:
+          AURA_ALLOW_DEBUG_SIGNING: 'true'
+        run: python3 ../tool/ci_run.py ./gradlew :app:assembleStorageMigration :app:assembleStorageMigrationAndroidTest --no-daemon
+
       - name: Real v9 to v10 Keystore migration on Android 16 emulator
         uses: reactivecircus/android-emulator-runner@v2
         env:
@@ -244,6 +252,7 @@ jobs:
           working-directory: android
           script: |
             adb shell getprop ro.build.version.sdk
+            python3 ../tool/verify_android_runtime_ready.py --expected-api 36 --expected-abi x86_64
             python3 ../tool/ci_run.py python3 ../tool/run_android_vpn_instrumentation.py --collect-logcat -- ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest,com.ciberdefensa.aura.VpnForwardingInstrumentationTest,com.ciberdefensa.aura.SecureStorageIntegrityTest --no-daemon
 
       - name: Require passing XML for original migration and real VPN traffic cases
@@ -314,6 +323,14 @@ jobs:
           cache: true
       - name: Install dependencies
         run: python3 tool/ci_run.py flutter pub get
+      # Avoid competing native/Gradle compilation with a software-emulated
+      # Android system_server. No installation/test result is inferred here.
+      - name: Compile exact migration APKs before starting Android 10
+        working-directory: android
+        env:
+          AURA_ALLOW_DEBUG_SIGNING: 'true'
+        run: python3 ../tool/ci_run.py ./gradlew :app:assembleStorageMigration :app:assembleStorageMigrationAndroidTest --no-daemon
+
       - name: Execute original migration plus integrity tests on real Android 10
         uses: reactivecircus/android-emulator-runner@v2
         env:
@@ -329,6 +346,7 @@ jobs:
           working-directory: android
           script: |
             adb shell getprop ro.build.version.sdk
+            python3 ../tool/verify_android_runtime_ready.py --expected-api 29 --expected-abi x86
             python3 ../tool/ci_run.py ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest,com.ciberdefensa.aura.SecureStorageIntegrityTest --no-daemon
       - name: Require actual nonempty migration and tamper-result XML
         if: always()

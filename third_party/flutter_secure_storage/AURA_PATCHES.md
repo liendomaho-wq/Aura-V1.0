@@ -21,6 +21,6 @@ In 10.3.4, `migrateWithBackup=true` skips the early ESP migration, while `canSki
 
 ## Verification boundaries
 
-`tool/test_secure_storage_vendor.py` verifies provenance and source invariants, not Android. The Android workflow must execute the two original migration cases and five additional real provider/data-integrity cases. Android 16 additionally requires the four real VPN cases. API 29 is additional regression coverage, never a substitute for Android 16 acceptance or the reference phone.
+`tool/test_secure_storage_vendor.py` verifies provenance and source invariants, not Android. The Android workflow must execute the two original migration cases and five additional real provider/data-integrity cases. Android 16 additionally requires the five real VPN cases (including a zero-application-payload TCP control-only negative). API 29 is additional regression coverage, never a substitute for Android 16 acceptance or the reference phone.
 
 This patch **does not configure the application's vault keys to use biometric CryptoObject protection**, certify all failure/power-loss scenarios, recover already-lost cryptographic material, or prove compatibility with a physical Redmi. Those remain separate acceptance work. Conflicting legacy/current secrets require deliberate recovery; failing closed preserves both rather than inventing a resolution.
