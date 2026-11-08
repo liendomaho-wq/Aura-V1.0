@@ -23,7 +23,7 @@ def test_pinned_upstream_runtime_and_every_changed_file_are_explicit():
             (formatting if entry.get("whitespace_only") else changed).append(entry["path"])
             assert entry["change"]
     assert len(manifest["files"]) == 43
-    assert len(changed) == 3
+    assert len(changed) == 4
     assert len(formatting) == 3
     assert all(path.startswith("android/") for path in changed)
     assert "Copyright" in (VENDOR / "LICENSE").read_text()
@@ -78,3 +78,11 @@ def test_every_published_runtime_dart_import_has_its_original_sdk_helper():
     entry = next(entry for entry in manifest["files"] if entry["path"] == helper)
     assert "local_sha256" not in entry
     assert "test/test_flutter_secure_storage_platform.dart" in (VENDOR / "lib/flutter_secure_storage.dart").read_text()
+
+
+def test_auth_algorithm_change_never_deletes_a_legacy_rsa_alias():
+    source = (JAVA / "ciphers/KeyCipherImplementationAES23.java").read_text()
+    guard = source.split("private void ensureSymmetricKeyAtAlias()", 1)[1].split("public byte[] wrap", 1)[0]
+    assert "destructive AES replacement refused" in guard
+    assert "throw new InvalidKeyException" in guard
+    assert "deleteEntry" not in guard

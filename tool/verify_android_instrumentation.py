@@ -20,6 +20,7 @@ EXPECTED_INTEGRITY_CASES = frozenset({
     "corruptedLegacyFailsWithoutResetAndCanRetryAfterExactRestoration",
     "conflictingLegacyAndCurrentSecretsFailWithoutOverwritingEither",
     "identicalAlreadyMigratedSecretRecoversWithoutRekeying",
+    "refusesDestructiveRsaToAesAliasReplacementAndPreservesSecret",
 })
 VPN_CLASS = "com.ciberdefensa.aura.VpnForwardingInstrumentationTest"
 EXPECTED_VPN_CASES = frozenset({

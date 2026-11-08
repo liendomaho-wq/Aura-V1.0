@@ -14,6 +14,7 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import com.it_nomads.fluttersecurestorage.FlutterSecureStorage;
 import com.it_nomads.fluttersecurestorage.FlutterSecureStorageConfig;
 import com.it_nomads.fluttersecurestorage.SecurePreferencesCallback;
+import com.it_nomads.fluttersecurestorage.ciphers.KeyCipherImplementationAES23;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -192,6 +193,36 @@ public final class SecureStorageIntegrityTest {
         assertEquals(before, raw.getAll());
         assertEquals("current-secret-preserved", current.read(key));
         assertEquals("different-legacy-secret-preserved", legacy(context, config).getString(key, null));
+    }
+
+
+    @Test
+    public void refusesDestructiveRsaToAesAliasReplacementAndPreservesSecret() throws Exception {
+        Context context = guardedContext();
+        FlutterSecureStorageConfig config = config("aura_alias_preservation_test");
+        String key = config.getSharedPreferencesKeyPrefix() + "_alias_preserved_secret";
+        FlutterSecureStorage current = initialize(context, config, false);
+        current.write(key, "secret-whose-rsa-key-must-survive");
+        assertEquals("secret-whose-rsa-key-must-survive", current.read(key));
+        java.security.KeyStore keystore = java.security.KeyStore.getInstance("AndroidKeyStore");
+        keystore.load(null);
+        String alias = context.getPackageName() + ".FlutterSecureStoragePluginKey" + config.getKeyAliasSuffix();
+        assertTrue(keystore.getKey(alias, null) instanceof java.security.PrivateKey);
+        byte[] certificate = keystore.getCertificate(alias).getEncoded();
+        SharedPreferences raw = context.getSharedPreferences(config.getEffectiveDataPrefsName(), Context.MODE_PRIVATE);
+        Map<String, ?> before = raw.getAll();
+        try {
+            new KeyCipherImplementationAES23(context, config);
+            fail("A new AES algorithm must never destroy the existing RSA alias");
+        } catch (java.security.InvalidKeyException expected) {
+            assertTrue(expected.getMessage().contains("destructive AES replacement refused"));
+        }
+        assertTrue(keystore.getKey(alias, null) instanceof java.security.PrivateKey);
+        assertArrayEquals(certificate, keystore.getCertificate(alias).getEncoded());
+        assertEquals(before, raw.getAll());
+        // A fresh instance must really unwrap the persisted AES key; a cached
+        // plaintext key from the first instance cannot satisfy this assertion.
+        assertEquals("secret-whose-rsa-key-must-survive", initialize(context, config, false).read(key));
     }
 
     @Test

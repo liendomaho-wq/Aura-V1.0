@@ -45,9 +45,9 @@ class KeyCipherImplementationAES23 implements KeyCipher {
         ensureSymmetricKeyAtAlias();
     }
 
-    /**
-     * KeyCipherImplementationRSA18 uses this exact same alias, so a leftover PrivateKey can end
-     * up here. Treat that as "no key yet" and generate a fresh symmetric key instead.
+    /** The legacy RSA alias can still protect existing vault data. Never
+     * destroy it just because a different cipher was requested. Migration must
+     * use a distinct authenticated alias and verify recovery before retiring it.
      */
     private void ensureSymmetricKeyAtAlias() throws Exception {
         KeyStore ks = KeyStore.getInstance(KEYSTORE_PROVIDER_ANDROID);
@@ -56,10 +56,7 @@ class KeyCipherImplementationAES23 implements KeyCipher {
         if (existingKey == null) {
             generateSymmetricKey();
         } else if (!(existingKey instanceof SecretKey)) {
-            Log.w(TAG, "Alias " + keyAlias + " holds a " + existingKey.getClass().getSimpleName()
-                    + ", not a SecretKey, replacing it with a fresh symmetric key");
-            ks.deleteEntry(keyAlias);
-            generateSymmetricKey();
+            throw new InvalidKeyException("Legacy RSA alias still protects data; destructive AES replacement refused");
         }
     }
 

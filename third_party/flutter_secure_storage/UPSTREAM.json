@@ -3,7 +3,7 @@
   "tag": "v10.3.4",
   "commit": "692a374a5071c0b60939f624ede58d666b6b645c",
   "archive_sha256": "f4c884791eabd98356713b6b71655ac10ba4732f4d48275904ca14e6868d8f77",
-  "scope": "Published v10.3.4 runtime and SDK compatibility helper imported by its production library, original license/docs; three functional Android fixes and separately marked whitespace-only changes. Example apps, dev analyzer configuration and upstream test suites are not copied or counted as executed. The unmodified SDK test helper is not used as Android/Keystore evidence. Original Aura migration assertions remain unchanged.",
+  "scope": "Published v10.3.4 runtime and SDK compatibility helper imported by its production library, original license/docs; four functional Android fixes and separately marked whitespace-only changes. Example apps, dev analyzer configuration and upstream test suites are not copied or counted as executed. The unmodified SDK test helper is not used as Android/Keystore evidence. Original Aura migration assertions remain unchanged.",
   "files": [
     {
       "path": "CHANGELOG.md",
@@ -94,7 +94,9 @@
     },
     {
       "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/KeyCipherImplementationAES23.java",
-      "upstream_sha256": "993142f3c218b48dbddf9259f8da4fd8b74977d88412794dd725aa4e4f32deed"
+      "upstream_sha256": "993142f3c218b48dbddf9259f8da4fd8b74977d88412794dd725aa4e4f32deed",
+      "local_sha256": "75d513317142e986dfa7b6b754e385f29a88ed1d08df97de0d4c74998ee689a9",
+      "change": "Refuse destructive RSA-to-AES alias replacement; preserve the legacy private key and encrypted data."
     },
     {
       "path": "android/src/main/java/com/it_nomads/fluttersecurestorage/ciphers/KeyCipherImplementationRSA18.java",
