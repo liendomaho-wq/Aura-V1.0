@@ -1,0 +1,41 @@
+"""Exercise the CI wrapper with real subprocesses, not substitute tool outputs."""
+import os
+from pathlib import Path
+import subprocess
+import sys
+import unittest
+
+RUNNER = Path(__file__).with_name("ci_run.py")
+
+
+class CiRunTests(unittest.TestCase):
+    def run_command(self, source):
+        return subprocess.run(
+            [sys.executable, str(RUNNER), sys.executable, "-c", source],
+            env={**os.environ, "GITHUB_ACTIONS": "true"},
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+
+    def test_success_is_not_replaced_with_an_error(self):
+        result = self.run_command("print('actual command output')")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("actual command output", result.stdout)
+        self.assertNotIn("::error", result.stdout)
+
+    def test_nonzero_exit_and_actual_stderr_are_preserved(self):
+        result = self.run_command(
+            "import sys; print('actual failure', file=sys.stderr); sys.exit(17)"
+        )
+        self.assertEqual(result.returncode, 17, result.stderr)
+        self.assertIn("actual failure", result.stdout)
+        self.assertIn("::error title=Command failed::", result.stdout)
+
+    def test_annotation_escapes_percent_and_newlines(self):
+        result = self.run_command("print('100% real'); raise SystemExit(2)")
+        self.assertEqual(result.returncode, 2, result.stderr)
+        annotation = result.stdout.split("::error title=Command failed::", 1)[1]
+        self.assertIn("100%25 real%0A", annotation)
+
+
+if __name__ == "__main__":
+    unittest.main()
