@@ -103,6 +103,8 @@ static HevList session_set;
 
 /* Loopback-only SOCKS5 endpoint; UDP packets use Hev's UDP-over-TCP mode. */
 #define AURA_LOCAL_SOCKS5_PORT 18763
+#define AURA_LOCAL_SOCKS5_MAX_SESSIONS 64
+#define AURA_LOCAL_SOCKS5_AUTH_TIMEOUT_MS 5000
 
 typedef struct _AuraLocalSocks5Session AuraLocalSocks5Session;
 struct _AuraLocalSocks5Session {
@@ -116,6 +118,7 @@ static atomic_int local_socks5_listener_fd = ATOMIC_VAR_INIT (-1);
 static atomic_int local_socks5_wakeup_read_fd = ATOMIC_VAR_INIT (-1);
 static atomic_int local_socks5_wakeup_write_fd = ATOMIC_VAR_INIT (-1);
 static AuraLocalSocks5Session *local_socks5_sessions;
+static unsigned int local_socks5_session_count;
 static pthread_mutex_t local_socks5_sessions_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t local_socks5_wakeup_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -133,12 +136,65 @@ local_socks5_session_entry (void *data)
     cursor = &local_socks5_sessions;
     while (*cursor && *cursor != session)
         cursor = &(*cursor)->next;
-    if (*cursor == session)
+    if (*cursor == session) {
         *cursor = session->next;
+        if (local_socks5_session_count)
+            local_socks5_session_count--;
+    }
     pthread_mutex_unlock (&local_socks5_sessions_mutex);
 
     hev_object_unref (HEV_OBJECT (session->server));
     free (session);
+}
+
+static int
+local_socks5_configure_server_auth (HevSocks5Server *server)
+{
+    HevConfigServer *config = hev_config_get_socks5_server ();
+    HevSocks5Authenticator *auth = NULL;
+    HevSocks5User *user = NULL;
+    size_t username_len;
+    size_t password_len;
+    int res = -1;
+
+    if (!server || !config)
+        return -1;
+
+    if (!config->user || !config->pass || !config->user[0] || !config->pass[0]) {
+#ifdef __ANDROID__
+        return -1;
+#else
+        return 0;
+#endif
+    }
+
+    username_len = strlen (config->user);
+    password_len = strlen (config->pass);
+    if (username_len > 255 || password_len > 255)
+        return -1;
+
+    auth = hev_socks5_authenticator_new ();
+    if (!auth)
+        goto exit;
+
+    user = hev_socks5_user_new (config->user, (unsigned int)username_len,
+                                config->pass, (unsigned int)password_len);
+    if (!user)
+        goto exit;
+
+    if (hev_socks5_authenticator_add (auth, user) < 0)
+        goto exit;
+    user = NULL; /* The authenticator owns the user after insertion. */
+
+    hev_socks5_server_set_auth (server, auth);
+    res = 0;
+
+exit:
+    if (user)
+        hev_object_unref (HEV_OBJECT (user));
+    if (auth)
+        hev_object_unref (HEV_OBJECT (auth));
+    return res;
 }
 
 static void
@@ -189,9 +245,13 @@ local_socks5_accept_entry (void *data)
         }
 
         HevSocks5Server *server = hev_socks5_server_new (client_fd);
+        int auth_configured = server ? local_socks5_configure_server_auth (server) : -1;
+        if (server && auth_configured == 0)
+            hev_socks5_set_timeout (HEV_SOCKS5 (server),
+                                    AURA_LOCAL_SOCKS5_AUTH_TIMEOUT_MS);
         AuraLocalSocks5Session *session = calloc (1, sizeof (*session));
         HevTask *client_task = hev_task_new (-1);
-        if (!server || !session || !client_task) {
+        if (!server || auth_configured < 0 || !session || !client_task) {
             if (server)
                 hev_object_unref (HEV_OBJECT (server));
             else
@@ -205,15 +265,22 @@ local_socks5_accept_entry (void *data)
         session->fd = client_fd;
         session->server = server;
         pthread_mutex_lock (&local_socks5_sessions_mutex);
-        if (!atomic_load_explicit (&local_socks5_running, memory_order_acquire)) {
+        int listener_stopping =
+            !atomic_load_explicit (&local_socks5_running, memory_order_acquire);
+        int session_limit_reached =
+            local_socks5_session_count >= AURA_LOCAL_SOCKS5_MAX_SESSIONS;
+        if (listener_stopping || session_limit_reached) {
             pthread_mutex_unlock (&local_socks5_sessions_mutex);
             hev_object_unref (HEV_OBJECT (server));
             hev_task_unref (client_task);
             free (session);
-            break;
+            if (listener_stopping)
+                break;
+            continue;
         }
         session->next = local_socks5_sessions;
         local_socks5_sessions = session;
+        local_socks5_session_count++;
         pthread_mutex_unlock (&local_socks5_sessions_mutex);
 
         hev_task_run (client_task, local_socks5_session_entry, session);
@@ -243,6 +310,12 @@ local_socks5_init (void)
     int wakeup_fds[2];
     int flags;
     HevTask *task;
+#ifdef __ANDROID__
+    HevConfigServer *config = hev_config_get_socks5_server ();
+    if (!config || !config->user || !config->pass ||
+        !config->user[0] || !config->pass[0])
+        return -1;
+#endif
 
     fd = socket (AF_INET, SOCK_STREAM, 0);
     if (fd < 0)

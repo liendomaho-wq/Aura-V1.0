@@ -8,6 +8,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <lwip/tcp.h>
@@ -30,6 +31,25 @@ static char tun_post_up_script[1024];
 static char tun_pre_down_script[1024];
 
 static HevConfigServer srv;
+static char socks5_user[256];
+static char socks5_pass[256];
+
+static void
+hev_config_clear_secret (char *value, size_t size)
+{
+    volatile char *cursor = value;
+    while (size--)
+        *cursor++ = '\0';
+}
+
+void
+hev_config_clear_socks5_credentials (void)
+{
+    hev_config_clear_secret (socks5_user, sizeof (socks5_user));
+    hev_config_clear_secret (socks5_pass, sizeof (socks5_pass));
+    srv.user = NULL;
+    srv.pass = NULL;
+}
 
 static int mapdns_address;
 static int mapdns_port;
@@ -177,8 +197,6 @@ static int
 hev_config_parse_socks5 (yaml_document_t *doc, yaml_node_t *base)
 {
     yaml_node_pair_t *pair;
-    static char _user[256];
-    static char _pass[256];
     const char *addr = NULL;
     const char *port = NULL;
     const char *udpm = NULL;
@@ -245,6 +263,15 @@ hev_config_parse_socks5 (yaml_document_t *doc, yaml_node_t *base)
         return -1;
     }
 
+    if (user && pass) {
+        size_t user_len = strlen (user);
+        size_t pass_len = strlen (pass);
+        if (!user_len || user_len > 255 || !pass_len || pass_len > 255) {
+            fprintf (stderr, "Invalid socks5 username or password length!\n");
+            return -1;
+        }
+    }
+
     strncpy (srv.addr, addr, 256 - 1);
     srv.port = strtoul (port, NULL, 10);
 
@@ -258,10 +285,10 @@ hev_config_parse_socks5 (yaml_document_t *doc, yaml_node_t *base)
         strncpy (srv.udp_addr, udpa, 256 - 1);
 
     if (user && pass) {
-        strncpy (_user, user, 256 - 1);
-        strncpy (_pass, pass, 256 - 1);
-        srv.user = _user;
-        srv.pass = _pass;
+        memcpy (socks5_user, user, strlen (user) + 1);
+        memcpy (socks5_pass, pass, strlen (pass) + 1);
+        srv.user = socks5_user;
+        srv.pass = socks5_pass;
     }
 
     if (mark)
@@ -460,6 +487,7 @@ hev_config_parse_doc (yaml_document_t *doc)
 static void
 hev_config_reset (void)
 {
+    hev_config_clear_socks5_credentials ();
     memset (tun_ipv4_address, 0, sizeof (tun_ipv4_address));
     memset (tun_ipv6_address, 0, sizeof (tun_ipv6_address));
     memset (tun_post_up_script, 0, sizeof (tun_post_up_script));
@@ -525,6 +553,8 @@ exit_close_fp:
 exit_free_parser:
     yaml_parser_delete (&parser);
 exit:
+    if (res < 0)
+        hev_config_clear_socks5_credentials ();
     return res;
 }
 
@@ -553,6 +583,8 @@ hev_config_init_from_str (const unsigned char *config_str,
 exit_free_parser:
     yaml_parser_delete (&parser);
 exit:
+    if (res < 0)
+        hev_config_clear_socks5_credentials ();
     return res;
 }
 

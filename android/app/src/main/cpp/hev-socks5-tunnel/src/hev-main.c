@@ -96,7 +96,9 @@ hev_socks5_tunnel_main_from_file (const char *config_path, int tun_fd)
     if (res < 0)
         return -1;
 
-    return hev_socks5_tunnel_main_inner (tun_fd);
+    res = hev_socks5_tunnel_main_inner (tun_fd);
+    hev_config_clear_socks5_credentials ();
+    return res;
 }
 
 int
@@ -107,7 +109,9 @@ hev_socks5_tunnel_main_from_str (const unsigned char *config_str,
     if (res < 0)
         return -1;
 
-    return hev_socks5_tunnel_main_inner (tun_fd);
+    res = hev_socks5_tunnel_main_inner (tun_fd);
+    hev_config_clear_socks5_credentials ();
+    return res;
 }
 
 int
