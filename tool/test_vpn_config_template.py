@@ -620,6 +620,8 @@ for required in (
 ):
     if required not in recovery_request_body:
         sys.exit("FAIL: VPN recovery gate is missing " + required)
+if "tunnelStarted" in recovery_request_body.split("if (serviceShuttingDown || panicIsolationActive)", 1)[0]:
+    sys.exit("FAIL: active handovers must be allowed to restart native sockets on the new underlay")
 
 start_command = re.search(
     r"override fun onStartCommand\(.*?\) \{(.*?)\n    \}\n\n    override fun onDestroy",
