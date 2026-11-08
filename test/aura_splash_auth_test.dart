@@ -115,11 +115,14 @@ void main() {
     await pumpBootToCore(tester);
 
     expect(calls, contains('authenticateDeviceCredential'));
+    // Authentication must finish booting, not merely reach a stalled vault.
+    expect(find.byType(AuraCoreScreen), findsOneWidget);
     expect(
       find.text('ACCESO LOCAL VALIDADO; INICIALIZANDO BÓVEDA SEGURA...'),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text('CONFIGURAR BLOQUEO DEL TELÉFONO'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('unsecured splash remains scrollable on a compact display', (
