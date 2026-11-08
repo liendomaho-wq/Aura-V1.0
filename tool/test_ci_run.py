@@ -39,6 +39,24 @@ class CiRunTests(unittest.TestCase):
         self.assertIn("actual failure", result.stdout)
         self.assertIn("::error title=Command failed::", result.stdout)
 
+    def test_first_failed_group_survives_many_later_passing_lines(self):
+        result = self.run_command(
+            "print('::group::❌ actual first test failure'); "
+            "print('actual exception before later test output'); "
+            "print('::endgroup::'); "
+            "[print(f'later passing line {index}') for index in range(100)]; "
+            "raise SystemExit(9)"
+        )
+        self.assertEqual(result.returncode, 9, result.stderr)
+        annotation = result.stdout.split("::error title=First failing test details 1::", 1)[1]
+        self.assertIn("actual exception before later test output%0A", annotation)
+        tail = result.stdout.split("::error title=Command failed::", 1)[1]
+        # The annotation also identifies the actual -c command. Check its
+        # output body, not the Python source literally echoed as argv.
+        tail = tail.split("%0A", 1)[1]
+        self.assertNotIn("actual exception before later test output", tail)
+        self.assertIn("later passing line 99", tail)
+
     def test_long_actual_failure_output_is_reconstructible_from_annotations(self):
         import re
 

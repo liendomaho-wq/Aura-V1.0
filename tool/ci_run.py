@@ -42,6 +42,9 @@ def main(args):
 
     print("COMMAND: " + " ".join(args), flush=True)
     tail = deque(maxlen=60)
+    first_failure = []
+    capture_failure = False
+    failure_group_complete = False
     with subprocess.Popen(
         args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, errors="replace",
@@ -49,9 +52,22 @@ def main(args):
         for line in process.stdout:
             print(line, end="", flush=True)
             tail.append(line)
+            # Flutter's GitHub reporter prints a failing group where it occurs;
+            # hundreds of later passing tests can displace it from the tail.
+            if not failure_group_complete:
+                if line.startswith("::group::❌"):
+                    capture_failure = True
+                if capture_failure:
+                    first_failure.append(line)
+                    if line.startswith("::endgroup::"):
+                        failure_group_complete = True
+                        capture_failure = False
         status = process.wait()
 
     if status and os.environ.get("GITHUB_ACTIONS") == "true":
+        if first_failure:
+            for index, chunk in enumerate(annotation_chunks("".join(first_failure)), 1):
+                annotate("error", f"First failing test details {index}", chunk)
         failure = " ".join(args) + "\n" + "".join(tail)
         for index, chunk in enumerate(annotation_chunks(failure), 1):
             title = "Command failed" if index == 1 else f"Command failure details {index}"
