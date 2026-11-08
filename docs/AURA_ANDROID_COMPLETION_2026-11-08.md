@@ -287,5 +287,14 @@ Modelo `42496511684` / `128779981812`: **FAILURE exit 2**, por gate de calidad r
 
 - Bosque calibrado **500 árboles / 3.621.963 bytes / depth 8 / leaf mínimo 1024 / umbral 0,52**. El primer ensayo depth10/leaf512 fue 7.207.921 bytes y no se seleccionó.
 - Holdout **88.219** (14.899 safe / 73.320 threat): TN **14.139**, FP **760**, FN **12.323**, TP **60.997**; accuracy **0,8516986**, precision **0,9876937**, recall **0,8319285**, FPR **0,0510101**.
-- Adversarial independiente **1.186** (593 / 593): TN **582**, FP **11**, FN **581**, TP **12**; recall **0,0202361**, FPR **0,0185497**. Rechazado por recall **0,0202 < 0,60**, sin bajar el gate ni ajustar usando ese holdout. Estas cifras agregadas no sustituyen una revisión independiente por dominio de FP/FN.
+- Holdout adversarial **sintético y disjunto**, **1.186** (593 / 593): TN **582**, FP **11**, FN **581**, TP **12**; recall **0,0202361**, FPR **0,0185497**. Rechazado por recall **0,0202 < 0,60**, sin bajar el gate ni ajustar usando ese holdout. Estas cifras agregadas no sustituyen una revisión independiente por dominio de FP/FN.
 - Runtime de esa evaluación: Python **3.11.18**, NumPy **2.4.6**, scikit-learn **1.9.1**. No son métricas del modelo activo 3.0.0 ni de un teléfono. No se promueve/firma 3.1.0. La evaluación de `2a196dc` sigue en curso; no se asume su resultado.
+
+
+### Extensión de la regresión SYN/FIN al TUN real, sin inyectar salud
+
+Se añade `controlOnlyTcpDoesNotActivateForwarding`: socket ligado a Network VPN, cero writes de aplicación, conexión mantenida 2 s para observar el peer antes de cerrar, EOF real, cinco segundos sin evidencia activa, generación constante/worker vivo y contadores TUN TX/RX crecientes. No llama al observador privado ni simula TCP_INFO, y fallará si la fixture/ruta real no funciona. El verificador Android 16 exige ahora **12 casos** (2 originales + 5 integridad + 5 VPN); API29 sigue exigiendo los siete de almacenamiento. Su ejecución sigue pendiente; la prueba Linux ejecutada no se presenta como ese resultado.
+
+CI del código `dcead91`: Flutter `42498290214` / `128785294949` **SUCCESS**: **214 Python + 124 subtests, sin skips; 8 AAB reales OK; 194 Flutter / 1 skip de dispositivo; analyze sin issues; formato 67 archivos / 0 cambios; pub get sin cambios de lock**. Firma de ese mismo SHA solicitada por workflow_dispatch (`42498431877`), resultado aún pendiente. Local antes de esta extensión: **206 passed, 8 skipped, 124 subtests in 11.09s**. Es evidencia de `dcead91`, no aprobación anticipada de la nueva prueba Android.
+
+Nota de alcance de migración: el segundo test original construye el estado persistido de backup `started` y un backup parcial en el UID aislado, y arranca el proveedor real. No mata un proceso Android en mitad de un commit; aprobarlo prueba recuperación de ese estado, no todos los puntos posibles de crash ni un corte de energía físico. Ambos originales permanecen byte-identical.

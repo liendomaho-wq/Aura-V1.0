@@ -185,6 +185,40 @@ public final class VpnForwardingInstrumentationTest {
     }
 
     @Test
+    public void controlOnlyTcpDoesNotActivateForwarding() throws Exception {
+        startRealTunnel();
+        assertFalse(TProxyService.TProxyHasRecentEgress());
+        assertFalse(flag("forwarding_active"));
+        long generation = TProxyService.TProxyWorkerGeneration();
+        long[] before = TProxyService.TProxyGetStats();
+        // No application bytes are written. The real VPN-bound TCP connection
+        // completes SYN/ACK, waits while connected, then exchanges FIN/ACK.
+        // The host fixture closes on EOF without sending a response payload.
+        try (Socket socket = vpnNetwork().getSocketFactory().createSocket()) {
+            socket.connect(new InetSocketAddress("10.0.2.2", FIXTURE_PORT), 15_000);
+            socket.setSoTimeout(15_000);
+            SystemClock.sleep(2_000);
+            assertFalse(TProxyService.TProxyHasRecentEgress());
+            socket.shutdownOutput();
+            assertEquals("Control-only fixture must return EOF, not data", -1, socket.getInputStream().read());
+        }
+        long deadline = SystemClock.elapsedRealtime() + 5_000;
+        do {
+            assertEquals("A restart must not hide a false positive", generation, TProxyService.TProxyWorkerGeneration());
+            assertTrue(TProxyService.TProxyIsRunning());
+            assertTrue(flag("forwarding_ready"));
+            assertFalse("SYN/FIN counters are not payload egress", TProxyService.TProxyHasRecentEgress());
+            assertFalse(flag("forwarding_active"));
+            SystemClock.sleep(100);
+        } while (SystemClock.elapsedRealtime() < deadline);
+        long[] after = TProxyService.TProxyGetStats();
+        assertNotNull(before);
+        assertNotNull(after);
+        assertTrue("Control packets must actually cross the TUN", after[1] > before[1]);
+        assertTrue("Control replies must actually cross the TUN", after[3] > before[3]);
+    }
+
+    @Test
     public void forwardsRealTcpUdpIpv4AndRejectsUnauthenticatedProxyClients() throws Exception {
         startRealTunnel();
         rejectUnauthenticatedSocksClients();

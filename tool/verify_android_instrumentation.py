@@ -24,6 +24,7 @@ EXPECTED_INTEGRITY_CASES = frozenset({
 })
 VPN_CLASS = "com.ciberdefensa.aura.VpnForwardingInstrumentationTest"
 EXPECTED_VPN_CASES = frozenset({
+    "controlOnlyTcpDoesNotActivateForwarding",
     "forwardsRealTcpUdpIpv4AndRejectsUnauthenticatedProxyClients",
     "forwardsRealTcpUdpIpv6WithoutBypassingTun",
     "recoversTerminatedNativeWorkerAndRoutesNewTraffic",
