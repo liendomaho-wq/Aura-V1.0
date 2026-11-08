@@ -509,7 +509,7 @@ start_tunnel_region = text.split("private fun startTunnel(", 1)[1].split(
 resume_tunnel_region = text.split("private fun resumeTunnelForwarding()", 1)[1].split(
     "private fun handleResumeFailure", 1
 )[0]
-recovery_region = text.split("private fun recoverTunnelAfterNetworkChange()", 1)[1].split(
+recovery_region = text.split("private fun recoverTunnelAfterNetworkChange(", 1)[1].split(
     "private fun handleNetworkRecoveryFailure", 1
 )[0]
 for region_name, region in (
@@ -624,7 +624,7 @@ if "tunnelStarted" in recovery_request_body.split("if (serviceShuttingDown || pa
     sys.exit("FAIL: active handovers must be allowed to restart native sockets on the new underlay")
 
 start_command = re.search(
-    r"override fun onStartCommand\(.*?\) \{(.*?)\n    \}\n\n    override fun onDestroy",
+    r"override fun onStartCommand\([^)]*\): Int \{(.*?)\n    \}\n\n    override fun onDestroy",
     text,
     re.DOTALL,
 )
@@ -809,7 +809,7 @@ for required_fail_closed_guard in (
     "if (!underlayUpdated)",
     "stopTunnelForwardingForNetworkFailure(",
     "else if (vpnInterface != null && !panicIsolationActive)",
-    "recoverTunnelAfterNetworkChange()",
+    "recoverTunnelAfterNetworkChange(requestId)",
     "TProxyService.TProxyStopService()",
     "tunnelStarted = false",
     "stopConfirmed = stopNativeWorker()",
