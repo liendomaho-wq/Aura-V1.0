@@ -2,9 +2,9 @@
 
 **Fecha:** 2026-11-08 (UTC)
 **Repositorio:** `liendomaho-wq/Aura-V1.0`
-**Rama de trabajo Arena:** `arena/623642b7-aura-v1-0` (fija para esta sesión)
+**Rama de trabajo:** `fix/vpn-recovery-and-security-closeout` (derivada del HEAD `09876be56b4c1beca4c2ef16a7cd6557e701e7b6` de la PR #10)
 **`main` verificado al inicio:** `77617f32a016608e3869fd7144e153005c9e3b38` — merge de la PR #9
-**Estado:** cambios en la rama de trabajo; no integrados en `main`.
+**Estado:** correcciones adicionales en rama aislada; no integradas en `main`.
 **Dictamen:** **no listo para release**. Las pruebas Python disponibles pasan, y en esta pasada se endureció el manejo de cambios de red. No se pudo ejecutar Flutter, Gradle/JVM, NDK, Codemagic ni una prueba en teléfono; por tanto, no se afirma que este SHA compile Android, que exista un APK verificable o que la VPN transporte tráfico real.
 
 ## 1. Alcance y resumen ejecutivo
@@ -126,3 +126,42 @@ En `docs/RELEASE_AND_DEVICE_VALIDATION.md`:
 5. Ejecutar SecureVault v9→v10 y pruebas de firma AAB/APK con JDK/Android SDK; para distribución, configurar firma de producción en el almacén seguro y verificar certificado/SHA. Nunca publicar un fallback DEBUG.
 
 No se declara que la tarea esté “terminada”, que se haya generado un APK instalable o que Aura VPN esté validada hasta que esas evidencias existan.
+
+
+## Correcciones adicionales de recuperación VPN y política ADB — 2026-11-08
+
+### Recuperación de forwarding sobre la interfaz TUN retenida
+
+Se corrigió el caso que dejaba el servicio sin forwarding después de un handover fallido:
+
+- Se añadió un gate atómico independiente `recoveryRequested` para serializar solicitudes de recuperación y evitar reinicios nativos duplicados.
+- Si el usuario vuelve a activar Aura y Android conserva la interfaz TUN pero el forwarding está detenido, `onStartCommand` solicita recuperación sobre esa misma interfaz en lugar de establecer una segunda TUN.
+- Una notificación posterior de la misma red física también puede volver a solicitar recuperación cuando el forwarding sigue inactivo.
+- El ID de solicitud de inicio se propaga a la recuperación y a su respuesta, para conservar la correlación del canal Flutter.
+- `startRequested` ahora representa el arranque inicial en curso: se libera cuando el inicio o la reanudación concluyen, y tras un fallo de recuperación. El estado activo se determina por `tunnelStarted` y la verificación del worker, no por mantener ese gate ocupado.
+- La recuperación exige que el monitor de red siga registrado y que exista una red física seleccionada; no informa forwarding activo si no puede confirmar el worker y el handshake SOCKS5.
+
+Se añadieron guards estáticos para el gate single-flight, el reintento sobre la misma red, la reactivación explícita con TUN retenida y la liberación de `startRequested`. Los guards no han sido ejecutados en este entorno y no sustituyen los tests JVM ni el handover real en Android.
+
+### Depuración USB como señal informativa
+
+`ADB_ENABLED` se conserva como dato de diagnóstico, pero ya no forma parte de `integrityFailed`. Tener depuración USB activada no demuestra por sí solo que el APK esté manipulado y no debe apagar la VPN de un usuario que utiliza ADB legítimamente. Se mantienen como condiciones de integridad el certificado permitido, la inspección de mapas, la detección de Frida/Gadget y el depurador adjunto en builds no debug. Se añadió un guard estático para evitar que ADB vuelva a convertirse accidentalmente en bloqueo.
+
+### Commits de esta corrección
+
+- `025a4e8`: recuperación single-flight y reintento del forwarding sobre TUN retenida.
+- `1b7e9b7` y `fc6295b`: guards de regresión y corrección de sus patrones.
+- `9a2b7f3`: ADB como señal informativa.
+- `e4c0428`: guard de política ADB.
+
+### Bloqueos que siguen abiertos
+
+- No hay ejecución CI sobre esta rama. La auditoría anterior documenta GitHub Actions deshabilitado; no hay evidencia de que se haya habilitado desde entonces.
+- No se ha ejecutado Codemagic sobre estos commits; no existe APK de este HEAD ni resultado de compilación Android.
+- Los guards Python añadidos/modificados, Flutter analyze/tests, Gradle/JVM, NDK y las pruebas nativas siguen pendientes de ejecución.
+- El vínculo criptográfico entre biometría y clave de SecureVault sigue pendiente. El `BiometricPrompt` actual devuelve éxito de autenticación para desbloquear la interfaz y no usa `CryptoObject`; no se debe presentar como protección biométrica de la clave de cifrado.
+- El pipeline del modelo sigue sin una nueva ejecución verificable ni métricas holdout. No se promocionó el candidato 3.1.0.
+- La cancelación cooperativa/progreso nativo del escáner APK/DEX y la validación del planificador del agente siguen pendientes.
+- El modo de firma de producción, el keystore/credenciales, la verificación de APK/AAB reales y la matriz física en Redmi Note 15 Pro Plus 5G / Android 16 siguen pendientes.
+
+**Dictamen actualizado:** la recuperación manual y automática sobre TUN retenida tiene una corrección de código y guards añadidos, pero no está validada por ejecución. Aura continúa **no lista para release** hasta que CI, Codemagic, firma y pruebas en dispositivo aporten evidencia sobre el SHA exacto.
