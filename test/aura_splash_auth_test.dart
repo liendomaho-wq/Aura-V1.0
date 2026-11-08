@@ -177,9 +177,7 @@ void main() {
       reason: 'Estado real al agotar la espera: $bootText',
     );
     expect(find.text('Hola, soy Aura.'), findsOneWidget);
-    final overview = find.byKey(
-      const ValueKey<String>('aura-overview-scroll'),
-    );
+    final overview = find.byKey(const ValueKey<String>('aura-overview-scroll'));
     expect(overview, findsOneWidget);
     await tester.drag(overview, const Offset(0, -220));
     await tester.pump();

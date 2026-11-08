@@ -984,7 +984,9 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(26),
                                 border: Border.all(
-                                  color: AuraTokens.accent.withValues(alpha: 0.28),
+                                  color: AuraTokens.accent.withValues(
+                                    alpha: 0.28,
+                                  ),
                                 ),
                                 gradient: const LinearGradient(
                                   begin: Alignment.topLeft,
@@ -997,7 +999,9 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AuraTokens.accent.withValues(alpha: 0.07),
+                                    color: AuraTokens.accent.withValues(
+                                      alpha: 0.07,
+                                    ),
                                     blurRadius: 34,
                                     spreadRadius: 2,
                                   ),
@@ -1025,7 +1029,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                                   const SizedBox(width: 16),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'Hola, soy Aura.',
@@ -1090,7 +1095,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                                     icon: Icons.manage_search_rounded,
                                     title: 'Analizar',
                                     subtitle: 'Dispositivo',
-                                    onTap: () => _dispatch('audita dispositivo'),
+                                    onTap: () =>
+                                        _dispatch('audita dispositivo'),
                                   ),
                                   const SizedBox(width: 8),
                                   featureTile(
@@ -1154,7 +1160,12 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                             if (_untrustedAccessibilityPackages.isNotEmpty)
                               Container(
                                 width: double.infinity,
-                                margin: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                                margin: const EdgeInsets.fromLTRB(
+                                  14,
+                                  10,
+                                  14,
+                                  0,
+                                ),
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFF1A1A00),
@@ -1186,8 +1197,11 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                                           child: const Text('ABRIR AJUSTES'),
                                         ),
                                         TextButton(
-                                          onPressed: _refreshAccessibilityServices,
-                                          child: const Text('VERIFICAR DE NUEVO'),
+                                          onPressed:
+                                              _refreshAccessibilityServices,
+                                          child: const Text(
+                                            'VERIFICAR DE NUEVO',
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -1218,17 +1232,23 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                             ? StreamBuilder<AgentEvent>(
                                 stream: AgentController.instance.events,
                                 builder: (context, snapshot) {
-                                  final events = AgentController.instance.history;
+                                  final events =
+                                      AgentController.instance.history;
                                   final explanationCount =
                                       state.explanationHistory.length;
                                   final leadingCardCount =
-                                      (_showCoverageAudit || explanationCount > 0
+                                      (_showCoverageAudit ||
+                                              explanationCount > 0
                                           ? 1
                                           : 0) +
                                       (!_telemetryEndpointConfigured ? 1 : 0);
-                                  _scrollToLatest(events.length + leadingCardCount);
+                                  _scrollToLatest(
+                                    events.length + leadingCardCount,
+                                  );
                                   return ListView(
-                                    key: const ValueKey<String>('aura-event-list'),
+                                    key: const ValueKey<String>(
+                                      'aura-event-list',
+                                    ),
                                     controller: _scrollController,
                                     padding: const EdgeInsets.fromLTRB(
                                       14,
@@ -1241,7 +1261,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                                         _CoverageAuditCard(
                                           isVpnActive: state.isVpnActive,
                                           sniObserved: state.sniObservedEvents,
-                                          encryptedSni: state.encryptedSniEvents,
+                                          encryptedSni:
+                                              state.encryptedSniEvents,
                                           directIp: state.directIpEvents,
                                           blocked: state.blockedEvents,
                                           dgaAlerts: state.dgaAlertEvents,
@@ -1252,14 +1273,18 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                                               state.activeDecisionThreshold,
                                           observedResolvers:
                                               state.observedPublicDnsResolvers,
-                                          autotestStatus: _coverageAutotestStatus,
+                                          autotestStatus:
+                                              _coverageAutotestStatus,
                                           onRunAutotest: _runCoverageAutotest,
                                         )
                                       else if (explanationCount > 0)
                                         _ExplanationCard(
-                                          explanation: state.explanationHistory.last,
-                                          onVerifyIntegrity: _verifyModelIntegrity,
-                                          onReportFalsePositive: _reportFalsePositive,
+                                          explanation:
+                                              state.explanationHistory.last,
+                                          onVerifyIntegrity:
+                                              _verifyModelIntegrity,
+                                          onReportFalsePositive:
+                                              _reportFalsePositive,
                                           onOpenModelCard: _openModelCard,
                                         ),
                                       if (!_telemetryEndpointConfigured)
