@@ -896,7 +896,12 @@ class AuraVpnService : VpnService() {
         val network = underlyingNetwork ?: return false
         if (!protect(socketFd)) return false
         return try {
-            network.bindSocket(socketFd)
+            // Network.bindSocket accepts FileDescriptor, not the raw JNI int.
+            // fromFd duplicates ownership; closing this temporary wrapper must
+            // never close the original socket that the native worker owns.
+            ParcelFileDescriptor.fromFd(socketFd).use { descriptor ->
+                network.bindSocket(descriptor.fileDescriptor)
+            }
             true
         } catch (exception: Exception) {
             Log.w(

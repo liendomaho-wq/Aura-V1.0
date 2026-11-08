@@ -376,8 +376,12 @@ if "private fun protectAndBindSocket(socketFd: Int): Boolean" not in text:
     sys.exit("FAIL: VPN socket protection/binding routine is missing")
 if "if (!protect(socketFd)) return false" not in text:
     sys.exit("FAIL: VPN must protect upstream sockets before binding them")
-if "network.bindSocket(socketFd)" not in text:
+if "network.bindSocket(descriptor.fileDescriptor)" not in text:
     sys.exit("FAIL: VPN upstream sockets are not pinned to the selected physical network")
+if "ParcelFileDescriptor.fromFd(socketFd).use { descriptor ->" not in text:
+    sys.exit("FAIL: binding must duplicate the JNI descriptor and close only its temporary wrapper")
+if "ParcelFileDescriptor.adoptFd(socketFd)" in text or "network.bindSocket(socketFd)" in text:
+    sys.exit("FAIL: binding must neither take ownership of the native socket nor pass an unsupported Int overload")
 if "hev_jni_resolve_host (name" not in native_socks:
     sys.exit("FAIL: Android destination DNS must resolve on the underlying network")
 
