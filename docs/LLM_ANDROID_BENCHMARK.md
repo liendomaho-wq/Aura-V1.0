@@ -48,6 +48,25 @@ Los parámetros se limitan para evitar ejecuciones accidentalmente desbordadas;
 `--timeout` determina el máximo de espera por comando ADB, no garantiza que
 Android haya detenido un proceso nativo tras desconectarse.
 
+Para registrar respuestas reales a cuatro casos sintéticos en español, usar un
+`llama-completion` ARM64 cuya procedencia y hash también se hayan verificado:
+
+```bash
+python3 tool/evaluate_llm_android.py \
+  --serial "$AURA_DEVICE_SERIAL" \
+  --binary "$AURA_LLAMA_COMPLETION_ON_DEVICE" \
+  --binary-sha256 "$AURA_LLAMA_COMPLETION_SHA256" \
+  --model "$AURA_GGUF_ON_DEVICE" \
+  --sha256 "$AURA_GGUF_SHA256"
+```
+
+Esta evaluación ejecuta cuatro procesos individuales con `--offline`, semillas
+fijas y prompts públicos sintéticos; guarda las respuestas en la salida JSON para
+revisión humana. **No ejecuta herramientas**, no valida autorización ni verifica
+memoria conversacional entre turnos. `--offline` por sí solo no demuestra que el
+dispositivo estuviera en modo avión. El formato y los parámetros corresponden
+al ejecutable de llama.cpp y requieren probarse con la revisión compilada.
+
 Repetir con condiciones comparables para Qwen3-1.7B, DeepSeek-R1-Distill-Qwen-1.5B
 y Qwen3-0.6B, sin modificar los controles del modelo actual. Complementar con
 una evaluación separada de calidad en español, instrucciones, llamadas a
