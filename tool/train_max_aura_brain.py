@@ -472,6 +472,33 @@ def read_split(path):
     return rows
 
 
+def synthetic_training_weights(path, expected_rows, synthetic_weight=10.0):
+    """Weight synthetic training examples, never validation or test examples."""
+    if (isinstance(synthetic_weight, bool) or not isinstance(synthetic_weight, (int, float))
+            or not 1.0 <= synthetic_weight <= 20.0):
+        raise ValueError("Synthetic training weight must be between 1 and 20")
+    weights = []
+    with path.open("r", encoding="utf-8", newline="") as stream:
+        reader = csv.DictReader(stream)
+        if reader.fieldnames != ["domain", "label", "source", "license", "retrieved_at"]:
+            raise ValueError("Unexpected training CSV schema")
+        for row in reader:
+            domain = normalize_domain(row["domain"]).encode("idna").decode("ascii")
+            try:
+                expected_domain, expected_label = expected_rows[len(weights)]
+            except IndexError as error:
+                raise ValueError("Training rows changed during weight calculation") from error
+            if domain != expected_domain or row["label"] != str(expected_label):
+                raise ValueError("Training rows changed during weight calculation")
+            synthetic = row["source"] == "synthetic-typosquat"
+            if synthetic and expected_label != 1:
+                raise ValueError("Synthetic typosquat training row must be labelled as synthetic threat")
+            weights.append(float(synthetic_weight) if synthetic else 1.0)
+    if len(weights) != len(expected_rows) or not any(weight > 1.0 for weight in weights):
+        raise ValueError("Training weights require matching synthetic training examples")
+    return weights
+
+
 def validate_split_integrity(train_rows, val_rows, test_rows, adversarial_rows,
                              adversarial_validation_rows=None):
     """Reject duplicate hosts and registrable-group leakage before fitting.
@@ -764,6 +791,9 @@ def train_mobile_preset():
         [extract_maximum_features(domain) for domain, _ in train_rows]
     )
     training_labels = np.asarray([label for _, label in train_rows], dtype=np.int64)
+    # The synthetic portion is small relative to real data. This experimental
+    # weighting is training-only; validation and held-out gates stay unchanged.
+    training_weights = synthetic_training_weights(DATASET_DIR / "splits/train_adversarial.csv", train_rows)
     # Only unsigned candidates are produced. Smaller configurations are
     # experiments if the existing preset exceeds the size limit; they must
     # still pass the same held-out and adversarial gate before acceptance.
@@ -785,7 +815,7 @@ def train_mobile_preset():
             class_weight="balanced_subsample",
         )
         training_started = time.perf_counter()
-        forest.fit(training_features, training_labels)
+        forest.fit(training_features, training_labels, sample_weight=training_weights)
         training_seconds = time.perf_counter() - training_started
         model = {
             "model_name": "Aura Lexical Threat Forest",
@@ -804,6 +834,7 @@ def train_mobile_preset():
                 "n_jobs": -1,
                 "random_state": 42,
                 "class_weight": "balanced_subsample",
+                "synthetic_training_sample_weight": 10.0,
             },
             "feature_order": FEATURE_ORDER,
             "classes": {"0": "safe", "1": "threat"},
@@ -926,6 +957,7 @@ def train_mobile_preset():
             "n_jobs": -1,
             "random_state": 42,
             "class_weight": "balanced_subsample",
+            "synthetic_training_sample_weight": 10.0,
             "feature_order": FEATURE_ORDER,
             "threshold_precision_decimals": 4,
             "decision_threshold": decision_threshold,

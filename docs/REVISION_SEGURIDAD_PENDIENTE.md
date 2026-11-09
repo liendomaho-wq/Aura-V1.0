@@ -104,10 +104,11 @@ modelo empaquetado ni evidencia de rendimiento del modelo actualmente distribuid
 No bajarlo a producción ni cambiar el umbral usando el conjunto de prueba como
 entrenamiento. [Ejecución CI](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42645121856).
 
-Se prepara una calibración experimental con ejemplos sintéticos procedentes solo
-de grupos de validación, separados de entrenamiento y pruebas, y sin modificar
-los umbrales del gate ni el asset empaquetado. Sus resultados reales están
-pendientes. Las variantes sintéticas no son evidencia de phishing real. Además,
+La calibración experimental con ejemplos sintéticos de grupos separados de
+validación no mejoró el recall adversarial del candidato en CI `ba0ae2c`: siguió
+en 0,0236 y fue rechazado. Se prepara otro ensayo que pondera los ejemplos
+sintéticos únicamente durante el entrenamiento; sus resultados están pendientes.
+Ningún ensayo modifica los umbrales del gate ni el asset empaquetado. Las variantes sintéticas no son evidencia de phishing real. Además,
 como resultados anteriores de este test se usaron para orientar el desarrollo,
 se necesita una evaluación externa y temporalmente independiente antes de
 considerar cualquier candidato para producción.

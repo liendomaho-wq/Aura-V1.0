@@ -4,6 +4,7 @@ import pytest
 
 from tool.train_max_aura_brain import (
     choose_robust_validation_threshold,
+    synthetic_training_weights,
     validate_split_integrity,
 )
 
@@ -21,6 +22,22 @@ def test_calibration_uses_validation_constraints_and_improves_adversarial_recall
 def test_calibration_rejects_when_no_valid_threshold_exists():
     with pytest.raises(ValueError, match="No validation threshold"):
         choose_robust_validation_threshold([0.8, 0.1], [0, 1], [0.8, 0.1], [0, 1])
+
+
+def test_training_weights_only_apply_to_declared_synthetic_training_rows(tmp_path):
+    path = tmp_path / "train.csv"
+    path.write_text(
+        "domain,label,source,license,retrieved_at\n"
+        "real.example,0,real,license,date\n"
+        "typo.example,1,synthetic-typosquat,CC0,date\n",
+        encoding="utf-8",
+    )
+    assert synthetic_training_weights(path, [("real.example", 0), ("typo.example", 1)]) == [1.0, 10.0]
+    with pytest.raises(ValueError, match="changed"):
+        synthetic_training_weights(path, [("real.example", 0), ("different.example", 1)])
+    path.write_text(path.read_text().replace("typo.example,1,", "typo.example,0,"))
+    with pytest.raises(ValueError, match="labelled"):
+        synthetic_training_weights(path, [("real.example", 0), ("typo.example", 0)])
 
 
 def test_adversarial_validation_cannot_share_test_or_train_groups():
