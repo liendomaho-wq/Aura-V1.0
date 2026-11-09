@@ -15,7 +15,7 @@ class MobileSizeDiagnosticTest(unittest.TestCase):
                           if isinstance(node, ast.Assign)
                           and any(isinstance(target, ast.Name) and target.id == "configurations"
                                   for target in node.targets))
-        self.assertEqual(ast.literal_eval(assignment.value), [(10, 512), (8, 512)])
+        self.assertEqual(ast.literal_eval(assignment.value), [(10, 512), (8, 512), (7, 512)])
         self.assertTrue(any(isinstance(node, ast.Call)
                             and isinstance(node.func, ast.Name)
                             and node.func.id == "enforce_candidate_quality_gate"

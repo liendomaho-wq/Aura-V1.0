@@ -718,10 +718,10 @@ def train_mobile_preset():
         [extract_maximum_features(domain) for domain, _ in train_rows]
     )
     training_labels = np.asarray([label for _, label in train_rows], dtype=np.int64)
-    # Only unsigned candidates are produced. The second configuration is an
-    # experiment if the existing preset exceeds the size limit; it must still
-    # pass the same held-out and adversarial quality gate before acceptance.
-    configurations = [(10, 512), (8, 512)]
+    # Only unsigned candidates are produced. Smaller configurations are
+    # experiments if the existing preset exceeds the size limit; they must
+    # still pass the same held-out and adversarial gate before acceptance.
+    configurations = [(10, 512), (8, 512), (7, 512)]
     trials = []
     selected = None
     for max_depth, min_samples_leaf in configurations:
