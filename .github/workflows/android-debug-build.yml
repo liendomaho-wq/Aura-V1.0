@@ -100,6 +100,9 @@ jobs:
           print("No failed test XML exists; inspect the preceding setup/compiler/emulator failure.")
           PYTHON
 
+      - name: Test JNI export verification with host ELF fixtures
+        run: python3 tool/ci_run.py python3 tool/check_apk_jni.py
+
       - name: Compile isolated migration APKs (not a Keystore execution result)
         working-directory: android
         env:
@@ -142,6 +145,9 @@ jobs:
           PYTHON
           (cd build/app/outputs/flutter-apk && sha256sum app-debug.apk | tee SHA256SUMS)
           printf '::notice title=Debug APK SHA-256::%s\n' "$(cat build/app/outputs/flutter-apk/SHA256SUMS)"
+
+      - name: Verify packaged JNI exports for every ABI
+        run: python3 tool/ci_run.py python3 tool/verify_apk_jni.py build/app/outputs/flutter-apk/app-debug.apk
 
       - name: Upload debug APK and exact source identity
         uses: actions/upload-artifact@v4
