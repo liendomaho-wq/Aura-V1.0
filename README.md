@@ -233,3 +233,55 @@ componentes de terceros. Los cambios deben preservar datos y formatos, aportar
 pruebas sin debilitar aserciones y no atribuir funciones o métricas no verificadas.
 No integrar una segunda implementación de proxy sin reconciliar autenticación,
 framing, recursos, JNI y rutas del túnel existente.
+
+---
+
+## Evaluación independiente por otra IA
+
+Esta sección permite entregar el repositorio a otro asistente de IA para obtener una segunda opinión técnica. **No debe tratar este README como prueba suficiente de que las funciones funcionan**: debe inspeccionar el código, los tests, los workflows y las evidencias vinculadas al SHA que esté revisando.
+
+### Instrucciones para el revisor
+
+Actúa como auditor senior independiente de Android, Flutter/Dart, Kotlin, C/C++/JNI, ciberseguridad móvil, IA local y CI/CD. Evalúa Aura con criterio crítico, sin intentar complacer al equipo que la desarrolló.
+
+1. Identifica el repositorio, la rama y el SHA exacto revisado. Comprueba si el árbol o la rama contienen cambios posteriores a los documentos de auditoría.
+2. Lee este README, `AURA_FINAL_AUDIT.md`, `SECURITY.md`, los documentos de `docs/`, los perfiles/reglas de agentes que existan y los workflows. Después contrasta cada afirmación importante con los archivos fuente y pruebas reales.
+3. Revisa las PR abiertas y sus ramas por separado. No atribuyas a `main` cambios que solo existen en una PR. Consulta sus checks y SHA actuales; un check de otro commit no valida el commit que estás revisando.
+4. Distingue evidencia de código, tests unitarios, tests de integración, compilación, artefactos, ejecución en dispositivo y validación de producción. Usa `PASS`, `FAIL`, `NOT RUN` y `NOT VERIFIED`; no conviertas una prueba omitida o no reproducida en éxito.
+5. Comprueba las limitaciones de Android sin root: visibilidad de otras apps, permisos, restricciones de UID, VPN/TUN, DNS, IPv4/IPv6, TLS/SNI/ECH, DoH/QUIC, ciclo de vida y handover de red.
+6. Audita biometría y Android Keystore, SecureVault y sus migraciones, gestión de claves y secretos, archivos temporales SOCKS5, JNI, namespaces, dependencias nativas, modelo firmado y actualizaciones.
+7. Evalúa si la IA está descrita con honestidad: distingue parser por reglas, heurísticas y clasificador ML de un LLM o agente generativo. No atribuyas capacidades no implementadas.
+8. Comprueba compatibilidad de Flutter/Dart, JDK, Gradle, AGP, Kotlin, SDK/NDK, ABI, alineación de páginas de 16 KiB y reproducibilidad de CI/CodeMagic.
+9. Comprueba permisos y requisitos de distribución para el target SDK vigente. No afirmes aprobación de Google Play sin evidencia.
+10. Busca fallos de seguridad, pérdida de datos, regresiones, deuda técnica, tests frágiles, documentación desactualizada y discrepancias entre documentación y código.
+
+### Contexto de auditoría que debe tratarse como histórico
+
+- La auditoría de Julie identificó biometría sin `BiometricPrompt.CryptoObject`, coexistencia de namespaces, resolución incompleta de UID TCP, exposición de payloads en Strings, permisos que requieren justificación, YAML temporal SOCKS5 y dependencia de una ruta/version NDK fija. Su SHA auditado fue `11d50fbc6944b00496499182b3b61e92c2259a31`.
+- Julie marcó concurrencia VPN y bypass DNS/IPv6 como descartados por checks estáticos; **no interpretes esos checks como prueba física de ausencia de fugas o carreras**. El handover físico quedó pendiente.
+- El fallo de CodeMagic comunicado por el propietario fue un timeout de 10 segundos descargando `gradle-8.14.3-all.zip` (`SocketTimeoutException: Read timed out`). La PR #15 propone elevar `networkTimeout` a 120000 ms y preparar la instalación del NDK 28.2.13676358. Revisa el estado y CI actuales de esa PR; no afirmes que CodeMagic ya pasó sin un build real.
+- Las PRs abiertas, sus ramas y sus checks pueden cambiar. Consulta GitHub en el momento de la auditoría. No asumas que una PR está fusionada ni que su contenido forma parte de `main`.
+
+### Formato obligatorio del dictamen
+
+Entrega un informe con estas secciones:
+
+1. **Identidad revisada:** repositorio, rama, SHA y fecha.
+2. **Resumen ejecutivo:** estado real del proyecto y principales riesgos.
+3. **Hallazgos críticos/altos/medios/bajos:** evidencia exacta (archivo, símbolo y líneas actuales), impacto, reproducibilidad y recomendación.
+4. **Afirmaciones del README verificadas/no verificadas:** tabla con evidencia y discrepancias.
+5. **Seguridad Android y privacidad:** Keystore, biometría, Vault, permisos, datos, red y límites de no-root.
+6. **VPN y red:** arquitectura, forwarding real, DNS, IPv4/IPv6, UID, handover, fugas y pruebas pendientes.
+7. **IA:** capacidades reales, modelo, autenticidad, evaluación, falsos positivos/negativos y límites.
+8. **Build y distribución:** toolchain, CodeMagic, CI, APK/AAB, firmas, ABI y Play policy.
+9. **Plan priorizado:** P0/P1/P2, dependencias, archivos, dificultad, riesgos y criterios de aceptación.
+10. **Pruebas faltantes:** separar las ejecutables en CI de las que requieren el teléfono físico.
+11. **Dictamen final:** qué está listo, qué no está listo y qué no puede concluirse con la evidencia disponible.
+
+Para cada hallazgo cita rutas y líneas del SHA inspeccionado. Si no puedes inspeccionar una parte, dilo explícitamente. No inventes resultados, métricas, commits, archivos, enlaces ni pruebas.
+
+### Restricciones para el revisor
+
+Esta es una solicitud de **opinión y auditoría**, no una autorización para cambiar el repositorio. No edites archivos, no crees commits/ramas/PRs, no ejecutes merges, no cambies secretos, claves, permisos o workflows y no actives servicios de pago. Presenta primero el dictamen y espera autorización antes de proponer modificaciones.
+
+**Pregunta central:** ¿Qué falta realmente para que Aura sea una aplicación Android de ciberdefensa segura, funcional, verificable y apta para distribución, y qué afirmaciones actuales no están suficientemente demostradas?
