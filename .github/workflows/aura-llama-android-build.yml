@@ -37,13 +37,18 @@ jobs:
           path: third_party/llama.cpp
           persist-credentials: false
 
-      - name: Install Android SDK and NDK
-        uses: android-actions/setup-android@v3
+      - name: Locate preinstalled Android SDK tools
+        run: |
+          test -n "$ANDROID_HOME"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          test -x "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
 
       - name: Install pinned Android NDK and CMake
         run: |
-          yes | sdkmanager --licenses >/dev/null
-          sdkmanager "ndk;28.2.13676358" "cmake;3.31.6"
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --install "ndk;28.2.13676358" "cmake;3.31.6"
           echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
           echo "$ANDROID_HOME/cmake/3.31.6/bin" >> "$GITHUB_PATH"
 
