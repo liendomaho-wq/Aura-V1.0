@@ -45,6 +45,9 @@ class LlmToolProposal {
       return null;
     }
     if (AuraToolExecutionPolicy.validate(tool, arguments) != null) return null;
-    return LlmToolProposal._(tool, Map<String, dynamic>.unmodifiable(arguments));
+    return LlmToolProposal._(
+      tool,
+      Map<String, dynamic>.unmodifiable(arguments),
+    );
   }
 }
