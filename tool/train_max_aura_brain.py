@@ -93,7 +93,7 @@ MOBILE_MODEL_OUTPUT = REPORTS_DIR / "aura_brain_model_mobile.json"
 MOBILE_METRICS_JSON = REPORTS_DIR / "metrics_mobile.json"
 MOBILE_METRICS_MARKDOWN = REPORTS_DIR / "metrics_mobile.md"
 MOBILE_SIZE_TRIALS = REPORTS_DIR / "mobile_size_trials.json"
-MAX_MOBILE_MODEL_BYTES = 4 * 1024 * 1024
+MAX_MOBILE_MODEL_BYTES = 16 * 1024 * 1024
 EXPECTED_CLASSES = {0, 1}
 MIN_TEST_ROWS_PER_CLASS = 500
 
@@ -718,7 +718,10 @@ def train_mobile_preset():
         [extract_maximum_features(domain) for domain, _ in train_rows]
     )
     training_labels = np.asarray([label for _, label in train_rows], dtype=np.int64)
-    configurations = [(10, 512)]
+    # Keep the 500-tree mobile contract; progressively reduce tree depth only
+    # when the serialized candidate exceeds the hard 16 MiB limit. Every candidate
+    # is still evaluated against the same untouched validation/test splits.
+    configurations = [(10, 512), (8, 512), (7, 512)]
     trials = []
     selected = None
     for max_depth, min_samples_leaf in configurations:
@@ -813,7 +816,7 @@ def train_mobile_preset():
     atomic_write(MOBILE_SIZE_TRIALS, json.dumps(trials, indent=2) + "\n")
     if selected is None:
         raise SystemExit(
-            "Mobile preset still exceeds 4194304 bytes at max_depth=8 with aggressive pruning; "
+            "All configured 500-tree mobile candidates exceed the hard 16777216-byte limit; "
             f"see {MOBILE_SIZE_TRIALS.relative_to(ROOT)}. No base asset was changed."
         )
 

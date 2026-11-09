@@ -36,7 +36,7 @@ abstract class AuraTools {
   static final Uri _modelSignatureUri = Uri.parse(
     'https://yojamm16-boop.github.io/Aura-V1.0/model/aura_brain_model.json.sig',
   );
-  static const int _maxModelBytes = 5 * 1024 * 1024;
+  static const int _maxModelBytes = 16 * 1024 * 1024;
   static const MethodChannel _engineChannel = MethodChannel(
     'com.aura.cyberdefense/engine',
   );

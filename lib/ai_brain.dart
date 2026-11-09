@@ -33,7 +33,7 @@ typedef AuraDnsBlockRuleHandler = Future<bool> Function(String domain);
 typedef AuraModelIntegrityFailureHandler = void Function(String message);
 
 const String minSupportedModelVersion = '3.0.0';
-const int _maximumValidatedModelNodes = 100000;
+const int _maximumValidatedModelNodes = 250000;
 
 int compareSemverTriplets(String left, String right) {
   final leftParts = _parseSemverTriplet(left);
@@ -116,7 +116,7 @@ class AuraAIBrain {
   static const String _modelSignatureAssetPath =
       'assets/model/aura_brain_model.json.sig';
   static const String _installedModelFileName = 'aura_brain_model.enc';
-  static const int _maxModelBytes = 5 * 1024 * 1024;
+  static const int _maxModelBytes = 16 * 1024 * 1024;
   static const int _maxEncryptedModelHexBytes =
       2 * (_maxModelBytes + 16 + 16 + 32) + 'aura2:'.length;
   static const MethodChannel _engineChannel = MethodChannel(

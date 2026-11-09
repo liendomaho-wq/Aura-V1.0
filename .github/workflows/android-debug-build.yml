@@ -161,19 +161,12 @@ jobs:
     name: Real Android Keystore migration (not a JVM substitute)
     needs: android-debug
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-
-      - name: Require unprivileged emulator acceleration
-        run: |
-          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
-            echo '::error title=Android emulator blocked::This runner has no unprivileged KVM access. Provide a KVM-enabled runner; no root/device bypass is used.'
-            exit 1
-          fi
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -207,7 +200,8 @@ jobs:
           api-level: 36
           target: google_apis
           arch: x86_64
-          disable-linux-hw-accel: false
+          # GitHub standard Linux runners may not expose /dev/kvm. Use QEMU software acceleration instead of skipping the real Keystore instrumentation test.
+          disable-linux-hw-accel: true
           working-directory: android
           script: python3 ../tool/ci_run.py ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest --no-daemon
 
