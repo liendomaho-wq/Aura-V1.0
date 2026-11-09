@@ -100,6 +100,12 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
         linux_workflow = self.codemagic.split("  android-keystore-instrumented:", 1)[1]
 
         self.assertNotIn(":app:connectedStorageMigrationAndroidTest", mac_workflow)
+        self.assertIn("[AURA-VALIDATION][NOT RUN]", mac_workflow)
+        self.assertIn('rootProject.buildDir = "../build"',
+                      (ROOT / "android/build.gradle").read_text(encoding="utf-8"))
+        self.assertIn("test_report: build/app/outputs/androidTest-results/connected/**/*.xml", linux_workflow)
+        self.assertIn("- build/app/outputs/androidTest-results/connected/**/*.xml", linux_workflow)
+        self.assertNotIn("android/app/build/outputs/androidTest-results", linux_workflow)
         self.assertIn("instance_type: linux_x2", linux_workflow)
         self.assertIn('export ANDROID_SERIAL="emulator-5554"', linux_workflow)
         self.assertIn("-avd emulator-36", linux_workflow)
