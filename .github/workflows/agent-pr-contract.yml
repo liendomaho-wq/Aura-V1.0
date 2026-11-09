@@ -1,0 +1,38 @@
+name: Agent PR contract
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  agent-pr-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require evidence sections in agent PR
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+
+          body = os.environ.get("PR_BODY") or ""
+          required = [
+              "## Objetivo",
+              "## Alcance y archivos",
+              "## Evidencia",
+              "## Seguridad y riesgos",
+              "## Estado honesto",
+          ]
+          missing = [section for section in required if section not in body]
+          if missing:
+              print("Faltan secciones obligatorias en la descripción de la PR:")
+              for section in missing:
+                  print(f"- {section}")
+              sys.exit(1)
+          print("Contrato documental de PR de agente: PASS")
+          PY
