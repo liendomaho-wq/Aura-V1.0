@@ -57,6 +57,12 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
             'assertFalse(rawDataPreferences().contains(prefixedSecretKey + "_BACKUP"));',
             self.source,
         )
+        self.assertIn("Legacy ESP fixture must be readable before migration", self.source)
+        self.assertIn("Legacy ESP key must not be present in plaintext", self.source)
+        self.assertLess(
+            self.source.index("Legacy ESP fixture must be readable before migration"),
+            self.source.index("public void migratesRealVersion9EncryptedPreferencesAndPreservesSecret"),
+        )
         self.assertIn("initialized.await(30, TimeUnit.SECONDS)", self.source)
         self.assertIn("if (failure.get() != null) throw failure.get();", self.source)
         self.assertNotIn("@Ignore", self.source)

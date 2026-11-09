@@ -65,6 +65,13 @@ public class SecureStorageMigrationTest {
         // v10 still uses the default ESP master-key alias. The separate application
         // ID/UID isolates that Keystore alias too; namespace alone would not.
         seedVersion9EncryptedSharedPreferences();
+        // Verify the legacy fixture before v10 initialization touches storage.
+        // ESP encrypts preference keys as well as values, so the raw preferences
+        // must not contain the plaintext prefixed key.
+        assertEquals("Legacy ESP fixture must be readable before migration",
+                LEGACY_VALUE, legacyPreferences().getString(prefixedSecretKey, null));
+        assertFalse("Legacy ESP key must not be present in plaintext",
+                rawDataPreferences().contains(prefixedSecretKey));
     }
 
     @Test
