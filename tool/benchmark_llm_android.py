@@ -76,6 +76,8 @@ def run_benchmark(args: argparse.Namespace) -> dict:
     output = adb_shell(args.serial, command, args.timeout)
     if digest_on_device(args.serial, model, args.timeout) != actual_digest:
         raise ValueError("Model changed during benchmarking; results discarded")
+    if digest_on_device(args.serial, binary, args.timeout) != binary_digest:
+        raise ValueError("Binary changed during benchmarking; results discarded")
     measurements = json.loads(output)
     if not isinstance(measurements, list) or not measurements:
         raise ValueError("llama-bench did not return a nonempty JSON measurement list")

@@ -41,8 +41,9 @@ python3 tool/benchmark_llm_android.py \
 ```
 
 El comando rechaza un hash erróneo, rutas no absolutas, ABI distinta de ARM64,
-resultados no válidos y fallos ADB. Comprueba de nuevo el hash del modelo tras
-la medición. El resultado JSON incluye versión API, ABI, tamaño y hash del
+resultados no válidos y fallos ADB. Comprueba de nuevo los hashes del modelo y
+del ejecutable tras la medición; esto no evita sustituciones temporales entre
+comprobaciones ni verifica bibliotecas dinámicas. El resultado JSON incluye versión API, ABI, tamaño y hash del
 modelo, hash del ejecutable y mediciones producidas por `llama-bench`.
 Los parámetros se limitan para evitar ejecuciones accidentalmente desbordadas;
 `--timeout` determina el máximo de espera por comando ADB, no garantiza que

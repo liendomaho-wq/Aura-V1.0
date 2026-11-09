@@ -49,7 +49,7 @@ class BenchmarkAndroidTests(unittest.TestCase):
 
     def test_valid_result_records_real_measurement_fields(self):
         values = ["arm64-v8a", "36", "a" * 64 + "  model", "b" * 64 + "  binary",
-                  "123456", json.dumps([{"avg_ts": 7.5, "n_gen": 128}]), "a" * 64 + "  model"]
+                  "123456", json.dumps([{"avg_ts": 7.5, "n_gen": 128}]), "a" * 64 + "  model", "b" * 64 + "  binary"]
         with patch("benchmark_llm_android.adb_shell", side_effect=values) as shell:
             result = run_benchmark(self.args)
             self.assertEqual(result["benchmark"][0]["avg_ts"], 7.5)
@@ -64,10 +64,17 @@ class BenchmarkAndroidTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "changed during"):
                 run_benchmark(self.args)
 
+    def test_changed_binary_discards_results(self):
+        values = ["arm64-v8a", "36", "a" * 64 + "  model", "b" * 64 + "  binary",
+                  "123456", '[{"avg_ts": 7.5}]', "a" * 64 + "  model", "c" * 64 + "  binary"]
+        with patch("benchmark_llm_android.adb_shell", side_effect=values):
+            with self.assertRaisesRegex(ValueError, "Binary changed during"):
+                run_benchmark(self.args)
+
     def test_malformed_and_nonfinite_measurements_fail(self):
         for output in ("not json", "[]", '[{"avg_ts": NaN}]', '[{"avg_ts": 0}]'):
             values = ["arm64-v8a", "36", "a" * 64 + "  model", "b" * 64 + "  binary",
-                      "123456", output, "a" * 64 + "  model"]
+                      "123456", output, "a" * 64 + "  model", "b" * 64 + "  binary"]
             with self.subTest(output=output), patch("benchmark_llm_android.adb_shell", side_effect=values):
                 with self.assertRaises(ValueError):
                     run_benchmark(self.args)

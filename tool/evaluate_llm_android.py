@@ -51,6 +51,8 @@ def evaluate(args: argparse.Namespace) -> dict:
                       "assessment": "NOT VERIFIED — requires human review"})
     if bench.digest_on_device(args.serial, model, args.timeout) != args.sha256.lower():
         raise ValueError("Model changed during evaluation; results discarded")
+    if bench.digest_on_device(args.serial, binary, args.timeout) != args.binary_sha256.lower():
+        raise ValueError("Binary changed during evaluation; results discarded")
     return {
         "android_api": int(api), "abi": abi, "model_sha256": args.sha256.lower(),
         "binary_sha256": args.binary_sha256.lower(), "cases": cases,

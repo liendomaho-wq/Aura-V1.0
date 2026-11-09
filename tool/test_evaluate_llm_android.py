@@ -15,7 +15,7 @@ class EvaluateAndroidTests(unittest.TestCase):
 
     def values(self, answers=None):
         return ["arm64-v8a", "36", "a" * 64 + " model", "b" * 64 + " binary",
-                *(answers or ["Respuesta de prueba"] * len(CASES)), "a" * 64 + " model"]
+                *(answers or ["Respuesta de prueba"] * len(CASES)), "a" * 64 + " model", "b" * 64 + " binary"]
 
     def test_records_answers_without_claiming_tool_execution(self):
         with patch("benchmark_llm_android.adb_shell", side_effect=self.values()) as shell:
@@ -43,9 +43,16 @@ class EvaluateAndroidTests(unittest.TestCase):
 
     def test_model_change_discards_results(self):
         values = self.values()
-        values[-1] = "c" * 64 + " model"
+        values[-2] = "c" * 64 + " model"
         with patch("benchmark_llm_android.adb_shell", side_effect=values):
             with self.assertRaisesRegex(ValueError, "changed during"):
+                evaluate(self.args)
+
+    def test_binary_change_discards_results(self):
+        values = self.values()
+        values[-1] = "c" * 64 + " binary"
+        with patch("benchmark_llm_android.adb_shell", side_effect=values):
+            with self.assertRaisesRegex(ValueError, "Binary changed during"):
                 evaluate(self.args)
 
     def test_rejects_unsupported_device_and_excess_tokens(self):
