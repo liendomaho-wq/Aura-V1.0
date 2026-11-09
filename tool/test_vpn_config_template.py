@@ -390,8 +390,10 @@ print("PASS: ephemeral RFC 1929 SOCKS5 auth, native secret cleanup, socket prote
 # Secure-storage upgrade must preserve v9 secrets while migrating to authenticated encryption.
 PUBSPEC = Path("pubspec.yaml").read_text(encoding="utf-8")
 VAULT = Path("lib/secure_vault.dart").read_text(encoding="utf-8")
-if not re.search(r"^\s*flutter_secure_storage:\s*\^10\.3\.4\s*$", PUBSPEC, re.MULTILINE):
-    sys.exit("FAIL: secure storage must stay on the v10 migration bridge until legacy data is verified")
+# 10.3.2–10.3.4 have an upstream ESP + migrateWithBackup regression (#1293).
+# Keep the exact 10.3.1 migration bridge until a fixed release is verified on Android.
+if not re.search(r"^\s*flutter_secure_storage:\s*10\.3\.1\s*$", PUBSPEC, re.MULTILINE):
+    sys.exit("FAIL: pin the verified v10.3.1 migration bridge until upstream ESP recovery is fixed")
 options_match = re.search(
     r"static const AndroidOptions _androidOptions = AndroidOptions\((.*?)\);",
     VAULT,
