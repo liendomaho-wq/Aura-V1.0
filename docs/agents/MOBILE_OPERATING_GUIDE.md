@@ -3,13 +3,14 @@
 ## Objetivo
 Permitir que el propietario dirija seis especialidades de Aura usando un navegador móvil y GitHub como registro compartido, sin depender de una computadora.
 
-## Preparación
-1. Abrir el repositorio en github.com desde el navegador.
-2. Abrir la carpeta `agents/roles/` y elegir el perfil correspondiente.
-3. Copiar el perfil y la tarea concreta al agente de IA que se esté usando en navegador.
-4. Entregar al agente el enlace del repositorio y pedirle que trabaje en una rama independiente.
-5. Exigir una PR hacia `main` con diff, pruebas, SHA y límites.
-6. Compartir el enlace de la PR aquí para revisión final.
+## Preparación con agentes conectados
+1. Conectar Jules a GitHub y autorizar únicamente `liendomaho-wq/Aura-V1.0`.
+2. Abrir Jules desde el navegador del teléfono y crear tareas usando los seis perfiles de `agents/roles/`.
+3. Ejecutar hasta tres tareas simultáneas por oleada; completar las otras tres en la siguiente oleada para respetar el nivel gratuito documentado.
+4. Cada tarea debe trabajar en una rama separada y entregar una PR hacia `main`; nunca aceptar auto-merge.
+5. Instalar CodeRabbit en el repositorio público para una revisión automatizada adicional de cada PR.
+6. Compartir los enlaces de las PR aquí para la auditoría final de ChatGPT.
+7. Consultar `PROVIDER_SETUP.md` para pasos y límites.
 
 ## Plantilla breve para iniciar un agente
 Copia el siguiente texto y completa los campos:
