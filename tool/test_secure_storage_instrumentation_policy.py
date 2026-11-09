@@ -107,7 +107,7 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
         # runs the same real Android Keystore instrumentation test; it is not skipped.
         self.assertIn("disable-linux-hw-accel: true", self.workflow)
         self.assertNotIn("Require unprivileged emulator acceleration", self.workflow)
-        self.assertIn("exit 1", self.workflow)
+        self.assertIn("raise SystemExit(1)", self.workflow)
 
 
 if __name__ == "__main__":
