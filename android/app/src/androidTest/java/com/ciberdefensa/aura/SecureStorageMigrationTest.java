@@ -99,6 +99,11 @@ public class SecureStorageMigrationTest {
                 new FlutterSecureStorageConfig(options));
         assertEquals("Diagnostic must preserve the v9 value", LEGACY_VALUE,
                 storage.read(prefixedSecretKey));
+        assertFalse("Reading via fallback is not a completed migration",
+                legacyPreferences().contains(prefixedSecretKey));
+        String migratedCiphertext = rawDataPreferences().getString(prefixedSecretKey, null);
+        assertNotNull(migratedCiphertext);
+        assertNotEquals(LEGACY_VALUE, migratedCiphertext);
     }
 
     @Test
