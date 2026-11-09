@@ -174,10 +174,26 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Require unprivileged emulator acceleration
+      - name: Enable documented KVM permissions on ephemeral GitHub runner
         run: |
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo '::error title=Android emulator blocked::GitHub runner does not expose /dev/kvm.'
+            exit 1
+          fi
+          echo "KVM device before permission setup:"
+          ls -l /dev/kvm
+          id
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          echo "KVM device after permission setup:"
+          ls -l /dev/kvm
+      - name: Require usable Android emulator acceleration
+        run: |
+          set -euo pipefail
           if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
-            echo '::error title=Android emulator blocked::This runner has no unprivileged KVM access. Provide a KVM-enabled runner; no root/device bypass is used.'
+            echo '::error title=Android emulator blocked::KVM device exists but remains inaccessible after the documented GitHub runner permission setup.'
             exit 1
           fi
 
