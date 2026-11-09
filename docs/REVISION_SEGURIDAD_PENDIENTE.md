@@ -37,18 +37,20 @@ invalidez de clave y migración con datos previos; registrar límites de hardwar
 El [issue upstream #1293](https://github.com/juliansteenbakker/flutter_secure_storage/issues/1293)
 describe el mismo patrón de lectura `null` en 10.3.4 con backup y un reporte
 independiente adicional: escribir una entrada nueva antes de recuperar las
-entradas ESP puede impedir la migración posterior normal de esas entradas. Ese
-resultado adicional **no se ha reproducido en Aura**, pero es importante porque
-`AuraSecureVault` genera claves nuevas cuando una lectura devuelve `null`.
-No interpretar `null` como prueba de instalación nueva ni afirmar que la
-recuperación está garantizada tras escrituras. No borrar preferencias, degradar
-versiones ni cambiar flags en instalaciones reales como solución improvisada.
+entradas ESP puede impedir la migración posterior normal de esas entradas. En
+el fixture aislado de Aura en Android 16 (CI `5c6b4ac`), tras una lectura `null`
+y una escritura nueva, `EncryptedSharedPreferences.getAll()` falló con
+`SecurityException: Could not decrypt key`. Esto reproduce el obstáculo de
+enumeración, no una pérdida irreversible ni todos los escenarios de recuperación.
+Es relevante porque `AuraSecureVault` genera claves nuevas cuando una lectura
+devuelve `null`. No interpretar `null` como prueba de instalación nueva ni
+afirmar que la recuperación está garantizada tras escrituras. No borrar
+preferencias, degradar versiones ni cambiar flags en instalaciones reales como
+solución improvisada.
 
-En CI, el control aislado sin backup leyó el secreto, pero esa primera prueba
-no distinguía lectura por fallback de migración completa. Se reforzó en el
-commit `bc801b5` para comprobar también la retirada de la entrada ESP y la
-presencia del valor cifrado nuevo; el resultado está pendiente de CI. Un pase
-de este control tampoco demuestra seguridad frente a interrupciones ni autoriza
+En CI `bc801b5` y `5c6b4ac`, el control aislado sin backup leyó el secreto,
+comprobó la retirada de la entrada ESP y la presencia del valor cifrado nuevo.
+Un pase de este control tampoco demuestra seguridad frente a interrupciones ni autoriza
 usar `migrateWithBackup: false` en producción. Es necesario diseñar una
 recuperación no destructiva, incluida la coexistencia de datos antiguos y nuevos,
 con pruebas de interrupción y revisión explícita antes de modificar el vault.
@@ -91,6 +93,16 @@ registra otros métodos dinámicamente con `RegisterNatives` en `JNI_OnLoad`.
 Cambiar paquetes sin coordinar clases, registro, callbacks y símbolos puede
 romper la carga. No se ha probado `UnsatisfiedLinkError` en esta revisión.
 Verificar ABI y ejecutar las llamadas JNI en dispositivo antes de unificar.
+
+## Candidato móvil más pequeño — RECHAZADO
+
+En CI `5c6b4ac`, las profundidades 10 y 8 produjeron 7.128.733 y
+4.860.577 bytes respectivamente, superiores al límite de 4.194.304. La
+profundidad 7 produjo 3.549.565 bytes pero fue rechazada por el gate: recall
+adversarial 0,0236 frente al mínimo 0,60. Es un candidato experimental, no el
+modelo empaquetado ni evidencia de rendimiento del modelo actualmente distribuido.
+No bajarlo a producción ni cambiar el umbral usando el conjunto de prueba como
+entrenamiento. [Ejecución CI](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42645121856).
 
 ## Evidencia de pruebas ejecutadas
 
