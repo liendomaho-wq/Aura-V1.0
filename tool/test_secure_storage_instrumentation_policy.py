@@ -19,6 +19,7 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
         cls.workflow = (
             ROOT / ".github/workflows/android-debug-build.yml"
         ).read_text(encoding="utf-8")
+        cls.codemagic = (ROOT / "codemagic.yaml").read_text(encoding="utf-8")
 
     def test_uses_platform_keystore_not_a_replacement_provider(self):
         self.assertIn("@RunWith(AndroidJUnit4.class)", self.source)
@@ -91,6 +92,25 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
         ):
             self.assertIn(f'storageMigrationImplementation "{artifact}"', self.gradle)
             self.assertIn(f'androidTestImplementation "{artifact}"', self.gradle)
+
+
+    def test_codemagic_runs_keystore_instrumentation_only_on_manual_linux_emulator(self):
+        self.assertIn("android-keystore-instrumented:", self.codemagic)
+        mac_workflow = self.codemagic.split("  android-keystore-instrumented:", 1)[0]
+        linux_workflow = self.codemagic.split("  android-keystore-instrumented:", 1)[1]
+
+        self.assertNotIn(":app:connectedStorageMigrationAndroidTest", mac_workflow)
+        self.assertIn("instance_type: linux_x2", linux_workflow)
+        self.assertIn('export ANDROID_SERIAL="emulator-5554"', linux_workflow)
+        self.assertIn("-avd emulator-36", linux_workflow)
+        self.assertIn('getprop ro.build.version.sdk', linux_workflow)
+        self.assertIn('if [[ "$API_LEVEL" != "36" ]]', linux_workflow)
+        self.assertIn(":app:connectedStorageMigrationAndroidTest", linux_workflow)
+        self.assertIn("com.ciberdefensa.aura.SecureStorageMigrationTest", linux_workflow)
+        self.assertIn("/dev/kvm", linux_workflow)
+        self.assertNotRegex(linux_workflow, r"(?m)^    triggering:")
+        self.assertNotIn("ignore_failure", linux_workflow)
+        self.assertNotIn("continue-on-error", linux_workflow)
 
     def test_ci_requires_real_android_execution_and_never_ignores_failure(self):
         self.assertIn("reactivecircus/android-emulator-runner@v2", self.workflow)
