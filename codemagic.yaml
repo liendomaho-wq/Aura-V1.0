@@ -48,6 +48,11 @@ workflows:
           cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
           flutter --version
           flutter pub get
+      - name: Install declared Android NDK
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          bash tool/install_android_ndk.sh
       - name: Check Dart formatting
         script: |
           set -euo pipefail
@@ -63,6 +68,7 @@ workflows:
           set -euo pipefail
           cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
           python3 tool/test_gradle_wrapper_policy.py
+          python3 tool/test_install_android_ndk.py
           python3 tool/test_vpn_config_template.py
           python3 tool/test_aura_sni_firewall.py
           python3 tool/test_mapped_dns.py
