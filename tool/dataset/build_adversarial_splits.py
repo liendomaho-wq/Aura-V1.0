@@ -28,6 +28,8 @@ MIN_ADVERSARIAL_ROWS_PER_CLASS = 500
 MAX_TRAIN_BASES = 3500
 MAX_TEST_BASES = 1500
 MAX_VALIDATION_BASES = 1500
+MAX_VARIANTS_PER_BASE = 4
+MAX_VARIANT_ATTEMPTS = 128
 DOMAIN_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 
@@ -76,6 +78,35 @@ def mutation_seed(offset: int, index: int, attempt: int) -> int:
     # An odd stride rotates seed % 4 across bases. A multiple of four would
     # accidentally use substitutions for every first successful candidate.
     return offset + index * 33 + attempt
+
+
+def generate_variants(
+    domain: str,
+    offset: int,
+    index: int,
+    blocked_domains: set[str],
+    protected_groups: set[str],
+) -> list[str]:
+    """Generate up to one deterministic example for each of the four mutation modes."""
+    variants: list[str] = []
+    seen_modes: set[int] = set()
+    for attempt in range(MAX_VARIANT_ATTEMPTS):
+        seed = mutation_seed(offset, index, attempt)
+        mode = seed % 4
+        if mode in seen_modes:
+            continue
+        candidate = generate_variant(domain, seed)
+        if (
+            candidate
+            and candidate not in blocked_domains
+            and candidate not in variants
+            and variant_group_is_allowed(candidate, protected_groups)
+        ):
+            variants.append(candidate)
+            seen_modes.add(mode)
+            if len(variants) == MAX_VARIANTS_PER_BASE:
+                break
+    return variants
 
 
 def generate_variant(domain: str, seed: int) -> str | None:
@@ -171,22 +202,19 @@ def main() -> int:
     train_generated_groups: set[str] = set()
     heldout_groups = validation_groups | test_groups
     for index, base in enumerate(train_bases):
-        for attempt in range(16):
-            variant = generate_variant(base, mutation_seed(0, index, attempt))
-            if (
-                variant and variant not in existing_domains and variant not in train_generated
-                and variant_group_is_allowed(variant, heldout_groups)
-            ):
-                train_generated.add(variant)
-                train_generated_groups.add(registrable_group(variant))
-                train_adversarial.append({
-                    "domain": variant,
-                    "label": "1",
-                    "source": "synthetic-typosquat",
-                    "license": "CC0-1.0",
-                    "retrieved_at": generated_at,
-                })
-                break
+        variants = generate_variants(
+            base, 0, index, existing_domains | train_generated, heldout_groups
+        )
+        for variant in variants:
+            train_generated.add(variant)
+            train_generated_groups.add(registrable_group(variant))
+            train_adversarial.append({
+                "domain": variant,
+                "label": "1",
+                "source": "synthetic-typosquat",
+                "license": "CC0-1.0",
+                "retrieved_at": generated_at,
+            })
 
     # Calibration examples are generated only from validation bases, never the
     # final test set. Protect both real test groups and generated training groups.
@@ -195,49 +223,50 @@ def main() -> int:
     validation_generated_groups: set[str] = set()
     validation_safe_rows = {row["domain"]: row for row in validation if row["label"] == "0"}
     for index, base in enumerate(validation_bases):
-        for attempt in range(32):
-            candidate = generate_variant(base, mutation_seed(200_000, index, attempt))
-            if (candidate and candidate not in existing_domains
-                    and candidate not in train_generated and candidate not in validation_generated
-                    and variant_group_is_allowed(candidate, train_groups | test_groups | train_generated_groups)):
-                validation_adversarial.append(dict(validation_safe_rows[base]))
-                validation_adversarial.append({
-                    "domain": candidate, "label": "1", "source": "synthetic-typosquat",
-                    "license": "CC0-1.0", "retrieved_at": generated_at,
-                })
-                validation_generated.add(candidate)
-                validation_generated_groups.add(registrable_group(candidate))
-                break
+        variants = generate_variants(
+            base,
+            200_000,
+            index,
+            existing_domains | train_generated | validation_generated,
+            train_groups | test_groups | train_generated_groups | validation_generated_groups,
+        )
+        if variants:
+            validation_adversarial.append(dict(validation_safe_rows[base]))
+        for candidate in variants:
+            validation_adversarial.append({
+                "domain": candidate, "label": "1", "source": "synthetic-typosquat",
+                "license": "CC0-1.0", "retrieved_at": generated_at,
+            })
+            validation_generated.add(candidate)
+            validation_generated_groups.add(registrable_group(candidate))
 
     test_adversarial: list[dict[str, str]] = []
     test_generated: set[str] = set()
+    test_generated_groups: set[str] = set()
     protected_train_groups = train_groups | validation_groups | train_generated_groups | validation_generated_groups
     for index, base in enumerate(test_bases):
-        variant = None
-        for attempt in range(32):
-            candidate = generate_variant(base, mutation_seed(100_000, index, attempt))
-            if (
-                candidate
-                and candidate not in existing_domains
-                and candidate not in train_generated
-                and candidate not in test_generated
-                and variant_group_is_allowed(candidate, protected_train_groups)
-            ):
-                variant = candidate
-                break
-        if variant is None:
+        variants = generate_variants(
+            base,
+            100_000,
+            index,
+            existing_domains | train_generated | validation_generated | test_generated,
+            protected_train_groups | test_generated_groups,
+        )
+        if not variants:
             continue
-        # Reuse the actual held-out safe row so the negative class has provenance.
+        # Keep one provenance-backed safe base for all its generated threat variants.
         safe_row = next(row for row in test if row["domain"] == base and row["label"] == "0")
         test_adversarial.append(dict(safe_row))
-        test_adversarial.append({
-            "domain": variant,
-            "label": "1",
-            "source": "synthetic-typosquat",
-            "license": "CC0-1.0",
-            "retrieved_at": generated_at,
-        })
-        test_generated.add(variant)
+        for candidate in variants:
+            test_adversarial.append({
+                "domain": candidate,
+                "label": "1",
+                "source": "synthetic-typosquat",
+                "license": "CC0-1.0",
+                "retrieved_at": generated_at,
+            })
+            test_generated.add(candidate)
+            test_generated_groups.add(registrable_group(candidate))
 
     counts = {
         "train_real_rows": len(train),
@@ -270,10 +299,10 @@ def main() -> int:
     manifest = {
         "manifest_version": 1,
         "created_at": generated_at,
-        "method": "deterministic single-label mutations of popular safe domains",
-        "mutation_schedule": "rotating-mode-v2",
+        "method": "deterministic multi-mode mutations of popular safe domains",
+        "mutation_schedule": "up-to-four-distinct-modes-per-base-v3",
         "limitations": [
-            "v2 rotates mutation mode across bases; metrics are not directly comparable with the previous substitution-biased schedule.",
+            "v3 generates up to four distinct mutation modes per base; metrics are not directly comparable with v2.",
             "Generated domains are synthetic lexical examples and are not asserted to be registered or live.",
             "Real-world held-out metrics are computed separately from data/splits/test.csv.",
             "Train, validation and real-test base domains have disjoint ICANN registrable groups.",
