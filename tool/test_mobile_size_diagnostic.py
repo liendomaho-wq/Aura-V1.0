@@ -6,6 +6,21 @@ from pathlib import Path
 
 
 class MobileSizeDiagnosticTest(unittest.TestCase):
+    def test_smaller_candidate_is_tried_only_after_original_preset(self):
+        root = Path(__file__).resolve().parents[1]
+        tree = ast.parse((root / "tool/train_max_aura_brain.py").read_text(encoding="utf-8"))
+        function = next(node for node in tree.body
+                        if isinstance(node, ast.FunctionDef) and node.name == "train_mobile_preset")
+        assignment = next(node for node in function.body
+                          if isinstance(node, ast.Assign)
+                          and any(isinstance(target, ast.Name) and target.id == "configurations"
+                                  for target in node.targets))
+        self.assertEqual(ast.literal_eval(assignment.value), [(10, 512), (8, 512)])
+        self.assertTrue(any(isinstance(node, ast.Call)
+                            and isinstance(node.func, ast.Name)
+                            and node.func.id == "enforce_candidate_quality_gate"
+                            for node in ast.walk(function)))
+
     def test_size_failure_does_not_claim_untried_depth(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / "tool/train_max_aura_brain.py").read_text(encoding="utf-8")
