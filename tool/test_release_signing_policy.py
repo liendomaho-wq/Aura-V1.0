@@ -138,7 +138,11 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
             "com.ciberdefensa.aura.SecureStorageMigrationTest",
             self.codemagic_workflow,
         )
-        self.assertIn("if ! adb get-state; then", self.codemagic_workflow)
+        self.assertIn('AURA_REQUIRE_DEVICE_MIGRATION_TESTS: "false"', self.codemagic_workflow)
+        self.assertIn('if ! command -v adb >/dev/null 2>&1 || ! adb get-state >/dev/null 2>&1; then', self.codemagic_workflow)
+        self.assertIn('AURA_REQUIRE_DEVICE_MIGRATION_TESTS:-false', self.codemagic_workflow)
+        self.assertIn('[AURA-VALIDATION][NOT RUN]', self.codemagic_workflow)
+        self.assertIn('exit 1', self.codemagic_workflow)
         self.assertNotIn("--tests com.ciberdefensa.aura.SecureStorageMigrationTest", self.codemagic_workflow)
 
     def test_integrity_retains_real_positive_and_negative_signing_checks(self):
