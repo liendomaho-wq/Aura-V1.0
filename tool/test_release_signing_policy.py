@@ -23,6 +23,9 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
         cls.codemagic_workflow = (
             ROOT / "codemagic.yaml"
         ).read_text(encoding="utf-8")
+        cls.android_workflow = (
+            ROOT / ".github/workflows/android-debug-build.yml"
+        ).read_text(encoding="utf-8")
 
     def test_android_codemagic_workflow_uses_free_plan_macos_runner(self):
         self.assertRegex(
