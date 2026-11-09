@@ -130,16 +130,19 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
         self.assertIn('"$VENV_DIR/bin/python" -m pytest -q -rs', self.codemagic_workflow)
         self.assertIn("python3 tool/test_verify_aab.py", self.codemagic_workflow)
         self.assertIn("--tests com.ciberdefensa.aura.VpnRecoveryGateTest", self.codemagic_workflow)
-        # The migration needs AndroidKeyStore; a desktop --tests invocation
-        # cannot provide it. Require the real instrumentation task and class.
-        self.assertIn(":app:connectedStorageMigrationAndroidTest", self.codemagic_workflow)
+        # CodeMagic's free macOS workflow cannot provide the Android device.
+        # It must state NOT RUN; the real Keystore test remains mandatory in
+        # the Linux/KVM GitHub Actions workflow, never replaced by a JVM test.
+        self.assertIn("[AURA-VALIDATION][NOT RUN]", self.codemagic_workflow)
+        self.assertNotIn(":app:connectedStorageMigrationAndroidTest", self.codemagic_workflow)
+        self.assertIn("reactivecircus/android-emulator-runner@v2", self.android_workflow)
+        self.assertIn(":app:connectedStorageMigrationAndroidTest", self.android_workflow)
         self.assertIn(
             "-Pandroid.testInstrumentationRunnerArguments.class="
             "com.ciberdefensa.aura.SecureStorageMigrationTest",
-            self.codemagic_workflow,
+            self.android_workflow,
         )
-        self.assertIn("if ! adb get-state; then", self.codemagic_workflow)
-        self.assertNotIn("--tests com.ciberdefensa.aura.SecureStorageMigrationTest", self.codemagic_workflow)
+        self.assertNotIn("--tests com.ciberdefensa.aura.SecureStorageMigrationTest", self.android_workflow)
 
     def test_integrity_retains_real_positive_and_negative_signing_checks(self):
         self.assertIn("python3 tool/test_release_signing_policy.py", self.integrity_workflow)
