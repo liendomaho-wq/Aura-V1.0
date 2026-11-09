@@ -26,6 +26,8 @@ FIELDS = ["domain", "label", "source", "license", "retrieved_at"]
 ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 MIN_ADVERSARIAL_ROWS_PER_CLASS = 500
 MAX_TRAIN_BASES = 3500
+TRAIN_VARIANTS_PER_BASE = 4
+MAX_TRAIN_MUTATION_ATTEMPTS = 64
 MAX_TEST_BASES = 1500
 MAX_VALIDATION_BASES = 1500
 DOMAIN_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
@@ -171,21 +173,27 @@ def main() -> int:
     train_generated_groups: set[str] = set()
     heldout_groups = validation_groups | test_groups
     for index, base in enumerate(train_bases):
-        for attempt in range(16):
+        generated_for_base = 0
+        for attempt in range(MAX_TRAIN_MUTATION_ATTEMPTS):
             variant = generate_variant(base, mutation_seed(0, index, attempt))
-            if (
-                variant and variant not in existing_domains and variant not in train_generated
-                and variant_group_is_allowed(variant, heldout_groups)
-            ):
-                train_generated.add(variant)
-                train_generated_groups.add(registrable_group(variant))
-                train_adversarial.append({
-                    "domain": variant,
-                    "label": "1",
-                    "source": "synthetic-typosquat",
-                    "license": "CC0-1.0",
-                    "retrieved_at": generated_at,
-                })
+            if not variant or variant in existing_domains or variant in train_generated:
+                continue
+            variant_group = registrable_group(variant)
+            if variant_group in train_generated_groups:
+                continue
+            if not variant_group_is_allowed(variant, heldout_groups):
+                continue
+            train_generated.add(variant)
+            train_generated_groups.add(variant_group)
+            train_adversarial.append({
+                "domain": variant,
+                "label": "1",
+                "source": "synthetic-typosquat",
+                "license": "CC0-1.0",
+                "retrieved_at": generated_at,
+            })
+            generated_for_base += 1
+            if generated_for_base >= TRAIN_VARIANTS_PER_BASE:
                 break
 
     # Calibration examples are generated only from validation bases, never the
@@ -270,10 +278,11 @@ def main() -> int:
     manifest = {
         "manifest_version": 1,
         "created_at": generated_at,
-        "method": "deterministic single-label mutations of popular safe domains",
-        "mutation_schedule": "rotating-mode-v2",
+        "method": "multiple deterministic single-label mutations per popular safe training domain",
+        "mutation_schedule": "rotating-mode-v3-multiple-training-variants",
+        "train_variants_per_base_target": TRAIN_VARIANTS_PER_BASE,
         "limitations": [
-            "v2 rotates mutation mode across bases; metrics are not directly comparable with the previous substitution-biased schedule.",
+            "v3 generates up to four distinct mutation variants per training base; validation and test remain one variant per base and independent of training groups.",
             "Generated domains are synthetic lexical examples and are not asserted to be registered or live.",
             "Real-world held-out metrics are computed separately from data/splits/test.csv.",
             "Train, validation and real-test base domains have disjoint ICANN registrable groups.",
