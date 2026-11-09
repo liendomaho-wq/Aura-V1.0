@@ -110,5 +110,5 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
         self.assertIn("exit 1", self.workflow)
 
 
-if __ __name__ == "__main__":
+if __name__ == "__main__":
     unittest.main(verbosity=2)
