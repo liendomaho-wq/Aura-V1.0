@@ -94,7 +94,7 @@ public class SecureStorageMigrationTest {
         // production is NOT approved by this test; interrupted migration and
         // recovery would still need a separately reviewed design and testing.
         HashMap<String, Object> options = new HashMap<>();
-        options.put("storageNamespace", "aura_v9_v10_migration_test");
+        // Use the same default v9 preference files as Aura production.
         options.put("resetOnError", "false");
         options.put("migrateOnAlgorithmChange", "true");
         options.put("migrateWithBackup", "false");
