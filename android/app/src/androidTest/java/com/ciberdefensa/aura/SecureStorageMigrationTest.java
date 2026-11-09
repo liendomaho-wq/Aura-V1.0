@@ -119,6 +119,21 @@ public class SecureStorageMigrationTest {
     }
 
     @Test
+    public void newWriteMustNotPreventLegacyRecoveryWhenMigrationIsSkipped() throws Exception {
+        FlutterSecureStorage storage = initializeVersion10Storage();
+        if (LEGACY_VALUE.equals(storage.read(prefixedSecretKey))) {
+            // A successful migration is already covered by the strict test.
+            return;
+        }
+        // Simulate a new v10 entry only in the isolated test UID. The app may
+        // create a key after a null read. Verify that standard ESP enumeration
+        // can still see the v9 secret; an exception is a test failure.
+        storage.write(config.getSharedPreferencesKeyPrefix() + "_new_test_entry", "new-value");
+        assertEquals("A new write must not make legacy enumeration unavailable",
+                LEGACY_VALUE, legacyPreferences().getAll().get(prefixedSecretKey));
+    }
+
+    @Test
     public void restartsAnInterruptedBackupAndStillMigratesVersion9Secret() throws Exception {
         SharedPreferences rawData = rawDataPreferences();
         rawData.edit().putString(prefixedSecretKey + "_BACKUP", "stale-partial-backup").commit();
