@@ -104,6 +104,8 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
         self.assertIn('[AURA-VALIDATION][NOT RUN]', self.codemagic)
         self.assertNotIn(':app:connectedStorageMigrationAndroidTest', self.codemagic)
         self.assertNotIn('android-keystore-instrumented:', self.codemagic)
+        self.assertNotIn('requiere android-keystore-instrumented', self.codemagic)
+        self.assertIn('job Android Keystore de GitHub Actions', self.codemagic)
 
     def test_ci_requires_real_android_execution_and_never_ignores_failure(self):
         self.assertIn("reactivecircus/android-emulator-runner@v2", self.workflow)

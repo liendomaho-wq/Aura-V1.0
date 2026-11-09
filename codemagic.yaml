@@ -103,7 +103,7 @@ workflows:
             --tests com.ciberdefensa.aura.Socks5AuthProtocolTest
       - name: Report Keystore migration validation status
         script: |
-          echo '[AURA-VALIDATION][NOT RUN] La migración Keystore no se ejecuta en este workflow; requiere android-keystore-instrumented o un dispositivo Android autorizado.'
+          echo '[AURA-VALIDATION][NOT RUN] La migración Keystore no se ejecuta en este workflow; requiere el job Android Keystore de GitHub Actions o un dispositivo Android autorizado.'
       - name: Build Android Release artifact
         script: |
           set -euo pipefail
