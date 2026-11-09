@@ -105,6 +105,13 @@ MAX_ADVERSARIAL_FALSE_POSITIVE_RATE = 0.15
 MIN_ADVERSARIAL_RECALL = 0.60
 
 
+def _valid_probability(value):
+    # bool is a subclass of int in Python; neither booleans nor out-of-range
+    # values are valid measured rates, even if they would pass a threshold.
+    return (not isinstance(value, bool) and isinstance(value, (int, float))
+            and 0.0 <= value <= 1.0 and math.isfinite(value))
+
+
 def candidate_quality_gate_failures(metrics):
     failures = []
     if metrics.get("evaluation_mode") not in {
@@ -127,14 +134,14 @@ def candidate_quality_gate_failures(metrics):
     else:
         fpr = test_metrics.get("false_positive_rate")
         recall = test_metrics.get("recall")
-        if not isinstance(fpr, (int, float)) or not math.isfinite(fpr):
+        if not _valid_probability(fpr):
             failures.append("held-out false-positive rate is invalid")
         elif fpr > MAX_HOLDOUT_FALSE_POSITIVE_RATE:
             failures.append(
                 f"held-out false-positive rate {fpr:.4f} exceeds "
                 f"{MAX_HOLDOUT_FALSE_POSITIVE_RATE:.2f}"
             )
-        if not isinstance(recall, (int, float)) or not math.isfinite(recall):
+        if not _valid_probability(recall):
             failures.append("held-out recall is invalid")
         elif recall < MIN_HOLDOUT_RECALL:
             failures.append(
@@ -148,14 +155,14 @@ def candidate_quality_gate_failures(metrics):
     else:
         fpr = adversarial_metrics.get("false_positive_rate")
         recall = adversarial_metrics.get("recall")
-        if not isinstance(fpr, (int, float)) or not math.isfinite(fpr):
+        if not _valid_probability(fpr):
             failures.append("adversarial false-positive rate is invalid")
         elif fpr > MAX_ADVERSARIAL_FALSE_POSITIVE_RATE:
             failures.append(
                 f"adversarial false-positive rate {fpr:.4f} exceeds "
                 f"{MAX_ADVERSARIAL_FALSE_POSITIVE_RATE:.2f}"
             )
-        if not isinstance(recall, (int, float)) or not math.isfinite(recall):
+        if not _valid_probability(recall):
             failures.append("adversarial recall is invalid")
         elif recall < MIN_ADVERSARIAL_RECALL:
             failures.append(
@@ -465,7 +472,35 @@ def read_split(path):
     return rows
 
 
-def validate_split_integrity(train_rows, val_rows, test_rows, adversarial_rows):
+def synthetic_training_weights(path, expected_rows, synthetic_weight=10.0):
+    """Weight synthetic training examples, never validation or test examples."""
+    if (isinstance(synthetic_weight, bool) or not isinstance(synthetic_weight, (int, float))
+            or not 1.0 <= synthetic_weight <= 20.0):
+        raise ValueError("Synthetic training weight must be between 1 and 20")
+    weights = []
+    with path.open("r", encoding="utf-8", newline="") as stream:
+        reader = csv.DictReader(stream)
+        if reader.fieldnames != ["domain", "label", "source", "license", "retrieved_at"]:
+            raise ValueError("Unexpected training CSV schema")
+        for row in reader:
+            domain = normalize_domain(row["domain"]).encode("idna").decode("ascii")
+            try:
+                expected_domain, expected_label = expected_rows[len(weights)]
+            except IndexError as error:
+                raise ValueError("Training rows changed during weight calculation") from error
+            if domain != expected_domain or row["label"] != str(expected_label):
+                raise ValueError("Training rows changed during weight calculation")
+            synthetic = row["source"] == "synthetic-typosquat"
+            if synthetic and expected_label != 1:
+                raise ValueError("Synthetic typosquat training row must be labelled as synthetic threat")
+            weights.append(float(synthetic_weight) if synthetic else 1.0)
+    if len(weights) != len(expected_rows) or not any(weight > 1.0 for weight in weights):
+        raise ValueError("Training weights require matching synthetic training examples")
+    return weights
+
+
+def validate_split_integrity(train_rows, val_rows, test_rows, adversarial_rows,
+                             adversarial_validation_rows=None):
     """Reject duplicate hosts and registrable-group leakage before fitting.
 
     The adversarial set intentionally reuses safe base hosts from the real test
@@ -478,6 +513,8 @@ def validate_split_integrity(train_rows, val_rows, test_rows, adversarial_rows):
         "test": test_rows,
         "adversarial_test": adversarial_rows,
     }
+    if adversarial_validation_rows is not None:
+        named_rows["adversarial_validation"] = adversarial_validation_rows
     host_labels = {}
     for name, rows in named_rows.items():
         labels = {}
@@ -511,6 +548,14 @@ def validate_split_integrity(train_rows, val_rows, test_rows, adversarial_rows):
     for host in host_labels["test"].keys() & host_labels["adversarial_test"].keys():
         if host_labels["test"][host] != 0 or host_labels["adversarial_test"][host] != 0:
             raise ValueError("Only matching safe test bases may overlap the adversarial test")
+    if adversarial_validation_rows is not None:
+        for other in ("train", "test", "adversarial_test"):
+            if (host_labels[other].keys() & host_labels["adversarial_validation"].keys()
+                    or groups[other] & groups["adversarial_validation"]):
+                raise ValueError(f"Leakage between {other} and adversarial validation")
+        for host in host_labels["validation"].keys() & host_labels["adversarial_validation"].keys():
+            if host_labels["validation"][host] != 0 or host_labels["adversarial_validation"][host] != 0:
+                raise ValueError("Only matching safe validation bases may overlap adversarial validation")
 
 
 def evaluate_metrics(labels, predictions):
@@ -580,6 +625,31 @@ def choose_decision_threshold(scores, labels):
         )
         rule = "max_f2_no_threshold_met_fpr_at_most_0.05"
     return float(selected["threshold"]), rule, selected
+
+
+def choose_robust_validation_threshold(scores, labels, adversarial_scores, adversarial_labels):
+    """Calibrate on validation sets only; final holdouts remain untouched."""
+    candidates = []
+    for threshold_step in range(5, 96):
+        threshold = threshold_step / 100
+        regular = evaluate_metrics(labels, [int(score >= threshold) for score in scores])
+        adversarial = evaluate_metrics(adversarial_labels, [
+            int(score >= threshold) for score in adversarial_scores
+        ])
+        if (regular["false_positive_rate"] <= 0.05
+                and regular["recall"] >= MIN_HOLDOUT_RECALL
+                and adversarial["false_positive_rate"] <= MAX_ADVERSARIAL_FALSE_POSITIVE_RATE):
+            candidates.append((threshold, regular, adversarial))
+    if not candidates:
+        raise ValueError("No validation threshold satisfies the required false-positive and recall constraints")
+    threshold, regular, adversarial = max(
+        candidates,
+        key=lambda candidate: (candidate[2]["recall"], candidate[1]["recall"],
+                               -candidate[2]["false_positive_rate"], candidate[0]),
+    )
+    return threshold, "validation_adversarial_recall_constrained", {
+        "regular": regular, "adversarial": adversarial, "threshold": threshold,
+    }
 
 
 def score_serialized_model(model, rows):
@@ -704,9 +774,12 @@ def train_mobile_preset():
     val_rows = read_split(DATASET_DIR / "splits/val.csv")
     test_rows = read_split(DATASET_DIR / "splits/test.csv")
     adversarial_test_rows = read_split(DATASET_DIR / "splits/test_adversarial.csv")
-    validate_split_integrity(train_rows, val_rows, test_rows, adversarial_test_rows)
+    adversarial_validation_rows = read_split(DATASET_DIR / "splits/val_adversarial.csv")
+    validate_split_integrity(train_rows, val_rows, test_rows, adversarial_test_rows,
+                             adversarial_validation_rows)
     for split_name, rows in (("train", train_rows), ("val", val_rows), ("test", test_rows),
-                             ("adversarial_test", adversarial_test_rows)):
+                             ("adversarial_test", adversarial_test_rows),
+                             ("adversarial_validation", adversarial_validation_rows)):
         counts = {label: sum(row_label == label for _, row_label in rows) for label in EXPECTED_CLASSES}
         if any(counts[label] < MIN_TEST_ROWS_PER_CLASS for label in EXPECTED_CLASSES):
             raise SystemExit(
@@ -718,7 +791,13 @@ def train_mobile_preset():
         [extract_maximum_features(domain) for domain, _ in train_rows]
     )
     training_labels = np.asarray([label for _, label in train_rows], dtype=np.int64)
-    configurations = [(10, 512)]
+    # The synthetic portion is small relative to real data. This experimental
+    # weighting is training-only; validation and held-out gates stay unchanged.
+    training_weights = synthetic_training_weights(DATASET_DIR / "splits/train_adversarial.csv", train_rows)
+    # Only unsigned candidates are produced. Smaller configurations are
+    # experiments if the existing preset exceeds the size limit; they must
+    # still pass the same held-out and adversarial gate before acceptance.
+    configurations = [(10, 512), (8, 512), (7, 512)]
     trials = []
     selected = None
     for max_depth, min_samples_leaf in configurations:
@@ -736,7 +815,7 @@ def train_mobile_preset():
             class_weight="balanced_subsample",
         )
         training_started = time.perf_counter()
-        forest.fit(training_features, training_labels)
+        forest.fit(training_features, training_labels, sample_weight=training_weights)
         training_seconds = time.perf_counter() - training_started
         model = {
             "model_name": "Aura Lexical Threat Forest",
@@ -755,6 +834,7 @@ def train_mobile_preset():
                 "n_jobs": -1,
                 "random_state": 42,
                 "class_weight": "balanced_subsample",
+                "synthetic_training_sample_weight": 10.0,
             },
             "feature_order": FEATURE_ORDER,
             "classes": {"0": "safe", "1": "threat"},
@@ -813,11 +893,29 @@ def train_mobile_preset():
     atomic_write(MOBILE_SIZE_TRIALS, json.dumps(trials, indent=2) + "\n")
     if selected is None:
         raise SystemExit(
-            "Mobile preset still exceeds 4194304 bytes at max_depth=8 with aggressive pruning; "
+            f"Mobile preset exceeds {MAX_MOBILE_MODEL_BYTES} bytes for all tested configurations; "
             f"see {MOBILE_SIZE_TRIALS.relative_to(ROOT)}. No base asset was changed."
         )
 
     model, model_bytes, trial, training_seconds = selected
+    # Calibrate only on independent validation examples, never on the final
+    # real or adversarial test sets used by the quality gate below.
+    adversarial_validation_scores = score_serialized_model(model, adversarial_validation_rows)
+    try:
+        decision_threshold, decision_rule, validation_threshold_metrics = (
+            choose_robust_validation_threshold(
+                validation_scores, [label for _, label in val_rows],
+                adversarial_validation_scores, [label for _, label in adversarial_validation_rows],
+            )
+        )
+    except ValueError as error:
+        raise SystemExit(f"Validation calibration rejected candidate: {error}") from error
+    model["decision_threshold"] = decision_threshold
+    model_bytes = (json.dumps(model, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+    if len(model_bytes) >= MAX_MOBILE_MODEL_BYTES:
+        raise SystemExit("Calibrated candidate exceeds the unchanged mobile size limit")
+    trial["bytes"] = len(model_bytes)
+    atomic_write(MOBILE_SIZE_TRIALS, json.dumps(trials, indent=2) + "\n")
     atomic_write(MOBILE_MODEL_OUTPUT, model_bytes.decode("utf-8"))
     evaluation_labels = [label for _, label in test_rows]
     validation_labels = [label for _, label in val_rows]
@@ -859,6 +957,7 @@ def train_mobile_preset():
             "n_jobs": -1,
             "random_state": 42,
             "class_weight": "balanced_subsample",
+            "synthetic_training_sample_weight": 10.0,
             "feature_order": FEATURE_ORDER,
             "threshold_precision_decimals": 4,
             "decision_threshold": decision_threshold,
@@ -870,6 +969,10 @@ def train_mobile_preset():
         "validation_metrics": evaluate_metrics(validation_labels, validation_predictions),
         "test_metrics": evaluate_metrics(evaluation_labels, test_predictions),
         "validation_threshold_metrics": validation_threshold_metrics,
+        "adversarial_validation_rows": len(adversarial_validation_rows),
+        "adversarial_validation_sha256": hashlib.sha256(
+            (DATASET_DIR / "splits/val_adversarial.csv").read_bytes()
+        ).hexdigest(),
         "adversarial_test_rows": len(adversarial_test_rows),
         "adversarial_test_class_counts": {
             "safe": sum(label == 0 for label in adversarial_test_labels),

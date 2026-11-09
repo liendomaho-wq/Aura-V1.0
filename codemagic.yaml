@@ -48,6 +48,11 @@ workflows:
           cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
           flutter --version
           flutter pub get
+      - name: Install declared Android NDK
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          bash tool/install_android_ndk.sh
       - name: Check Dart formatting
         script: |
           set -euo pipefail
@@ -62,6 +67,8 @@ workflows:
         script: |
           set -euo pipefail
           cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          python3 tool/test_gradle_wrapper_policy.py
+          python3 tool/test_install_android_ndk.py
           python3 tool/test_vpn_config_template.py
           python3 tool/test_aura_sni_firewall.py
           python3 tool/test_mapped_dns.py
@@ -94,16 +101,9 @@ workflows:
             --tests com.ciberdefensa.aura.VpnRecoveryGateTest \
             --tests com.ciberdefensa.aura.AuraSocks5CredentialsTest \
             --tests com.ciberdefensa.aura.Socks5AuthProtocolTest
-      - name: Test real Keystore migration on isolated Android target
+      - name: Report Keystore migration validation status
         script: |
-          set -euo pipefail
-          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}/android"
-          if ! adb get-state; then
-            echo "ERROR: Owner must provision an authorized Android device/emulator (ANDROID_SERIAL) for the real Keystore migration tests. No JVM substitute or skipped success."
-            exit 1
-          fi
-          AURA_ALLOW_DEBUG_SIGNING=true ./gradlew :app:connectedStorageMigrationAndroidTest \
-            -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest
+          echo '[AURA-VALIDATION][NOT RUN] La migración Keystore no se ejecuta en este workflow; requiere el job Android Keystore de GitHub Actions o un dispositivo Android autorizado.'
       - name: Build Android Release artifact
         script: |
           set -euo pipefail

@@ -47,7 +47,10 @@ public class SecureStorageMigrationTest {
         assertEquals("Run only :app:connectedStorageMigrationAndroidTest",
                 TEST_APPLICATION_ID, context.getPackageName());
         HashMap<String, Object> options = new HashMap<>();
-        options.put("storageNamespace", "aura_v9_v10_migration_test");
+        // Match Aura's production configuration: v9 used the default
+        // FlutterSecureStorage / FlutterSecureKeyStorage preference files.
+        // A v10 storageNamespace would seed a different store and test the
+        // wrong migration path.
         options.put("resetOnError", "false");
         options.put("migrateOnAlgorithmChange", "true");
         options.put("migrateWithBackup", "true");
@@ -65,6 +68,13 @@ public class SecureStorageMigrationTest {
         // v10 still uses the default ESP master-key alias. The separate application
         // ID/UID isolates that Keystore alias too; namespace alone would not.
         seedVersion9EncryptedSharedPreferences();
+        // Verify the legacy fixture before v10 initialization touches storage.
+        // ESP encrypts preference keys as well as values, so the raw preferences
+        // must not contain the plaintext prefixed key.
+        assertEquals("Legacy ESP fixture must be readable before migration",
+                LEGACY_VALUE, legacyPreferences().getString(prefixedSecretKey, null));
+        assertFalse("Legacy ESP key must not be present in plaintext",
+                rawDataPreferences().contains(prefixedSecretKey));
     }
 
     @Test
@@ -76,6 +86,54 @@ public class SecureStorageMigrationTest {
         String migratedCiphertext = rawDataPreferences().getString(prefixedSecretKey, null);
         assertNotNull(migratedCiphertext);
         assertNotEquals(LEGACY_VALUE, migratedCiphertext);
+    }
+
+    @Test
+    public void diagnosticLegacyMigrationWithoutBackupPreservesSecret() throws Exception {
+        // Diagnostic only, in the isolated test application. Disabling backup in
+        // production is NOT approved by this test; interrupted migration and
+        // recovery would still need a separately reviewed design and testing.
+        HashMap<String, Object> options = new HashMap<>();
+        // Use the same default v9 preference files as Aura production.
+        options.put("resetOnError", "false");
+        options.put("migrateOnAlgorithmChange", "true");
+        options.put("migrateWithBackup", "false");
+        FlutterSecureStorage storage = initializeVersion10Storage(
+                new FlutterSecureStorageConfig(options));
+        assertEquals("Diagnostic must preserve the v9 value", LEGACY_VALUE,
+                storage.read(prefixedSecretKey));
+        assertFalse("Reading via fallback is not a completed migration",
+                legacyPreferences().contains(prefixedSecretKey));
+        String migratedCiphertext = rawDataPreferences().getString(prefixedSecretKey, null);
+        assertNotNull(migratedCiphertext);
+        assertNotEquals(LEGACY_VALUE, migratedCiphertext);
+    }
+
+    @Test
+    public void keepsLegacySecretRecoverableIfMigrationDoesNotReturnIt() throws Exception {
+        FlutterSecureStorage storage = initializeVersion10Storage();
+        String migratedValue = storage.read(prefixedSecretKey);
+        if (LEGACY_VALUE.equals(migratedValue)) return;
+
+        // This is an additional data-preservation check, not an alternative
+        // success criterion for the strict migration test above.
+        assertEquals("An unavailable migrated value must remain recoverable in legacy ESP",
+                LEGACY_VALUE, legacyPreferences().getString(prefixedSecretKey, null));
+    }
+
+    @Test
+    public void newWriteMustNotPreventLegacyRecoveryWhenMigrationIsSkipped() throws Exception {
+        FlutterSecureStorage storage = initializeVersion10Storage();
+        if (LEGACY_VALUE.equals(storage.read(prefixedSecretKey))) {
+            // A successful migration is already covered by the strict test.
+            return;
+        }
+        // Simulate a new v10 entry only in the isolated test UID. The app may
+        // create a key after a null read. Verify that standard ESP enumeration
+        // can still see the v9 secret; an exception is a test failure.
+        storage.write(config.getSharedPreferencesKeyPrefix() + "_new_test_entry", "new-value");
+        assertEquals("A new write must not make legacy enumeration unavailable",
+                LEGACY_VALUE, legacyPreferences().getAll().get(prefixedSecretKey));
     }
 
     @Test
@@ -114,10 +172,15 @@ public class SecureStorageMigrationTest {
     }
 
     private FlutterSecureStorage initializeVersion10Storage() throws Exception {
+        return initializeVersion10Storage(config);
+    }
+
+    private FlutterSecureStorage initializeVersion10Storage(
+            FlutterSecureStorageConfig storageConfig) throws Exception {
         FlutterSecureStorage storage = new FlutterSecureStorage(context);
         CountDownLatch initialized = new CountDownLatch(1);
         AtomicReference<Exception> failure = new AtomicReference<>();
-        storage.initialize(config, new SecurePreferencesCallback<Void>() {
+        storage.initialize(storageConfig, new SecurePreferencesCallback<Void>() {
             @Override
             public void onSuccess(Void unused) {
                 initialized.countDown();

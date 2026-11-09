@@ -110,7 +110,7 @@ void main() {
       });
     }
 
-    test('configures crash-safe legacy migration without reset-on-error', () {
+    test('requests backup migration without reset-on-error', () {
       final options = AuraSecureVault.androidMigrationOptions.toMap();
 
       expect(options['resetOnError'], 'false');

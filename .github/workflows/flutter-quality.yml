@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   flutter-quality:
-    name: Flutter analysis and security regression tests
+    name: Aura Flutter Quality
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -58,6 +58,8 @@ jobs:
 
       - name: Static security regression checks
         run: |
+          python3 tool/ci_run.py python3 tool/test_gradle_wrapper_policy.py
+          python3 tool/ci_run.py python3 tool/test_install_android_ndk.py
           python3 tool/ci_run.py python3 tool/test_vpn_config_template.py
           python3 tool/ci_run.py python3 tool/test_aura_sni_firewall.py
           python3 tool/ci_run.py python3 tool/test_mapped_dns.py
@@ -76,3 +78,10 @@ jobs:
 
       - name: Unit and widget tests
         run: python3 tool/ci_run.py flutter test --no-pub
+
+      - name: Check dependency lockfile reproducibility
+        run: |
+          if ! git diff --exit-code -- pubspec.lock; then
+            echo '::error title=Dependency lockfile changed::flutter pub get changed pubspec.lock; review resolved dependencies and migration compatibility before updating the lockfile.'
+            exit 1
+          fi

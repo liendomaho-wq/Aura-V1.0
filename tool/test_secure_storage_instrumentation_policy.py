@@ -19,6 +19,7 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
         cls.workflow = (
             ROOT / ".github/workflows/android-debug-build.yml"
         ).read_text(encoding="utf-8")
+        cls.codemagic = (ROOT / "codemagic.yaml").read_text(encoding="utf-8")
 
     def test_uses_platform_keystore_not_a_replacement_provider(self):
         self.assertIn("@RunWith(AndroidJUnit4.class)", self.source)
@@ -56,6 +57,14 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
             'assertFalse(rawDataPreferences().contains(prefixedSecretKey + "_BACKUP"));',
             self.source,
         )
+        self.assertIn("public void keepsLegacySecretRecoverableIfMigrationDoesNotReturnIt() throws Exception", self.source)
+        self.assertIn("An unavailable migrated value must remain recoverable in legacy ESP", self.source)
+        self.assertIn("Legacy ESP fixture must be readable before migration", self.source)
+        self.assertIn("Legacy ESP key must not be present in plaintext", self.source)
+        self.assertLess(
+            self.source.index("Legacy ESP fixture must be readable before migration"),
+            self.source.index("public void migratesRealVersion9EncryptedPreferencesAndPreservesSecret"),
+        )
         self.assertIn("initialized.await(30, TimeUnit.SECONDS)", self.source)
         self.assertIn("if (failure.get() != null) throw failure.get();", self.source)
         self.assertNotIn("@Ignore", self.source)
@@ -69,8 +78,9 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
             r'applicationIdSuffix "\.vaultmigrationtest"',
         )
         self.assertIn('"com.ciberdefensa.aura.vaultmigrationtest"', self.source)
+        self.assertNotIn('options.put("storageNamespace",', self.source)
         self.assertIn(
-            'options.put("storageNamespace", "aura_v9_v10_migration_test");',
+            "Match Aura's production configuration: v9 used the default",
             self.source,
         )
         self.assertLess(
@@ -92,6 +102,14 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
             self.assertIn(f'storageMigrationImplementation "{artifact}"', self.gradle)
             self.assertIn(f'androidTestImplementation "{artifact}"', self.gradle)
 
+
+    def test_codemagic_free_pipeline_does_not_attempt_emulator_execution(self):
+        self.assertIn('[AURA-VALIDATION][NOT RUN]', self.codemagic)
+        self.assertNotIn(':app:connectedStorageMigrationAndroidTest', self.codemagic)
+        self.assertNotIn('android-keystore-instrumented:', self.codemagic)
+        self.assertNotIn('requiere android-keystore-instrumented', self.codemagic)
+        self.assertIn('job Android Keystore de GitHub Actions', self.codemagic)
+
     def test_ci_requires_real_android_execution_and_never_ignores_failure(self):
         self.assertIn("reactivecircus/android-emulator-runner@v2", self.workflow)
         self.assertIn("api-level: 36", self.workflow)
@@ -103,7 +121,12 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
             self.workflow,
         )
         self.assertNotIn("continue-on-error", self.workflow)
-        self.assertIn("Require unprivileged emulator acceleration", self.workflow)
+        self.assertIn("Enable documented KVM permissions on ephemeral GitHub runner", self.workflow)
+        self.assertIn("99-kvm4all.rules", self.workflow)
+        self.assertIn("udevadm control --reload-rules", self.workflow)
+        self.assertIn("udevadm trigger --name-match=kvm", self.workflow)
+        self.assertIn("Require usable Android emulator acceleration", self.workflow)
+        self.assertIn("runs-on: ubuntu-latest", self.workflow)
         self.assertIn("exit 1", self.workflow)
 
 

@@ -11,9 +11,9 @@ class AuraSecureVault {
   static const String _modelMasterKeyStorageKey = 'aura_model_master_key_v1';
   static const String _domainHashKeyStorageKey = 'aura_domain_hash_key_v1';
   static const int maxAuditLogs = 500;
-  // v10 migrates the legacy v9 EncryptedSharedPreferences data to
-  // RSA-OAEP key wrapping + AES-GCM storage. Keep a crash-safe backup during
-  // migration and never silently erase secrets if the keystore reports an error.
+  // These options request backup-protected v9-to-v10 migration and disable
+  // silent reset. They do not guarantee migration: Android instrumentation
+  // exposed a v10.3.4 legacy ESP failure (see REVISION_SEGURIDAD_PENDIENTE.md).
   static const AndroidOptions _androidOptions = AndroidOptions(
     resetOnError: false,
     migrateOnAlgorithmChange: true,
