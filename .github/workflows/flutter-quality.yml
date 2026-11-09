@@ -53,6 +53,17 @@ jobs:
       - name: Install dependencies
         run: python3 tool/ci_run.py flutter pub get
 
+      - name: Record resolved dependency lockfile for reproducibility review
+        run: |
+          python3 - <<'PYTHON'
+          import base64
+          from pathlib import Path
+
+          data = base64.b64encode(Path('pubspec.lock').read_bytes()).decode('ascii')
+          for offset in range(0, len(data), 4000):
+              print(f'::notice title=RESOLVED_LOCKFILE_{offset // 4000:03d}::{data[offset:offset + 4000]}')
+          PYTHON
+
       - name: Dart format
         run: python3 tool/ci_run.py --format-diff dart format --set-exit-if-changed .
 
