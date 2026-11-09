@@ -109,7 +109,7 @@ def _valid_probability(value):
     # bool is a subclass of int in Python; neither booleans nor out-of-range
     # values are valid measured rates, even if they would pass a threshold.
     return (not isinstance(value, bool) and isinstance(value, (int, float))
-            and math.isfinite(value) and 0.0 <= value <= 1.0)
+            and 0.0 <= value <= 1.0 and math.isfinite(value))
 
 
 def candidate_quality_gate_failures(metrics):

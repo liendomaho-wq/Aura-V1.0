@@ -395,7 +395,7 @@ def test_quality_gate_rejects_excess_false_positives_and_low_recall():
 
 @pytest.mark.parametrize("field", ["false_positive_rate", "recall"])
 @pytest.mark.parametrize("split", ["test_metrics", "adversarial_test_metrics"])
-@pytest.mark.parametrize("invalid", [True, False, -0.01, 1.01, float("nan"), float("inf"), None])
+@pytest.mark.parametrize("invalid", [True, False, -0.01, 1.01, float("nan"), float("inf"), None, 10**400])
 def test_quality_gate_rejects_invalid_probability_values(field, split, invalid):
     metrics = _candidate_metrics()
     metrics[split][field] = invalid
