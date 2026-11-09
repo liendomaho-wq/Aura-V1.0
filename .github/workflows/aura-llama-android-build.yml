@@ -1,6 +1,12 @@
 name: Aura llama.cpp Android ARM64 build spike
 
 on:
+  push:
+    branches:
+      - "arena/aura-llama-android-build-spike"
+    paths:
+      - ".github/workflows/aura-llama-android-build.yml"
+      - "docs/LLAMA_ANDROID_RUNTIME_SPIKE.md"
   pull_request:
     paths:
       - ".github/workflows/aura-llama-android-build.yml"
