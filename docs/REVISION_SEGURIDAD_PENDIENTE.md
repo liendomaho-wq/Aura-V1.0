@@ -16,9 +16,11 @@ navegación normal, pero el código inspeccionado no demuestra que Keystore exij
 esa autenticación para cada operación sobre los secretos. No se ha ejecutado
 un ataque de canal falsificado ni se afirma que esté reproducido.
 
-El vault tiene migración y backup configurados (`resetOnError: false`);
-invalidar una clave o reescribir esos datos sin diseño de recuperación puede
-hacer inaccesibles datos existentes. También existe un flujo explícito para un
+El vault tiene migración y backup configurados (`resetOnError: false`), pero
+eso **no demuestra** que la migración funcione. En el fixture aislado Android 16
+con `flutter_secure_storage` 10.3.4, la lectura del secreto v9 devolvió `null`
+con backup habilitado. Invalidar una clave o reescribir esos datos sin diseño de
+recuperación puede hacer inaccesibles datos existentes. También existe un flujo explícito para un
 dispositivo sin bloqueo local y otro de credencial del dispositivo. La política
 futura debe decidir expresamente cómo compatibilizarlos con protección ligada
 a biometría y con API 24–36, sin prometer recuperación si no existe.
@@ -29,6 +31,27 @@ de inscripción y pérdida de claves, migración reversible y condiciones para
 conservar datos anteriores. No tratar un booleano Dart como autorización
 criptográfica. Validar en Android real cancelación, bloqueo, llamada falsificada,
 invalidez de clave y migración con datos previos; registrar límites de hardware.
+
+### Migración ESP: riesgo adicional de escritura — REPRODUCCIÓN EXTERNA
+
+El [issue upstream #1293](https://github.com/juliansteenbakker/flutter_secure_storage/issues/1293)
+describe el mismo patrón de lectura `null` en 10.3.4 con backup y un reporte
+independiente adicional: escribir una entrada nueva antes de recuperar las
+entradas ESP puede impedir la migración posterior normal de esas entradas. Ese
+resultado adicional **no se ha reproducido en Aura**, pero es importante porque
+`AuraSecureVault` genera claves nuevas cuando una lectura devuelve `null`.
+No interpretar `null` como prueba de instalación nueva ni afirmar que la
+recuperación está garantizada tras escrituras. No borrar preferencias, degradar
+versiones ni cambiar flags en instalaciones reales como solución improvisada.
+
+En CI, el control aislado sin backup leyó el secreto, pero esa primera prueba
+no distinguía lectura por fallback de migración completa. Se reforzó en el
+commit `bc801b5` para comprobar también la retirada de la entrada ESP y la
+presencia del valor cifrado nuevo; el resultado está pendiente de CI. Un pase
+de este control tampoco demuestra seguridad frente a interrupciones ni autoriza
+usar `migrateWithBackup: false` en producción. Es necesario diseñar una
+recuperación no destructiva, incluida la coexistencia de datos antiguos y nuevos,
+con pruebas de interrupción y revisión explícita antes de modificar el vault.
 
 ## P1: persistencia del modelo — CONFIRMADO por inspección; fallo NO REPRODUCIDO
 
