@@ -34,7 +34,8 @@ class InstallAndroidNdkTest(unittest.TestCase):
             'printf "%s\\n" "$@" > "$ANDROID_SDK_ROOT/arguments"\n'
             f'mkdir -p "$ANDROID_SDK_ROOT/ndk/{self.version}"\n'
             f'touch "$ANDROID_SDK_ROOT/ndk/{self.version}/ndk-build"\n'
-            f'chmod +x "$ANDROID_SDK_ROOT/ndk/{self.version}/ndk-build"\n',
+            f'chmod +x "$ANDROID_SDK_ROOT/ndk/{self.version}/ndk-build"\n'
+            f'echo "Pkg.Revision = {self.version}" > "$ANDROID_SDK_ROOT/ndk/{self.version}/source.properties"\n',
             encoding="utf-8",
         )
         manager.chmod(0o755)
@@ -47,8 +48,34 @@ class InstallAndroidNdkTest(unittest.TestCase):
         executable = self.sdk / "ndk" / self.version / "ndk-build"
         executable.parent.mkdir(parents=True)
         executable.touch(mode=0o755)
+        (executable.parent / "source.properties").write_text(
+            f"Pkg.Revision = {self.version}\n", encoding="utf-8"
+        )
         result = self.run_script()
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_rejects_missing_or_wrong_revision(self):
+        executable = self.sdk / "ndk" / self.version / "ndk-build"
+        executable.parent.mkdir(parents=True)
+        executable.touch(mode=0o755)
+        result = self.run_script()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("metadata is missing", result.stderr)
+        (executable.parent / "source.properties").write_text(
+            "Pkg.Revision = 0.0.0\n", encoding="utf-8"
+        )
+        result = self.run_script()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not match", result.stderr)
+
+    def test_sdkmanager_success_without_ndk_is_rejected(self):
+        manager = self.sdk / "cmdline-tools/latest/bin/sdkmanager"
+        manager.parent.mkdir(parents=True)
+        manager.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        manager.chmod(0o755)
+        result = self.run_script()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("did not provide an executable", result.stderr)
 
     def test_sdkmanager_failure_is_not_hidden(self):
         manager = self.sdk / "cmdline-tools/latest/bin/sdkmanager"

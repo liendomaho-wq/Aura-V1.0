@@ -31,4 +31,14 @@ if [[ ! -x "$ndk_build" ]]; then
   echo "NDK installation did not provide an executable: $ndk_build" >&2
   exit 1
 fi
+metadata="$sdk_root/ndk/$ndk_version/source.properties"
+if [[ ! -f "$metadata" ]]; then
+  echo "NDK revision metadata is missing: $metadata" >&2
+  exit 1
+fi
+revision="$(awk -F= '$1 ~ /^[[:space:]]*Pkg\.Revision[[:space:]]*$/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2}' "$metadata")"
+if [[ "$revision" != "$ndk_version" ]]; then
+  echo "NDK revision metadata does not match $ndk_version: $metadata" >&2
+  exit 1
+fi
 printf 'Android NDK %s is available at %s\n' "$ndk_version" "$sdk_root/ndk/$ndk_version"
