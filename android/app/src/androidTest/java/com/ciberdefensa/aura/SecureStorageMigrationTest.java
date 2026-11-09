@@ -86,6 +86,18 @@ public class SecureStorageMigrationTest {
     }
 
     @Test
+    public void keepsLegacySecretRecoverableIfMigrationDoesNotReturnIt() throws Exception {
+        FlutterSecureStorage storage = initializeVersion10Storage();
+        String migratedValue = storage.read(prefixedSecretKey);
+        if (LEGACY_VALUE.equals(migratedValue)) return;
+
+        // This is an additional data-preservation check, not an alternative
+        // success criterion for the strict migration test above.
+        assertEquals("An unavailable migrated value must remain recoverable in legacy ESP",
+                LEGACY_VALUE, legacyPreferences().getString(prefixedSecretKey, null));
+    }
+
+    @Test
     public void restartsAnInterruptedBackupAndStillMigratesVersion9Secret() throws Exception {
         SharedPreferences rawData = rawDataPreferences();
         rawData.edit().putString(prefixedSecretKey + "_BACKUP", "stale-partial-backup").commit();

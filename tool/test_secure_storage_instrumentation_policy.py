@@ -57,6 +57,8 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
             'assertFalse(rawDataPreferences().contains(prefixedSecretKey + "_BACKUP"));',
             self.source,
         )
+        self.assertIn("public void keepsLegacySecretRecoverableIfMigrationDoesNotReturnIt() throws Exception", self.source)
+        self.assertIn("An unavailable migrated value must remain recoverable in legacy ESP", self.source)
         self.assertIn("Legacy ESP fixture must be readable before migration", self.source)
         self.assertIn("Legacy ESP key must not be present in plaintext", self.source)
         self.assertLess(
