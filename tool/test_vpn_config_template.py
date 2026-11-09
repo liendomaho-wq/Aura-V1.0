@@ -410,7 +410,7 @@ for required_option in (
 if "encryptedSharedPreferences:" in options:
     sys.exit("FAIL: do not pin the deprecated EncryptedSharedPreferences backend")
 
-print("PASS: SecureVault uses crash-safe v9-to-v10 AES-GCM migration without silent reset.")
+print("PASS: SecureVault requests backup migration and disables reset-on-error; runtime migration is not verified here.")
 
 # Integrity failures must never erase encryption keys or force-kill the process.
 if "destroyLocalKeystoreKeys" in anti_tampering or "KeyStore.getInstance(\"AndroidKeyStore\")" in anti_tampering:
