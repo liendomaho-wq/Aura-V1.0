@@ -72,6 +72,12 @@ def variant_group_is_allowed(domain: str, protected_groups: set[str]) -> bool:
         return False
 
 
+def mutation_seed(offset: int, index: int, attempt: int) -> int:
+    # An odd stride rotates seed % 4 across bases. A multiple of four would
+    # accidentally use substitutions for every first successful candidate.
+    return offset + index * 33 + attempt
+
+
 def generate_variant(domain: str, seed: int) -> str | None:
     """Deterministically mutate one registrable-looking label without changing the TLD."""
     labels = domain.lower().rstrip(".").split(".")
@@ -166,7 +172,7 @@ def main() -> int:
     heldout_groups = validation_groups | test_groups
     for index, base in enumerate(train_bases):
         for attempt in range(16):
-            variant = generate_variant(base, index * 16 + attempt)
+            variant = generate_variant(base, mutation_seed(0, index, attempt))
             if (
                 variant and variant not in existing_domains and variant not in train_generated
                 and variant_group_is_allowed(variant, heldout_groups)
@@ -190,7 +196,7 @@ def main() -> int:
     validation_safe_rows = {row["domain"]: row for row in validation if row["label"] == "0"}
     for index, base in enumerate(validation_bases):
         for attempt in range(32):
-            candidate = generate_variant(base, 200_000 + index * 32 + attempt)
+            candidate = generate_variant(base, mutation_seed(200_000, index, attempt))
             if (candidate and candidate not in existing_domains
                     and candidate not in train_generated and candidate not in validation_generated
                     and variant_group_is_allowed(candidate, train_groups | test_groups | train_generated_groups)):
@@ -209,7 +215,7 @@ def main() -> int:
     for index, base in enumerate(test_bases):
         variant = None
         for attempt in range(32):
-            candidate = generate_variant(base, 100_000 + index * 32 + attempt)
+            candidate = generate_variant(base, mutation_seed(100_000, index, attempt))
             if (
                 candidate
                 and candidate not in existing_domains
@@ -265,7 +271,9 @@ def main() -> int:
         "manifest_version": 1,
         "created_at": generated_at,
         "method": "deterministic single-label mutations of popular safe domains",
+        "mutation_schedule": "rotating-mode-v2",
         "limitations": [
+            "v2 rotates mutation mode across bases; metrics are not directly comparable with the previous substitution-biased schedule.",
             "Generated domains are synthetic lexical examples and are not asserted to be registered or live.",
             "Real-world held-out metrics are computed separately from data/splits/test.csv.",
             "Train, validation and real-test base domains have disjoint ICANN registrable groups.",

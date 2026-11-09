@@ -110,7 +110,11 @@ en 0,0236 y fue rechazado. En [CI `3f57be0`](https://github.com/liendomaho-wq/Au
 un ensayo que pondera los ejemplos sintéticos solo durante el entrenamiento
 produjo un candidato de 3.366.699 bytes y el pipeline pasó el gate vigente.
 El archivo es un artefacto experimental sin firmar; no sustituye el asset
-empaquetado ni demuestra rendimiento en teléfono. Los valores exactos de métricas
+empaquetado ni demuestra rendimiento en teléfono. Se detectó que la generación
+adversarial anterior intentaba siempre el mismo tipo de mutación al primer
+intento. La nueva secuencia rota los cuatro tipos; el candidato `3f57be0` aún
+no se ha evaluado con ella y las métricas no son directamente comparables.
+Los valores exactos de métricas
 están en los informes del artefacto del CI; no se obtuvieron en este entorno.
 Ningún ensayo modificó los umbrales del gate ni el asset empaquetado. Las variantes sintéticas no son evidencia de phishing real. Además,
 como resultados anteriores de este test se usaron para orientar el desarrollo,
