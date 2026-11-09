@@ -19,7 +19,8 @@ dependencies:
   path_provider: ^2.1.6
   provider: ^6.1.2
   shared_preferences: ^2.5.3
-  flutter_secure_storage: ^10.3.4
+# Pin the last verified ESP migration path while upstream #1293 is unresolved.
+  flutter_secure_storage: 10.3.1
   flutter_tts: ^4.2.5
   url_launcher: 6.3.2
 
