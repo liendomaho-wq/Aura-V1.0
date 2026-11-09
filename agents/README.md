@@ -20,12 +20,13 @@ Este directorio contiene seis perfiles de trabajo. Son **instrucciones especiali
 7. Un revisor distinto del autor examina el diff, las pruebas, los logs y los riesgos.
 8. El propietario decide si autoriza la fusión. Sin esa autorización, la PR permanece sin fusionar.
 
-## Operación desde teléfono y coste
-- No se requiere ordenador ni Codex CLI para seguir el flujo documental.
-- GitHub Mobile o github.com sirven para consultar ramas, PRs y ejecuciones.
-- Las instrucciones pueden copiarse a agentes que funcionen en navegador. Cada proveedor puede tener límites gratuitos propios; este repositorio no promete uso ilimitado ni agentes gratuitos.
-- GitHub Actions valida código; no genera por sí solo código con IA.
-- No se configuran claves de API ni se envía código a servicios externos automáticamente.
+## Operación gratuita desde navegador móvil
+- Jules (Google) será el ejecutor principal de tareas de código: se conecta al repositorio GitHub, trabaja en una VM propia y puede proponer cambios mediante PR. Su nivel gratuito documenta hasta 15 tareas por ventana móvil de 24 h y 3 tareas concurrentes; los límites pueden cambiar.
+- Seis especialidades se ejecutarán en dos oleadas de hasta tres tareas paralelas, no como seis procesos simultáneos garantizados.
+- CodeRabbit ofrece revisión de PR gratuita para repositorios públicos; es revisor automatizado, no sustituto de un agente programador.
+- ChatGPT actúa como coordinador y auditor final; GitHub Actions ejecuta las pruebas deterministas.
+- Los agentes externos solo se conectan después de que el propietario autorice la instalación y el alcance de acceso. No se guardan claves de terceros en el repositorio.
+- Ver [guía de proveedores y conexión móvil](../docs/agents/PROVIDER_SETUP.md).
 
 ## Estado de la conexión
 La entrega por PR es el puente compartido y auditable. Los agentes externos no transmiten automáticamente su razonamiento a ChatGPT. El coordinador revisa los artefactos publicados en GitHub.
