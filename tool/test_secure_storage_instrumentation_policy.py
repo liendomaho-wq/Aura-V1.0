@@ -78,8 +78,9 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
             r'applicationIdSuffix "\.vaultmigrationtest"',
         )
         self.assertIn('"com.ciberdefensa.aura.vaultmigrationtest"', self.source)
+        self.assertNotIn('options.put("storageNamespace",', self.source)
         self.assertIn(
-            'options.put("storageNamespace", "aura_v9_v10_migration_test");',
+            "Match Aura's production configuration: v9 used the default",
             self.source,
         )
         self.assertLess(
