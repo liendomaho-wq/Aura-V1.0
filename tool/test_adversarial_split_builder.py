@@ -1,6 +1,10 @@
 import re
 
-from tool.dataset.build_adversarial_splits import generate_variant, mutation_seed
+from tool.dataset.build_adversarial_splits import (
+    generate_variant,
+    generate_variants,
+    mutation_seed,
+)
 
 
 def test_generated_typosquat_variants_are_deterministic_and_valid():
@@ -26,3 +30,20 @@ def test_first_attempt_rotates_all_mutation_modes_for_each_split():
 
 def test_variant_builder_skips_too_short_labels():
     assert generate_variant("a.co", 0) is None
+
+
+
+def test_multi_variant_builder_covers_each_mutation_mode_without_duplicates():
+    variants = generate_variants("example.com", 0, 0, set(), set())
+
+    assert len(variants) == 4
+    assert len(set(variants)) == 4
+    assert all(variant.endswith(".com") for variant in variants)
+    assert variants == generate_variants("example.com", 0, 0, set(), set())
+
+
+def test_multi_variant_builder_respects_blocked_domains_and_groups():
+    blocked = {generate_variant("example.com", seed) for seed in range(4)}
+    variants = generate_variants("example.com", 0, 0, blocked, set())
+
+    assert all(variant not in blocked for variant in variants)
