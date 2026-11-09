@@ -73,3 +73,16 @@ una evaluación separada de calidad en español, instrucciones, llamadas a
 herramientas, memoria de proceso, energía, temperatura y comportamiento tras
 reinicios. Proteger los logs y eliminar únicamente las copias de prueba cuando
 el propietario lo autorice. Registrar fallos y ausencia de dispositivo como tales.
+
+## Límite experimental de propuestas
+
+`LlmToolProposal` es un parser aislado para futuras propuestas JSON del modelo.
+Solo admite `analyze_domain`, `audit_device` y `scan_apps`, valida sus
+argumentos con la política existente y rechaza afirmaciones de confirmación del
+modelo. No está conectado a la interfaz, al motor ni al ejecutor, y aceptarlo
+no autoriza ni ejecuta nada. Antes de conectarlo se requieren revisión de
+privacidad y permisos, mediación del usuario, auditoría, pruebas de integración
+y una política separada para acciones con efectos. El JSON no constituye una
+frontera completa contra prompt injection; su parser convencional tampoco
+certifica unicidad de claves. Ninguna prueba de este componente demuestra
+inferencia, seguridad o funcionamiento de un modelo real.
