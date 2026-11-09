@@ -813,7 +813,7 @@ def train_mobile_preset():
     atomic_write(MOBILE_SIZE_TRIALS, json.dumps(trials, indent=2) + "\n")
     if selected is None:
         raise SystemExit(
-            "Mobile preset still exceeds 4194304 bytes at max_depth=8 with aggressive pruning; "
+            f"Mobile preset exceeds {MAX_MOBILE_MODEL_BYTES} bytes for all tested configurations; "
             f"see {MOBILE_SIZE_TRIALS.relative_to(ROOT)}. No base asset was changed."
         )
 

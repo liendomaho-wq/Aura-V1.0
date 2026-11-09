@@ -79,7 +79,19 @@ En el entorno de revisión, con `cc`/GCC disponibles:
 - `python3 tool/test_lwip_fragment_policy.py`: PASS, 5 pruebas.
 - `python3 tool/test_verify_packaged_model.py`: PASS, 6 pruebas.
 
-Son pruebas de host, no de tráfico real ni de compilación Android. Las pruebas
+CI del commit `88a0167743acc8f37526ac1b47e9d4efc8bb4f67`:
+
+- PASS: Flutter Quality; build APK debug, pruebas Kotlin, compilación de APKs
+  aislados de migración y verificación de ELF de las cuatro ABI y del modelo.
+  [Build Android](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42607341344).
+- FAIL: la prueba real de migración Keystore no pudo iniciarse: el runner no
+  disponía de acceso KVM no privilegiado. No equivale a una prueba ejecutada.
+- FAIL: entrenamiento del candidato móvil: la configuración probada produjo
+  7.128.733 bytes frente al límite de 4.194.304. No se cambió el asset base.
+  [Pipeline del modelo](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42607341405).
+  No debe elevarse el límite ni relajarse el gate sin evaluación y revisión.
+
+Son pruebas de host y CI, no de tráfico real. Las pruebas
 físicas de tráfico siguen el protocolo `docs/ANDROID_TRAFFIC_VALIDATION.md` y
 permanecen pendientes; también faltan pruebas de biometría, migración real y
 comportamiento Android 14, 15 y 16. No se afirma ausencia de fugas.
