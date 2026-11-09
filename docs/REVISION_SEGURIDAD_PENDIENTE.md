@@ -106,9 +106,13 @@ entrenamiento. [Ejecución CI](https://github.com/liendomaho-wq/Aura-V1.0/action
 
 La calibración experimental con ejemplos sintéticos de grupos separados de
 validación no mejoró el recall adversarial del candidato en CI `ba0ae2c`: siguió
-en 0,0236 y fue rechazado. Se prepara otro ensayo que pondera los ejemplos
-sintéticos únicamente durante el entrenamiento; sus resultados están pendientes.
-Ningún ensayo modifica los umbrales del gate ni el asset empaquetado. Las variantes sintéticas no son evidencia de phishing real. Además,
+en 0,0236 y fue rechazado. En [CI `3f57be0`](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42660256620),
+un ensayo que pondera los ejemplos sintéticos solo durante el entrenamiento
+produjo un candidato de 3.366.699 bytes y el pipeline pasó el gate vigente.
+El archivo es un artefacto experimental sin firmar; no sustituye el asset
+empaquetado ni demuestra rendimiento en teléfono. Los valores exactos de métricas
+están en los informes del artefacto del CI; no se obtuvieron en este entorno.
+Ningún ensayo modificó los umbrales del gate ni el asset empaquetado. Las variantes sintéticas no son evidencia de phishing real. Además,
 como resultados anteriores de este test se usaron para orientar el desarrollo,
 se necesita una evaluación externa y temporalmente independiente antes de
 considerar cualquier candidato para producción.

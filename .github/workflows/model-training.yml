@@ -42,6 +42,17 @@ jobs:
         run: python tool/dataset/build_adversarial_splits.py
       - name: Train model and write held-out metrics
         run: python tool/ci_run.py python tool/train_max_aura_brain.py --preset mobile
+      - name: Summarize candidate quality evidence
+        run: |
+          python - <<'PYTHON'
+          import json
+          from pathlib import Path
+          metrics = json.loads(Path('tool/reports/metrics_mobile.json').read_text())
+          for split in ('test_metrics', 'adversarial_test_metrics'):
+              values = metrics[split]
+              print(f"::notice title=Candidate {split}::recall={values['recall']:.6f}; false_positive_rate={values['false_positive_rate']:.6f}")
+          print(f"::notice title=Candidate size::bytes={metrics['model_bytes']}; depth={metrics['maximum_observed_depth']}")
+          PYTHON
       - name: Benchmark warm and cold inference
         run: python tool/bench_aura_brain.py
       - name: Run golden tests (even if candidate training is rejected)
