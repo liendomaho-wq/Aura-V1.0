@@ -393,6 +393,15 @@ def test_quality_gate_rejects_excess_false_positives_and_low_recall():
     assert any("adversarial recall" in failure for failure in failures)
 
 
+@pytest.mark.parametrize("field", ["false_positive_rate", "recall"])
+@pytest.mark.parametrize("split", ["test_metrics", "adversarial_test_metrics"])
+@pytest.mark.parametrize("invalid", [True, False, -0.01, 1.01, float("nan"), float("inf"), None])
+def test_quality_gate_rejects_invalid_probability_values(field, split, invalid):
+    metrics = _candidate_metrics()
+    metrics[split][field] = invalid
+    assert any("invalid" in failure for failure in candidate_quality_gate_failures(metrics))
+
+
 def test_quality_gate_rejects_inadequate_real_holdout_counts():
     metrics = _candidate_metrics()
     metrics["test_class_counts"] = {"safe": 499, "threat": 500}

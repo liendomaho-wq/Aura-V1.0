@@ -105,6 +105,13 @@ MAX_ADVERSARIAL_FALSE_POSITIVE_RATE = 0.15
 MIN_ADVERSARIAL_RECALL = 0.60
 
 
+def _valid_probability(value):
+    # bool is a subclass of int in Python; neither booleans nor out-of-range
+    # values are valid measured rates, even if they would pass a threshold.
+    return (not isinstance(value, bool) and isinstance(value, (int, float))
+            and math.isfinite(value) and 0.0 <= value <= 1.0)
+
+
 def candidate_quality_gate_failures(metrics):
     failures = []
     if metrics.get("evaluation_mode") not in {
@@ -127,14 +134,14 @@ def candidate_quality_gate_failures(metrics):
     else:
         fpr = test_metrics.get("false_positive_rate")
         recall = test_metrics.get("recall")
-        if not isinstance(fpr, (int, float)) or not math.isfinite(fpr):
+        if not _valid_probability(fpr):
             failures.append("held-out false-positive rate is invalid")
         elif fpr > MAX_HOLDOUT_FALSE_POSITIVE_RATE:
             failures.append(
                 f"held-out false-positive rate {fpr:.4f} exceeds "
                 f"{MAX_HOLDOUT_FALSE_POSITIVE_RATE:.2f}"
             )
-        if not isinstance(recall, (int, float)) or not math.isfinite(recall):
+        if not _valid_probability(recall):
             failures.append("held-out recall is invalid")
         elif recall < MIN_HOLDOUT_RECALL:
             failures.append(
@@ -148,14 +155,14 @@ def candidate_quality_gate_failures(metrics):
     else:
         fpr = adversarial_metrics.get("false_positive_rate")
         recall = adversarial_metrics.get("recall")
-        if not isinstance(fpr, (int, float)) or not math.isfinite(fpr):
+        if not _valid_probability(fpr):
             failures.append("adversarial false-positive rate is invalid")
         elif fpr > MAX_ADVERSARIAL_FALSE_POSITIVE_RATE:
             failures.append(
                 f"adversarial false-positive rate {fpr:.4f} exceeds "
                 f"{MAX_ADVERSARIAL_FALSE_POSITIVE_RATE:.2f}"
             )
-        if not isinstance(recall, (int, float)) or not math.isfinite(recall):
+        if not _valid_probability(recall):
             failures.append("adversarial recall is invalid")
         elif recall < MIN_ADVERSARIAL_RECALL:
             failures.append(
