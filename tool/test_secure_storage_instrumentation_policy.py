@@ -103,9 +103,12 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
             self.workflow,
         )
         self.assertNotIn("continue-on-error", self.workflow)
-        self.assertIn("Require unprivileged emulator acceleration", self.workflow)
+        # Standard GitHub Linux runners may lack KVM. Software emulation still
+        # runs the same real Android Keystore instrumentation test; it is not skipped.
+        self.assertIn("disable-linux-hw-accel: true", self.workflow)
+        self.assertNotIn("Require unprivileged emulator acceleration", self.workflow)
         self.assertIn("exit 1", self.workflow)
 
 
-if __name__ == "__main__":
+if __ __name__ == "__main__":
     unittest.main(verbosity=2)
