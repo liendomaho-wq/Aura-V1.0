@@ -24,7 +24,7 @@ El runtime podrá aceptar como máximo 65.536 tokens, pero la configuración efe
 
 No se debe reservar la KV cache máxima al iniciar la app. El runtime debe dimensionarla según el contexto configurado, reutilizarla cuando sea seguro y liberar recursos al cerrar la sesión. Si el backend no soporta el contexto solicitado, Aura debe rechazar o reducir explícitamente el valor y mostrar el límite efectivo; nunca fingir que aceptó 64K.
 
-**Estimación de memoria:** para una arquitectura Qwen de 28 capas y 2 cabezas KV, FP16 KV cache ronda 896 KiB por token? No se debe codificar una estimación fija sin consultar el GGUF/runtime. La memoria real depende de n_layer, n_head_kv, head_dim, tipo KV, alineación y buffers. La aplicación debe consultar/derivar esos metadatos y registrar memoria nativa medida. Una estimación de planificación no sustituye mediciones en el Redmi de 8 GB.
+**Estimación de memoria:** la caché KV aproximada se calcula como `2 × capas × cabezas_KV × dimensión_cabeza × bytes_por_elemento × tokens`. Con 28 capas, 2 cabezas KV, dimensión 128 y FP16, serían aproximadamente 28 KiB por token: cerca de 1,75 GiB para 64K, solo para KV cache. La memoria real también incluye pesos, buffers, runtime y aplicación. No codificar una estimación fija sin consultar los metadatos GGUF/runtime y medir memoria nativa en el Redmi de 8 GB.
 
 ### 2. Memoria persistente
 
