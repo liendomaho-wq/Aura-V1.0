@@ -74,15 +74,32 @@ jobs:
       - name: Compile llama.cpp static runtime
         run: cmake --build build/llama-android-arm64 --config Release --target llama --parallel 2
 
-      - name: Verify ARM64 runtime archive and install public headers
+      - name: Stage only the built ARM64 runtime and public headers
         run: |
-          cmake --install build/llama-android-arm64 --config Release
-          test -d artifacts/llama-android-arm64/include
-          find artifacts/llama-android-arm64 -type f -name 'libllama.a' -print -quit | grep -q .
-          find artifacts/llama-android-arm64 -type f -name 'libggml*.a' -print -quit | grep -q .
-          printf 'Pinned llama.cpp commit: %s\n' '806b3c2bed44490233f1e8ffa403519370965fe7' > artifacts/llama-android-arm64/BUILD-INFO.txt
-          printf 'ABI: arm64-v8a\nNDK: 28.2.13676358\n' >> artifacts/llama-android-arm64/BUILD-INFO.txt
-          find artifacts/llama-android-arm64 -maxdepth 3 -type f | sort
+          set -euo pipefail
+          DEST="$GITHUB_WORKSPACE/artifacts/llama-android-arm64"
+          mkdir -p "$DEST/lib" "$DEST/include/ggml"
+          cp build/llama-android-arm64/src/libllama.a "$DEST/lib/"
+          cp build/llama-android-arm64/ggml/src/libggml.a "$DEST/lib/"
+          cp build/llama-android-arm64/ggml/src/libggml-base.a "$DEST/lib/"
+          cp build/llama-android-arm64/ggml/src/libggml-cpu.a "$DEST/lib/"
+          cp third_party/llama.cpp/include/llama.h "$DEST/include/"
+          cp third_party/llama.cpp/include/llama-cpp.h "$DEST/include/"
+          cp third_party/llama.cpp/ggml/include/ggml.h "$DEST/include/ggml/"
+          cp third_party/llama.cpp/ggml/include/ggml-alloc.h "$DEST/include/ggml/"
+          cp third_party/llama.cpp/ggml/include/ggml-backend.h "$DEST/include/ggml/"
+          cp third_party/llama.cpp/ggml/include/ggml-cpu.h "$DEST/include/ggml/"
+          cp third_party/llama.cpp/ggml/include/ggml-opt.h "$DEST/include/ggml/"
+          cp third_party/llama.cpp/ggml/include/ggml-threading.h "$DEST/include/ggml/"
+          cp third_party/llama.cpp/ggml/include/ggml-backend-dl.h "$DEST/include/ggml/"
+          cp third_party/llama.cpp/ggml/include/gguf.h "$DEST/include/ggml/"
+          printf 'Pinned llama.cpp commit: %s\\n' '806b3c2bed44490233f1e8ffa403519370965fe7' > "$DEST/BUILD-INFO.txt"
+          printf 'ABI: arm64-v8a\\nNDK: 28.2.13676358\\n' >> "$DEST/BUILD-INFO.txt"
+          test -s "$DEST/lib/libllama.a"
+          test -s "$DEST/lib/libggml.a"
+          test -s "$DEST/lib/libggml-base.a"
+          test -s "$DEST/lib/libggml-cpu.a"
+          find "$DEST" -maxdepth 4 -type f | sort
 
       - name: Upload native runtime build artifact
         uses: actions/upload-artifact@v4
