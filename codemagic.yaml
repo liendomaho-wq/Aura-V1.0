@@ -101,16 +101,6 @@ workflows:
             --tests com.ciberdefensa.aura.VpnRecoveryGateTest \
             --tests com.ciberdefensa.aura.AuraSocks5CredentialsTest \
             --tests com.ciberdefensa.aura.Socks5AuthProtocolTest
-      - name: Test real Keystore migration on isolated Android target
-        script: |
-          set -euo pipefail
-          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}/android"
-          if ! adb get-state; then
-            echo "ERROR: Owner must provision an authorized Android device/emulator (ANDROID_SERIAL) for the real Keystore migration tests. No JVM substitute or skipped success."
-            exit 1
-          fi
-          AURA_ALLOW_DEBUG_SIGNING=true ./gradlew :app:connectedStorageMigrationAndroidTest \
-            -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest
       - name: Build Android Release artifact
         script: |
           set -euo pipefail
@@ -134,3 +124,113 @@ workflows:
       - build/app/outputs/flutter-apk/*.apk
       - build/app/outputs/bundle/release/*.aab
       - pubspec.lock
+
+  # Android emulators cannot run on Codemagic Apple-silicon macOS VMs.
+  # This workflow is intentionally manual to avoid automatically consuming
+  # paid Linux X2 build minutes on every push/PR.
+  android-keystore-instrumented:
+    name: Aura Android Keystore migration (Linux API 36 emulator)
+    max_build_duration: 60
+    instance_type: linux_x2
+    cache:
+      cache_paths:
+        - ~/.pub-cache
+        - ~/.gradle/caches
+    environment:
+      flutter: stable
+      java: 17
+    scripts:
+      - name: Resolve Flutter dependencies and install declared NDK
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          flutter --version
+          flutter pub get
+          bash tool/install_android_ndk.sh
+      - name: Boot isolated Android 16 emulator and run real Keystore migration tests
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/local/share/android-sdk}"
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
+          export PATH="$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+          export ANDROID_SERIAL="emulator-5554"
+
+          test -x "$ANDROID_SDK_ROOT/emulator/emulator" || {
+            echo "ERROR: Android emulator binary is missing from $ANDROID_SDK_ROOT"
+            exit 1
+          }
+          test -x "$ANDROID_SDK_ROOT/platform-tools/adb" || {
+            echo "ERROR: adb is missing from $ANDROID_SDK_ROOT"
+            exit 1
+          }
+          test -r /dev/kvm && test -w /dev/kvm || {
+            echo "ERROR: Linux runner has no accessible KVM device; refusing a slow or unaccelerated emulator substitute."
+            exit 1
+          }
+          "$ANDROID_SDK_ROOT/emulator/emulator" -accel-check
+
+          if ! "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" list avd | grep -Fq "Name: emulator-36"; then
+            echo "ERROR: Expected pre-provisioned API 36 AVD 'emulator-36' is unavailable on this runner."
+            "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" list avd
+            exit 1
+          fi
+
+          "$ANDROID_SDK_ROOT/platform-tools/adb" start-server
+          "$ANDROID_SDK_ROOT/emulator/emulator" -avd emulator-36 -port 5554 \
+            -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect \
+            -accel on > "$CM_BUILD_DIR/android-keystore-emulator.log" 2>&1 &
+          EMULATOR_PID=$!
+
+          cleanup() {
+            "$ANDROID_SDK_ROOT/platform-tools/adb" -s "$ANDROID_SERIAL" logcat -d \
+              > "$CM_BUILD_DIR/android-keystore-logcat.txt" 2>&1 || true
+            "$ANDROID_SDK_ROOT/platform-tools/adb" -s "$ANDROID_SERIAL" emu kill >/dev/null 2>&1 || true
+            wait "$EMULATOR_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          DEVICE_READY=false
+          for attempt in $(seq 1 180); do
+            if "$ANDROID_SDK_ROOT/platform-tools/adb" -s "$ANDROID_SERIAL" get-state 2>/dev/null | grep -qx "device"; then
+              DEVICE_READY=true
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$DEVICE_READY" != "true" ]]; then
+            echo "ERROR: Android emulator did not become an authorized adb device within 6 minutes."
+            "$ANDROID_SDK_ROOT/platform-tools/adb" devices -l
+            exit 1
+          fi
+
+          BOOT_COMPLETE=false
+          for attempt in $(seq 1 180); do
+            if [[ "$("$ANDROID_SDK_ROOT/platform-tools/adb" -s "$ANDROID_SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then
+              BOOT_COMPLETE=true
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$BOOT_COMPLETE" != "true" ]]; then
+            echo "ERROR: Android emulator was detected but did not finish booting."
+            exit 1
+          fi
+
+          API_LEVEL="$("$ANDROID_SDK_ROOT/platform-tools/adb" -s "$ANDROID_SERIAL" shell getprop ro.build.version.sdk | tr -d '\r')"
+          if [[ "$API_LEVEL" != "36" ]]; then
+            echo "ERROR: Expected Android API 36, got API $API_LEVEL."
+            exit 1
+          fi
+          echo "Confirmed Android API $API_LEVEL on $ANDROID_SERIAL"
+          "$ANDROID_SDK_ROOT/platform-tools/adb" -s "$ANDROID_SERIAL" shell input keyevent 82 || true
+
+          cd "$CM_BUILD_DIR/android"
+          AURA_ALLOW_DEBUG_SIGNING=true ./gradlew --no-daemon --stacktrace \
+            :app:connectedStorageMigrationAndroidTest \
+            -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest
+        test_report: android/app/build/outputs/androidTest-results/connected/**/*.xml
+    artifacts:
+      - android-keystore-emulator.log
+      - android-keystore-logcat.txt
+      - android/app/build/outputs/androidTest-results/connected/**/*.xml
