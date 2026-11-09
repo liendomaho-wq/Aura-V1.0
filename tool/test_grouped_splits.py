@@ -89,13 +89,14 @@ def test_adversarial_builder_outputs_disjoint_groups_end_to_end(tmp_path, monkey
     monkeypatch.setattr(adversarial, "MIN_ADVERSARIAL_ROWS_PER_CLASS", 3)
     train_safe = [f"safetrain{i}.com" for i in range(3)]
     test_safe = [f"safetest{i}.com" for i in range(3)]
-    popular_path.write_text("\n".join(train_safe + test_safe + [f"extra{i}.com" for i in range(4994)]) + "\n")
+    validation_safe = [f"safeval{i}.com" for i in range(3)]
+    popular_path.write_text("\n".join(train_safe + test_safe + validation_safe + [f"extra{i}.com" for i in range(4991)]) + "\n")
 
     def row(domain, label):
         return {"domain": domain, "label": str(label), "source": "fixture", "license": "test", "retrieved_at": "test"}
 
     adversarial.write_rows(split_dir / "train.csv", [row(host, 0) for host in train_safe] + [row("badtrain.net", 1)])
-    adversarial.write_rows(split_dir / "val.csv", [row("safeval.com", 0), row("badval.net", 1)])
+    adversarial.write_rows(split_dir / "val.csv", [row(host, 0) for host in validation_safe] + [row("badval.net", 1)])
     adversarial.write_rows(split_dir / "test.csv", [row(host, 0) for host in test_safe] + [row("badtest.net", 1)])
     assert adversarial.main() == 0
     validate_split_integrity(
@@ -103,8 +104,12 @@ def test_adversarial_builder_outputs_disjoint_groups_end_to_end(tmp_path, monkey
         read_split(split_dir / "val.csv"),
         read_split(split_dir / "test.csv"),
         read_split(split_dir / "test_adversarial.csv"),
+        read_split(split_dir / "val_adversarial.csv"),
     )
     assert manifest_path.exists()
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["counts"]["validation_adversarial_safe_rows"] == 3
+    assert len(manifest["sha256"]["validation_adversarial"]) == 64
 
 
 def test_seed_only_fallback_is_rejected_without_fabricated_holdout(tmp_path, monkeypatch):

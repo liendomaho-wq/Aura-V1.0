@@ -27,6 +27,7 @@ ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 MIN_ADVERSARIAL_ROWS_PER_CLASS = 500
 MAX_TRAIN_BASES = 3500
 MAX_TEST_BASES = 1500
+MAX_VALIDATION_BASES = 1500
 DOMAIN_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 
@@ -143,8 +144,10 @@ def main() -> int:
     existing_domains = set(existing_labels)
     train_safe = set(row["domain"] for row in train if row["label"] == "0")
     test_safe = set(row["domain"] for row in test if row["label"] == "0")
+    validation_safe = set(row["domain"] for row in validation if row["label"] == "0")
     train_bases = [domain for domain in popular if domain in train_safe][:MAX_TRAIN_BASES]
     test_bases = [domain for domain in popular if domain in test_safe][:MAX_TEST_BASES]
+    validation_bases = [domain for domain in popular if domain in validation_safe][:MAX_VALIDATION_BASES]
     if len(train_bases) < MIN_ADVERSARIAL_ROWS_PER_CLASS:
         raise SystemExit(
             f"Need at least {MIN_ADVERSARIAL_ROWS_PER_CLASS} popular safe training bases; "
@@ -179,9 +182,30 @@ def main() -> int:
                 })
                 break
 
+    # Calibration examples are generated only from validation bases, never the
+    # final test set. Protect both real test groups and generated training groups.
+    validation_adversarial: list[dict[str, str]] = []
+    validation_generated: set[str] = set()
+    validation_generated_groups: set[str] = set()
+    validation_safe_rows = {row["domain"]: row for row in validation if row["label"] == "0"}
+    for index, base in enumerate(validation_bases):
+        for attempt in range(32):
+            candidate = generate_variant(base, 200_000 + index * 32 + attempt)
+            if (candidate and candidate not in existing_domains
+                    and candidate not in train_generated and candidate not in validation_generated
+                    and variant_group_is_allowed(candidate, train_groups | test_groups | train_generated_groups)):
+                validation_adversarial.append(dict(validation_safe_rows[base]))
+                validation_adversarial.append({
+                    "domain": candidate, "label": "1", "source": "synthetic-typosquat",
+                    "license": "CC0-1.0", "retrieved_at": generated_at,
+                })
+                validation_generated.add(candidate)
+                validation_generated_groups.add(registrable_group(candidate))
+                break
+
     test_adversarial: list[dict[str, str]] = []
     test_generated: set[str] = set()
-    protected_train_groups = train_groups | validation_groups | train_generated_groups
+    protected_train_groups = train_groups | validation_groups | train_generated_groups | validation_generated_groups
     for index, base in enumerate(test_bases):
         variant = None
         for attempt in range(32):
@@ -213,12 +237,16 @@ def main() -> int:
         "train_real_rows": len(train),
         "train_synthetic_typosquats": len(train_generated),
         "train_adversarial_rows": len(train_adversarial),
+        "validation_adversarial_safe_rows": sum(row["label"] == "0" for row in validation_adversarial),
+        "validation_adversarial_synthetic_threat_rows": len(validation_generated),
         "test_adversarial_safe_rows": sum(row["label"] == "0" for row in test_adversarial),
         "test_adversarial_synthetic_threat_rows": sum(row["label"] == "1" for row in test_adversarial),
         "test_adversarial_rows": len(test_adversarial),
     }
     if (
         counts["train_synthetic_typosquats"] < MIN_ADVERSARIAL_ROWS_PER_CLASS
+        or counts["validation_adversarial_safe_rows"] < MIN_ADVERSARIAL_ROWS_PER_CLASS
+        or counts["validation_adversarial_synthetic_threat_rows"] < MIN_ADVERSARIAL_ROWS_PER_CLASS
         or counts["test_adversarial_safe_rows"] < MIN_ADVERSARIAL_ROWS_PER_CLASS
         or counts["test_adversarial_synthetic_threat_rows"] < MIN_ADVERSARIAL_ROWS_PER_CLASS
     ):
@@ -228,8 +256,10 @@ def main() -> int:
         )
 
     train_path = SPLIT_DIR / "train_adversarial.csv"
+    validation_path = SPLIT_DIR / "val_adversarial.csv"
     test_path = SPLIT_DIR / "test_adversarial.csv"
     write_rows(train_path, train_adversarial)
+    write_rows(validation_path, validation_adversarial)
     write_rows(test_path, test_adversarial)
     manifest = {
         "manifest_version": 1,
@@ -239,7 +269,7 @@ def main() -> int:
             "Generated domains are synthetic lexical examples and are not asserted to be registered or live.",
             "Real-world held-out metrics are computed separately from data/splits/test.csv.",
             "Train, validation and real-test base domains have disjoint ICANN registrable groups.",
-            "Synthetic train variants cannot share held-out groups; synthetic test variants cannot share train or validation groups.",
+            "Synthetic train variants cannot share held-out groups; validation and test variants cannot share train groups or each other's groups.",
             "Group disjointness does not prove temporal, source, or lexical independence.",
         ],
         "counts": counts,
@@ -248,6 +278,7 @@ def main() -> int:
             "validation_source": sha256_file(SPLIT_DIR / "val.csv"),
             "test_source": sha256_file(SPLIT_DIR / "test.csv"),
             "train_adversarial": sha256_file(train_path),
+            "validation_adversarial": sha256_file(validation_path),
             "test_adversarial": sha256_file(test_path),
         },
     }
