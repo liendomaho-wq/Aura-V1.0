@@ -83,16 +83,8 @@ jobs:
           cp build/llama-android-arm64/ggml/src/libggml.a "$DEST/lib/"
           cp build/llama-android-arm64/ggml/src/libggml-base.a "$DEST/lib/"
           cp build/llama-android-arm64/ggml/src/libggml-cpu.a "$DEST/lib/"
-          cp third_party/llama.cpp/include/llama.h "$DEST/include/"
-          cp third_party/llama.cpp/include/llama-cpp.h "$DEST/include/"
-          cp third_party/llama.cpp/ggml/include/ggml.h "$DEST/include/ggml/"
-          cp third_party/llama.cpp/ggml/include/ggml-alloc.h "$DEST/include/ggml/"
-          cp third_party/llama.cpp/ggml/include/ggml-backend.h "$DEST/include/ggml/"
-          cp third_party/llama.cpp/ggml/include/ggml-cpu.h "$DEST/include/ggml/"
-          cp third_party/llama.cpp/ggml/include/ggml-opt.h "$DEST/include/ggml/"
-          cp third_party/llama.cpp/ggml/include/ggml-threading.h "$DEST/include/ggml/"
-          cp third_party/llama.cpp/ggml/include/ggml-backend-dl.h "$DEST/include/ggml/"
-          cp third_party/llama.cpp/ggml/include/gguf.h "$DEST/include/ggml/"
+          find third_party/llama.cpp/include -maxdepth 1 -type f -name '*.h' -exec cp {} "$DEST/include/" \\;
+          find third_party/llama.cpp/ggml/include -maxdepth 1 -type f -name '*.h' -exec cp {} "$DEST/include/ggml/" \\;
           printf 'Pinned llama.cpp commit: %s\\n' '806b3c2bed44490233f1e8ffa403519370965fe7' > "$DEST/BUILD-INFO.txt"
           printf 'ABI: arm64-v8a\\nNDK: 28.2.13676358\\n' >> "$DEST/BUILD-INFO.txt"
           test -s "$DEST/lib/libllama.a"
