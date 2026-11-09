@@ -86,6 +86,22 @@ public class SecureStorageMigrationTest {
     }
 
     @Test
+    public void diagnosticLegacyMigrationWithoutBackupPreservesSecret() throws Exception {
+        // Diagnostic only, in the isolated test application. Disabling backup in
+        // production is NOT approved by this test; interrupted migration and
+        // recovery would still need a separately reviewed design and testing.
+        HashMap<String, Object> options = new HashMap<>();
+        options.put("storageNamespace", "aura_v9_v10_migration_test");
+        options.put("resetOnError", "false");
+        options.put("migrateOnAlgorithmChange", "true");
+        options.put("migrateWithBackup", "false");
+        FlutterSecureStorage storage = initializeVersion10Storage(
+                new FlutterSecureStorageConfig(options));
+        assertEquals("Diagnostic must preserve the v9 value", LEGACY_VALUE,
+                storage.read(prefixedSecretKey));
+    }
+
+    @Test
     public void keepsLegacySecretRecoverableIfMigrationDoesNotReturnIt() throws Exception {
         FlutterSecureStorage storage = initializeVersion10Storage();
         String migratedValue = storage.read(prefixedSecretKey);
@@ -133,10 +149,15 @@ public class SecureStorageMigrationTest {
     }
 
     private FlutterSecureStorage initializeVersion10Storage() throws Exception {
+        return initializeVersion10Storage(config);
+    }
+
+    private FlutterSecureStorage initializeVersion10Storage(
+            FlutterSecureStorageConfig storageConfig) throws Exception {
         FlutterSecureStorage storage = new FlutterSecureStorage(context);
         CountDownLatch initialized = new CountDownLatch(1);
         AtomicReference<Exception> failure = new AtomicReference<>();
-        storage.initialize(config, new SecurePreferencesCallback<Void>() {
+        storage.initialize(storageConfig, new SecurePreferencesCallback<Void>() {
             @Override
             public void onSuccess(Void unused) {
                 initialized.countDown();
