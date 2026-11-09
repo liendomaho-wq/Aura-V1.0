@@ -47,7 +47,10 @@ public class SecureStorageMigrationTest {
         assertEquals("Run only :app:connectedStorageMigrationAndroidTest",
                 TEST_APPLICATION_ID, context.getPackageName());
         HashMap<String, Object> options = new HashMap<>();
-        options.put("storageNamespace", "aura_v9_v10_migration_test");
+        // Match Aura's production configuration: v9 used the default
+        // FlutterSecureStorage / FlutterSecureKeyStorage preference files.
+        // A v10 storageNamespace would seed a different store and test the
+        // wrong migration path.
         options.put("resetOnError", "false");
         options.put("migrateOnAlgorithmChange", "true");
         options.put("migrateWithBackup", "true");
