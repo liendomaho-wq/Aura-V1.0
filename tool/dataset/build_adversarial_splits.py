@@ -178,10 +178,13 @@ def main() -> int:
             variant = generate_variant(base, mutation_seed(0, index, attempt))
             if not variant or variant in existing_domains or variant in train_generated:
                 continue
+            # Reject malformed/public-suffix candidates before requesting
+            # their registrable group; the predicate converts that ValueError
+            # into a normal skipped mutation.
+            if not variant_group_is_allowed(variant, heldout_groups):
+                continue
             variant_group = registrable_group(variant)
             if variant_group in train_generated_groups:
-                continue
-            if not variant_group_is_allowed(variant, heldout_groups):
                 continue
             train_generated.add(variant)
             train_generated_groups.add(variant_group)
