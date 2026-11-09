@@ -94,29 +94,10 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
             self.assertIn(f'androidTestImplementation "{artifact}"', self.gradle)
 
 
-    def test_codemagic_runs_keystore_instrumentation_only_on_manual_linux_emulator(self):
-        self.assertIn("android-keystore-instrumented:", self.codemagic)
-        mac_workflow = self.codemagic.split("  android-keystore-instrumented:", 1)[0]
-        linux_workflow = self.codemagic.split("  android-keystore-instrumented:", 1)[1]
-
-        self.assertNotIn(":app:connectedStorageMigrationAndroidTest", mac_workflow)
-        self.assertIn("[AURA-VALIDATION][NOT RUN]", mac_workflow)
-        self.assertIn('rootProject.buildDir = "../build"',
-                      (ROOT / "android/build.gradle").read_text(encoding="utf-8"))
-        self.assertIn("test_report: build/app/outputs/androidTest-results/connected/**/*.xml", linux_workflow)
-        self.assertIn("- build/app/outputs/androidTest-results/connected/**/*.xml", linux_workflow)
-        self.assertNotIn("android/app/build/outputs/androidTest-results", linux_workflow)
-        self.assertIn("instance_type: linux_x2", linux_workflow)
-        self.assertIn('export ANDROID_SERIAL="emulator-5554"', linux_workflow)
-        self.assertIn("-avd emulator-36", linux_workflow)
-        self.assertIn('getprop ro.build.version.sdk', linux_workflow)
-        self.assertIn('if [[ "$API_LEVEL" != "36" ]]', linux_workflow)
-        self.assertIn(":app:connectedStorageMigrationAndroidTest", linux_workflow)
-        self.assertIn("com.ciberdefensa.aura.SecureStorageMigrationTest", linux_workflow)
-        self.assertIn("/dev/kvm", linux_workflow)
-        self.assertNotRegex(linux_workflow, r"(?m)^    triggering:")
-        self.assertNotIn("ignore_failure", linux_workflow)
-        self.assertNotIn("continue-on-error", linux_workflow)
+    def test_codemagic_free_pipeline_does_not_attempt_emulator_execution(self):
+        self.assertIn('[AURA-VALIDATION][NOT RUN]', self.codemagic)
+        self.assertNotIn(':app:connectedStorageMigrationAndroidTest', self.codemagic)
+        self.assertNotIn('android-keystore-instrumented:', self.codemagic)
 
     def test_ci_requires_real_android_execution_and_never_ignores_failure(self):
         self.assertIn("reactivecircus/android-emulator-runner@v2", self.workflow)
@@ -129,7 +110,12 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
             self.workflow,
         )
         self.assertNotIn("continue-on-error", self.workflow)
-        self.assertIn("Require unprivileged emulator acceleration", self.workflow)
+        self.assertIn("Enable documented KVM permissions on ephemeral GitHub runner", self.workflow)
+        self.assertIn("99-kvm4all.rules", self.workflow)
+        self.assertIn("udevadm control --reload-rules", self.workflow)
+        self.assertIn("udevadm trigger --name-match=kvm", self.workflow)
+        self.assertIn("Require usable Android emulator acceleration", self.workflow)
+        self.assertIn("runs-on: ubuntu-latest", self.workflow)
         self.assertIn("exit 1", self.workflow)
 
 
