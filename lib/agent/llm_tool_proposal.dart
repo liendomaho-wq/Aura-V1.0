@@ -27,7 +27,9 @@ class _StrictJsonStructureScanner {
   }
 
   void _readValue(int depth) {
-    if (depth > _maxDepth) throw const FormatException('JSON nesting too deep.');
+    if (depth > _maxDepth) {
+      throw const FormatException('JSON nesting too deep.');
+    }
     _skipWhitespace();
     if (_index >= source.length) throw const FormatException('Missing JSON value.');
     switch (source.codeUnitAt(_index)) {
@@ -97,7 +99,9 @@ class _StrictJsonStructureScanner {
       if (unit == 0x22) {
         return jsonDecode(source.substring(start, _index)) as String;
       }
-      if (unit < 0x20) throw const FormatException('Control character in JSON string.');
+      if (unit < 0x20) {
+        throw const FormatException('Control character in JSON string.');
+      }
       if (unit == 0x5c) {
         if (_index >= source.length) throw const FormatException('Incomplete escape.');
         final escaped = source.codeUnitAt(_index++);
@@ -118,8 +122,13 @@ class _StrictJsonStructureScanner {
     final start = _index;
     while (_index < source.length) {
       final unit = source.codeUnitAt(_index);
-      if (unit == 0x2c || unit == 0x5d || unit == 0x7d ||
-          unit == 0x20 || unit == 0x09 || unit == 0x0a || unit == 0x0d) {
+      if (unit == 0x2c ||
+          unit == 0x5d ||
+          unit == 0x7d ||
+          unit == 0x20 ||
+          unit == 0x09 ||
+          unit == 0x0a ||
+          unit == 0x0d) {
         break;
       }
       _index++;
@@ -130,7 +139,12 @@ class _StrictJsonStructureScanner {
   void _skipWhitespace() {
     while (_index < source.length) {
       final unit = source.codeUnitAt(_index);
-      if (unit != 0x20 && unit != 0x09 && unit != 0x0a && unit != 0x0d) break;
+      if (unit != 0x20 &&
+          unit != 0x09 &&
+          unit != 0x0a &&
+          unit != 0x0d) {
+        break;
+      }
       _index++;
     }
   }
