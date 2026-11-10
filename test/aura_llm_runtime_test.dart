@@ -6,7 +6,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('AuraLlmRuntime input and response boundary', () {
-    test('rejects invalid model loading parameters before platform dispatch', () async {
+    test('rejects invalid model loading parameters before platform dispatch',
+        () async {
       final runtime = AuraLlmRuntime();
       await expectLater(
         runtime.loadModel(
@@ -24,7 +25,8 @@ void main() {
       );
     });
 
-    test('rejects invalid generation settings before platform dispatch', () async {
+    test('rejects invalid generation settings before platform dispatch',
+        () async {
       final runtime = AuraLlmRuntime();
       await expectLater(
         runtime.startGeneration(prompt: '  '),
@@ -74,12 +76,14 @@ void main() {
     test(
       'missing native channel fails closed instead of claiming availability',
       () async {
-      const channel = MethodChannel('com.ciberdefensa.aura/llm.test.missing');
-      final runtime = AuraLlmRuntime(methodChannel: channel);
-      await expectLater(
-        runtime.capabilities(),
-        throwsA(isA<MissingPluginException>()),
-      );
-    });
+        const channel =
+            MethodChannel('com.ciberdefensa.aura/llm.test.missing');
+        final runtime = AuraLlmRuntime(methodChannel: channel);
+        await expectLater(
+          runtime.capabilities(),
+          throwsA(isA<MissingPluginException>()),
+        );
+      },
+    );
   });
 }
