@@ -110,7 +110,7 @@ class AuraLlmRuntime {
       'capabilities',
     );
     if (response == null) {
-      throw const PlatformException(
+      throw PlatformException(
         code: 'LLM_EMPTY_CAPABILITIES',
         message: 'Native LLM runtime returned no capability report.',
       );
@@ -159,7 +159,7 @@ class AuraLlmRuntime {
       {'prompt': prompt, 'max_tokens': maxTokens, 'temperature': temperature},
     );
     if (operationId == null || operationId.isEmpty) {
-      throw const PlatformException(
+      throw PlatformException(
         code: 'LLM_INVALID_OPERATION_ID',
         message: 'Native LLM runtime did not return an operation identifier.',
       );
