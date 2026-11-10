@@ -98,9 +98,8 @@ class AuraLlmRuntime {
   Stream<AuraLlmEvent>? _eventStream;
 
   /// Subscribe before calling [startGeneration] to avoid missing early tokens.
-  Stream<AuraLlmEvent> get events => _eventStream ??= _eventChannel
-      .receiveBroadcastStream()
-      .map((value) {
+  Stream<AuraLlmEvent> get events =>
+      _eventStream ??= _eventChannel.receiveBroadcastStream().map((value) {
         if (value is! Map) {
           throw const FormatException('Native LLM event must be a map.');
         }
@@ -176,9 +175,10 @@ class AuraLlmRuntime {
     if (operationId.isEmpty) {
       throw ArgumentError.value(operationId, 'operationId');
     }
-    return await _methodChannel.invokeMethod<bool>('cancel', {
-          'operation_id': operationId,
-        }) ??
+    return await _methodChannel.invokeMethod<bool>(
+          'cancel',
+          {'operation_id': operationId},
+        ) ??
         false;
   }
 
