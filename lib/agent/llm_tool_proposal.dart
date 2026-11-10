@@ -42,6 +42,7 @@ class _StrictJsonStructureScanner {
         break;
       default:
         _readPrimitive();
+        break;
     }
   }
 
