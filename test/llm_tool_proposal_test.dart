@@ -58,7 +58,6 @@ void main() {
       }
     });
 
-
     test('rejects duplicate keys at every JSON object level', () {
       for (final output in <String>[
         '{"tool":"scan_apps","tool":"audit_device","arguments":{}}',
