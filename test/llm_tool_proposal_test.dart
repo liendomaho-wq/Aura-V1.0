@@ -64,7 +64,7 @@ void main() {
         '{"tool":"scan_apps","tool":"audit_device","arguments":{}}',
         '{"tool":"analyze_domain","arguments":{"domain":"example.org","domain":"evil.org"}}',
         '{"tool":"scan_apps","arguments":{"nested":{"x":1,"x":2}}}',
-        r'{"tool":"scan_apps","arguments":{"a":1,"\\u0061":2}}',
+        r'{"tool":"scan_apps","arguments":{"a":1,"\u0061":2}}',
       ]) {
         expect(LlmToolProposal.parse(output), isNull, reason: output);
       }
