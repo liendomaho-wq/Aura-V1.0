@@ -8,15 +8,15 @@ void main() {
   group('AuraLlmRuntime input and response boundary', () {
     test('rejects invalid model loading parameters before platform dispatch', () {
       final runtime = AuraLlmRuntime();
-      expect(
-        () => runtime.loadModel(
+      await expectLater(
+        runtime.loadModel(
           absoluteModelPath: '../outside/model.gguf',
           contextTokens: 4096,
         ),
         throwsArgumentError,
       );
-      expect(
-        () => runtime.loadModel(
+      await expectLater(
+        runtime.loadModel(
           absoluteModelPath: '/data/model.gguf',
           contextTokens: 128,
         ),
@@ -26,16 +26,16 @@ void main() {
 
     test('rejects invalid generation settings before platform dispatch', () {
       final runtime = AuraLlmRuntime();
-      expect(
-        () => runtime.startGeneration(prompt: '  '),
+      await expectLater(
+        runtime.startGeneration(prompt: '  '),
         throwsArgumentError,
       );
-      expect(
-        () => runtime.startGeneration(prompt: 'hello', maxTokens: 0),
+      await expectLater(
+        runtime.startGeneration(prompt: 'hello', maxTokens: 0),
         throwsArgumentError,
       );
-      expect(
-        () => runtime.startGeneration(prompt: 'hello', temperature: double.nan),
+      await expectLater(
+        runtime.startGeneration(prompt: 'hello', temperature: double.nan),
         throwsArgumentError,
       );
     });
