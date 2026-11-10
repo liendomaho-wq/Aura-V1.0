@@ -2,8 +2,6 @@ import 'dart:convert';
 
 import 'agent_execution_guard.dart';
 
-/// A suggestion from untrusted model output, not an authorization or execution.
-/// This initial boundary accepts only a small read-only subset of Aura tools.
 /// Small structural scanner that rejects ambiguous JSON object keys before
 /// dart:convert decodes them (jsonDecode otherwise silently keeps the last key).
 /// It also bounds nesting and collection sizes to keep hostile model output cheap.
@@ -35,10 +33,13 @@ class _StrictJsonStructureScanner {
     switch (source.codeUnitAt(_index)) {
       case 0x7b: // {
         _readObject(depth + 1);
+        break;
       case 0x5b: // [
         _readArray(depth + 1);
+        break;
       case 0x22: // "
         _readString();
+        break;
       default:
         _readPrimitive();
     }
@@ -146,6 +147,8 @@ class _StrictJsonStructureScanner {
   }
 }
 
+/// A suggestion from untrusted model output, not an authorization or execution.
+/// This initial boundary accepts only a small read-only subset of Aura tools.
 class LlmToolProposal {
   const LlmToolProposal._(this.tool, this.arguments);
 
