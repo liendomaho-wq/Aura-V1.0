@@ -1,9 +1,9 @@
-name: Aura llama.cpp Android ARM64 build spike
+name: Aura llama.cpp Android multi-ABI build spike
 
 on:
   push:
     branches:
-      - "arena/aura-llama-android-build-spike"
+      - "arena/aura-llama-multi-abi-build"
     paths:
       - ".github/workflows/aura-llama-android-build.yml"
       - "docs/LLAMA_ANDROID_RUNTIME_SPIKE.md"
@@ -21,10 +21,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-llama-android-arm64:
-    name: Build pinned llama.cpp for Android ARM64
+  build-llama-android:
+    name: Build pinned llama.cpp for Android ${{ matrix.abi }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        abi:
+          - armeabi-v7a
+          - arm64-v8a
+          - x86
+          - x86_64
     steps:
       - name: Checkout Aura
         uses: actions/checkout@v4
@@ -52,12 +60,12 @@ jobs:
           echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
           echo "$ANDROID_HOME/cmake/3.31.6/bin" >> "$GITHUB_PATH"
 
-      - name: Configure portable CPU-only Android ARM64 build
+      - name: Configure portable CPU-only Android build
         run: |
-          cmake -S third_party/llama.cpp -B build/llama-android-arm64 -G Ninja \
+          cmake -S third_party/llama.cpp -B "build/llama-android-${{ matrix.abi }}" -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_ABI="${{ matrix.abi }}" \
             -DANDROID_PLATFORM=android-24 \
             -DANDROID_STL=c++_shared \
             -DBUILD_SHARED_LIBS=OFF \
@@ -69,24 +77,26 @@ jobs:
             -DLLAMA_BUILD_TESTS=OFF \
             -DLLAMA_BUILD_EXAMPLES=OFF \
             -DLLAMA_BUILD_SERVER=OFF \
-            -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/artifacts/llama-android-arm64"
+            -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/artifacts/llama-android-${{ matrix.abi }}"
 
       - name: Compile llama.cpp static runtime
-        run: cmake --build build/llama-android-arm64 --config Release --target llama --parallel 2
+        run: cmake --build "build/llama-android-${{ matrix.abi }}" --config Release --target llama --parallel 2
 
-      - name: Stage only the built ARM64 runtime and public headers
+      - name: Stage and verify native runtime
         run: |
           set -euo pipefail
-          DEST="$GITHUB_WORKSPACE/artifacts/llama-android-arm64"
+          ABI="${{ matrix.abi }}"
+          BUILD="build/llama-android-$ABI"
+          DEST="$GITHUB_WORKSPACE/artifacts/llama-android-$ABI"
           mkdir -p "$DEST/lib" "$DEST/include/ggml"
-          cp build/llama-android-arm64/src/libllama.a "$DEST/lib/"
-          cp build/llama-android-arm64/ggml/src/libggml.a "$DEST/lib/"
-          cp build/llama-android-arm64/ggml/src/libggml-base.a "$DEST/lib/"
-          cp build/llama-android-arm64/ggml/src/libggml-cpu.a "$DEST/lib/"
+          cp "$BUILD/src/libllama.a" "$DEST/lib/"
+          cp "$BUILD/ggml/src/libggml.a" "$DEST/lib/"
+          cp "$BUILD/ggml/src/libggml-base.a" "$DEST/lib/"
+          cp "$BUILD/ggml/src/libggml-cpu.a" "$DEST/lib/"
           find third_party/llama.cpp/include -maxdepth 1 -type f -name '*.h' -exec cp {} "$DEST/include/" \;
           find third_party/llama.cpp/ggml/include -maxdepth 1 -type f -name '*.h' -exec cp {} "$DEST/include/ggml/" \;
           printf 'Pinned llama.cpp commit: %s\n' '806b3c2bed44490233f1e8ffa403519370965fe7' > "$DEST/BUILD-INFO.txt"
-          printf 'ABI: arm64-v8a\nNDK: 28.2.13676358\n' >> "$DEST/BUILD-INFO.txt"
+          printf 'ABI: %s\nNDK: 28.2.13676358\nAndroid API: 24\n' "$ABI" >> "$DEST/BUILD-INFO.txt"
           test -s "$DEST/lib/libllama.a"
           test -s "$DEST/lib/libggml.a"
           test -s "$DEST/lib/libggml-base.a"
@@ -96,7 +106,7 @@ jobs:
       - name: Upload native runtime build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aura-llama-android-arm64-static
-          path: artifacts/llama-android-arm64/
+          name: aura-llama-android-${{ matrix.abi }}-static
+          path: artifacts/llama-android-${{ matrix.abi }}/
           if-no-files-found: error
           retention-days: 14
