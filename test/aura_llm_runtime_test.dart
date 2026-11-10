@@ -9,39 +9,39 @@ void main() {
     test(
       'rejects invalid model loading parameters before platform dispatch',
       () async {
-      final runtime = AuraLlmRuntime();
-      await expectLater(
-        runtime.loadModel(
-          absoluteModelPath: '../outside/model.gguf',
-          contextTokens: 4096,
-        ),
-        throwsArgumentError,
-      );
-      await expectLater(
-        runtime.loadModel(
-          absoluteModelPath: '/data/model.gguf',
-          contextTokens: 128,
-        ),
-        throwsArgumentError,
-      );
+        final runtime = AuraLlmRuntime();
+        await expectLater(
+          runtime.loadModel(
+            absoluteModelPath: '../outside/model.gguf',
+            contextTokens: 4096,
+          ),
+          throwsArgumentError,
+        );
+        await expectLater(
+          runtime.loadModel(
+            absoluteModelPath: '/data/model.gguf',
+            contextTokens: 128,
+          ),
+          throwsArgumentError,
+        );
     });
 
     test(
       'rejects invalid generation settings before platform dispatch',
       () async {
-      final runtime = AuraLlmRuntime();
-      await expectLater(
-        runtime.startGeneration(prompt: '  '),
-        throwsArgumentError,
-      );
-      await expectLater(
-        runtime.startGeneration(prompt: 'hello', maxTokens: 0),
-        throwsArgumentError,
-      );
-      await expectLater(
-        runtime.startGeneration(prompt: 'hello', temperature: double.nan),
-        throwsArgumentError,
-      );
+        final runtime = AuraLlmRuntime();
+        await expectLater(
+          runtime.startGeneration(prompt: '  '),
+          throwsArgumentError,
+        );
+        await expectLater(
+          runtime.startGeneration(prompt: 'hello', maxTokens: 0),
+          throwsArgumentError,
+        );
+        await expectLater(
+          runtime.startGeneration(prompt: 'hello', temperature: double.nan),
+          throwsArgumentError,
+        );
     });
 
     test('rejects malformed capability payloads', () {
