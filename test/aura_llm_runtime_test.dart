@@ -24,7 +24,8 @@ void main() {
           ),
           throwsArgumentError,
         );
-    });
+      },
+    );
 
     test(
       'rejects invalid generation settings before platform dispatch',
@@ -56,8 +57,7 @@ void main() {
         }),
         throwsFormatException,
       );
-      },
-    );
+    });
 
     test('rejects unknown or malformed native events', () {
       expect(
