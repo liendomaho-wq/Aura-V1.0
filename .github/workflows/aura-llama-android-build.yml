@@ -1,0 +1,102 @@
+name: Aura llama.cpp Android ARM64 build spike
+
+on:
+  push:
+    branches:
+      - "arena/aura-llama-android-build-spike"
+    paths:
+      - ".github/workflows/aura-llama-android-build.yml"
+      - "docs/LLAMA_ANDROID_RUNTIME_SPIKE.md"
+  pull_request:
+    paths:
+      - ".github/workflows/aura-llama-android-build.yml"
+      - "docs/LLAMA_ANDROID_RUNTIME_SPIKE.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aura-llama-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-llama-android-arm64:
+    name: Build pinned llama.cpp for Android ARM64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout Aura
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned llama.cpp source
+        uses: actions/checkout@v4
+        with:
+          repository: ggml-org/llama.cpp
+          ref: 806b3c2bed44490233f1e8ffa403519370965fe7
+          path: third_party/llama.cpp
+          persist-credentials: false
+
+      - name: Locate preinstalled Android SDK tools
+        run: |
+          test -n "$ANDROID_HOME"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          test -x "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+
+      - name: Install pinned Android NDK and CMake
+        run: |
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --install "ndk;28.2.13676358" "cmake;3.31.6"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/cmake/3.31.6/bin" >> "$GITHUB_PATH"
+
+      - name: Configure portable CPU-only Android ARM64 build
+        run: |
+          cmake -S third_party/llama.cpp -B build/llama-android-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-24 \
+            -DANDROID_STL=c++_shared \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DGGML_NATIVE=OFF \
+            -DGGML_OPENMP=OFF \
+            -DGGML_LLAMAFILE=OFF \
+            -DGGML_VULKAN=OFF \
+            -DLLAMA_OPENSSL=OFF \
+            -DLLAMA_BUILD_TESTS=OFF \
+            -DLLAMA_BUILD_EXAMPLES=OFF \
+            -DLLAMA_BUILD_SERVER=OFF \
+            -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/artifacts/llama-android-arm64"
+
+      - name: Compile llama.cpp static runtime
+        run: cmake --build build/llama-android-arm64 --config Release --target llama --parallel 2
+
+      - name: Stage only the built ARM64 runtime and public headers
+        run: |
+          set -euo pipefail
+          DEST="$GITHUB_WORKSPACE/artifacts/llama-android-arm64"
+          mkdir -p "$DEST/lib" "$DEST/include/ggml"
+          cp build/llama-android-arm64/src/libllama.a "$DEST/lib/"
+          cp build/llama-android-arm64/ggml/src/libggml.a "$DEST/lib/"
+          cp build/llama-android-arm64/ggml/src/libggml-base.a "$DEST/lib/"
+          cp build/llama-android-arm64/ggml/src/libggml-cpu.a "$DEST/lib/"
+          find third_party/llama.cpp/include -maxdepth 1 -type f -name '*.h' -exec cp {} "$DEST/include/" \;
+          find third_party/llama.cpp/ggml/include -maxdepth 1 -type f -name '*.h' -exec cp {} "$DEST/include/ggml/" \;
+          printf 'Pinned llama.cpp commit: %s\n' '806b3c2bed44490233f1e8ffa403519370965fe7' > "$DEST/BUILD-INFO.txt"
+          printf 'ABI: arm64-v8a\nNDK: 28.2.13676358\n' >> "$DEST/BUILD-INFO.txt"
+          test -s "$DEST/lib/libllama.a"
+          test -s "$DEST/lib/libggml.a"
+          test -s "$DEST/lib/libggml-base.a"
+          test -s "$DEST/lib/libggml-cpu.a"
+          find "$DEST" -maxdepth 4 -type f | sort
+
+      - name: Upload native runtime build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aura-llama-android-arm64-static
+          path: artifacts/llama-android-arm64/
+          if-no-files-found: error
+          retention-days: 14
