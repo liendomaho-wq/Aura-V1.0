@@ -70,12 +70,14 @@ void main() {
     });
 
     test('rejects excessively nested and oversized JSON collections', () {
-      final nested = '{"tool":"scan_apps","arguments":{"x":' +
+      final nested =
+          '{"tool":"scan_apps","arguments":{"x":' +
           ('[' * 18) +
           '0' +
           (']' * 18) +
           '}}';
-      final tooManyArguments = '{"tool":"scan_apps","arguments":{' +
+      final tooManyArguments =
+          '{"tool":"scan_apps","arguments":{' +
           List<String>.generate(65, (index) => '"k$index":$index').join(',') +
           '}}';
       expect(LlmToolProposal.parse(nested), isNull);
