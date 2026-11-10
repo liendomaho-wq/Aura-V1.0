@@ -42,7 +42,8 @@ void main() {
           runtime.startGeneration(prompt: 'hello', temperature: double.nan),
           throwsArgumentError,
         );
-    });
+      },
+    );
 
     test('rejects malformed capability payloads', () {
       expect(
@@ -55,7 +56,8 @@ void main() {
         }),
         throwsFormatException,
       );
-    });
+      },
+    );
 
     test('rejects unknown or malformed native events', () {
       expect(
