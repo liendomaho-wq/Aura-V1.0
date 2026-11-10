@@ -84,13 +84,12 @@ class AuraLlmEvent {
 /// This class deliberately does not authorize or execute Aura security tools.
 /// Model output remains untrusted text until AgentController validates it.
 class AuraLlmRuntime {
-  AuraLlmRuntime({
-    MethodChannel? methodChannel,
-    EventChannel? eventChannel,
-  }) : _methodChannel =
-           methodChannel ?? const MethodChannel('com.ciberdefensa.aura/llm'),
-       _eventChannel =
-           eventChannel ?? const EventChannel('com.ciberdefensa.aura/llm/events');
+  AuraLlmRuntime({MethodChannel? methodChannel, EventChannel? eventChannel})
+    : _methodChannel =
+          methodChannel ?? const MethodChannel('com.ciberdefensa.aura/llm'),
+      _eventChannel =
+          eventChannel ??
+          const EventChannel('com.ciberdefensa.aura/llm/events');
 
   final MethodChannel _methodChannel;
   final EventChannel _eventChannel;
@@ -107,8 +106,9 @@ class AuraLlmRuntime {
       }).asBroadcastStream();
 
   Future<AuraLlmCapabilities> capabilities() async {
-    final response =
-        await _methodChannel.invokeMapMethod<Object?, Object?>('capabilities');
+    final response = await _methodChannel.invokeMapMethod<Object?, Object?>(
+      'capabilities',
+    );
     if (response == null) {
       throw const PlatformException(
         code: 'LLM_EMPTY_CAPABILITIES',
@@ -156,11 +156,7 @@ class AuraLlmRuntime {
     }
     final operationId = await _methodChannel.invokeMethod<String>(
       'startGeneration',
-      {
-        'prompt': prompt,
-        'max_tokens': maxTokens,
-        'temperature': temperature,
-      },
+      {'prompt': prompt, 'max_tokens': maxTokens, 'temperature': temperature},
     );
     if (operationId == null || operationId.isEmpty) {
       throw const PlatformException(
@@ -175,10 +171,9 @@ class AuraLlmRuntime {
     if (operationId.isEmpty) {
       throw ArgumentError.value(operationId, 'operationId');
     }
-    return await _methodChannel.invokeMethod<bool>(
-          'cancel',
-          {'operation_id': operationId},
-        ) ??
+    return await _methodChannel.invokeMethod<bool>('cancel', {
+          'operation_id': operationId,
+        }) ??
         false;
   }
 
