@@ -87,10 +87,10 @@ class AuraLlmRuntime {
   AuraLlmRuntime({
     MethodChannel? methodChannel,
     EventChannel? eventChannel,
-  }) : _methodChannel = methodChannel ??
-            const MethodChannel('com.ciberdefensa.aura/llm'),
-       _eventChannel = eventChannel ??
-            const EventChannel('com.ciberdefensa.aura/llm/events');
+  }) : _methodChannel =
+           methodChannel ?? const MethodChannel('com.ciberdefensa.aura/llm'),
+       _eventChannel =
+           eventChannel ?? const EventChannel('com.ciberdefensa.aura/llm/events');
 
   final MethodChannel _methodChannel;
   final EventChannel _eventChannel;
