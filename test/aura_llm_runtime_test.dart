@@ -80,8 +80,7 @@ void main() {
     test(
       'missing native channel fails closed instead of claiming availability',
       () async {
-        const channel =
-            MethodChannel('com.ciberdefensa.aura/llm.test.missing');
+        const channel = MethodChannel('com.ciberdefensa.aura/llm.test.missing');
         final runtime = AuraLlmRuntime(methodChannel: channel);
         await expectLater(
           runtime.capabilities(),
