@@ -147,10 +147,7 @@ class _StrictJsonStructureScanner {
   void _skipWhitespace() {
     while (_index < source.length) {
       final unit = source.codeUnitAt(_index);
-      if (unit != 0x20 &&
-          unit != 0x09 &&
-          unit != 0x0a &&
-          unit != 0x0d) {
+      if (unit != 0x20 && unit != 0x09 && unit != 0x0a && unit != 0x0d) {
         break;
       }
       _index++;
