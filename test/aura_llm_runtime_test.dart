@@ -6,8 +6,9 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('AuraLlmRuntime input and response boundary', () {
-    test('rejects invalid model loading parameters before platform dispatch',
-        () async {
+    test(
+      'rejects invalid model loading parameters before platform dispatch',
+      () async {
       final runtime = AuraLlmRuntime();
       await expectLater(
         runtime.loadModel(
@@ -25,8 +26,9 @@ void main() {
       );
     });
 
-    test('rejects invalid generation settings before platform dispatch',
-        () async {
+    test(
+      'rejects invalid generation settings before platform dispatch',
+      () async {
       final runtime = AuraLlmRuntime();
       await expectLater(
         runtime.startGeneration(prompt: '  '),
