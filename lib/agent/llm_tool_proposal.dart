@@ -31,7 +31,9 @@ class _StrictJsonStructureScanner {
       throw const FormatException('JSON nesting too deep.');
     }
     _skipWhitespace();
-    if (_index >= source.length) throw const FormatException('Missing JSON value.');
+    if (_index >= source.length) {
+      throw const FormatException('Missing JSON value.');
+    }
     switch (source.codeUnitAt(_index)) {
       case 0x7b: // {
         _readObject(depth + 1);
@@ -60,7 +62,9 @@ class _StrictJsonStructureScanner {
         throw const FormatException('Object key must be a string.');
       }
       final key = _readString();
-      if (!keys.add(key)) throw const FormatException('Duplicate JSON object key.');
+      if (!keys.add(key)) {
+        throw const FormatException('Duplicate JSON object key.');
+      }
       members++;
       if (members > _maxObjectMembers) {
         throw const FormatException('Too many JSON object members.');
@@ -103,7 +107,9 @@ class _StrictJsonStructureScanner {
         throw const FormatException('Control character in JSON string.');
       }
       if (unit == 0x5c) {
-        if (_index >= source.length) throw const FormatException('Incomplete escape.');
+        if (_index >= source.length) {
+          throw const FormatException('Incomplete escape.');
+        }
         final escaped = source.codeUnitAt(_index++);
         if (escaped == 0x75) {
           for (var count = 0; count < 4; count++) {
@@ -133,7 +139,9 @@ class _StrictJsonStructureScanner {
       }
       _index++;
     }
-    if (_index == start) throw const FormatException('Invalid JSON value.');
+    if (_index == start) {
+      throw const FormatException('Invalid JSON value.');
+    }
   }
 
   void _skipWhitespace() {
@@ -158,7 +166,9 @@ class _StrictJsonStructureScanner {
   }
 
   void _expect(int expected) {
-    if (!_consume(expected)) throw const FormatException('Unexpected JSON token.');
+    if (!_consume(expected)) {
+      throw const FormatException('Unexpected JSON token.');
+    }
   }
 }
 
