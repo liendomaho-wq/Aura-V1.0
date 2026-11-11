@@ -299,4 +299,62 @@ void main() {
     expect(intent.kind, AuraIntentKind.block);
     expect(intent.entities['domain'], 'evil.example.com');
   });
+
+  group('normalización de acentos y sinónimos', () {
+    test('los imperativos acentuados resuelven la misma intención', () async {
+      final cases = <String, AuraIntentKind>{
+        'AUDITÁ EL DISPOSITIVO': AuraIntentKind.auditDevice,
+        'REVISÁ MI TELÉFONO': AuraIntentKind.auditDevice,
+        'INSPECCIONÁ LAS APLICACIONES INSTALADAS': AuraIntentKind.scanApps,
+        'ACTIVÁ LAS DEFENSAS': AuraIntentKind.toggleDefenses,
+        'DESACTIVÁ LAS DEFENSAS': AuraIntentKind.toggleDefenses,
+        'PURGA CRIPTOGRÁFICA': AuraIntentKind.cryptographicPurge,
+        'PÁNICO': AuraIntentKind.panicIsolation,
+      };
+      for (final entry in cases.entries) {
+        final intent = await AuraIntentParser.parse(entry.key);
+        expect(intent.kind, entry.value, reason: entry.key);
+      }
+    });
+
+    test('desactivar con acento no se confunde con activar', () async {
+      final intent = await AuraIntentParser.parse('DESACTIVÁ EL VPN');
+
+      expect(intent.kind, AuraIntentKind.toggleDefenses);
+      expect(intent.entities['activate'], isFalse);
+    });
+
+    test('verbos equivalentes se reconocen sin cambiar la intención', () async {
+      final cases = <String, AuraIntentKind>{
+        'chequeá el dominio example.org': AuraIntentKind.analyzeDomain,
+        'verificá el entorno del equipo': AuraIntentKind.auditDevice,
+        'examina las apps instaladas': AuraIntentKind.scanApps,
+        'prende el escudo': AuraIntentKind.toggleDefenses,
+      };
+      for (final entry in cases.entries) {
+        final intent = await AuraIntentParser.parse(entry.key);
+        expect(intent.kind, entry.value, reason: entry.key);
+      }
+    });
+
+    test(
+      'el dominio se extrae del texto original, no del normalizado',
+      () async {
+        final intent = await AuraIntentParser.parse(
+          'chequeá el dominio EVIL.Example.ORG',
+        );
+
+        expect(intent.name, 'analyze_domain');
+        expect(intent.entities['domain'], 'evil.example.org');
+      },
+    );
+
+    test('la normalización no debilita el límite entre órdenes', () async {
+      final intent = await AuraIntentParser.parse(
+        'activá las defensas\nbloqueá evil.example.org',
+      );
+
+      expect(intent.kind, AuraIntentKind.unknown);
+    });
+  });
 }

@@ -111,9 +111,8 @@ void main() {
     final model = manager(
       downloadUrl: 'https://example.test/model.gguf',
       expectedSha256: _digest(<int>[1, 2, 3]),
-      clientFactory: () => MockClient(
-        (_) async => http.Response.bytes(<int>[4, 5, 6], 200),
-      ),
+      clientFactory: () =>
+          MockClient((_) async => http.Response.bytes(<int>[4, 5, 6], 200)),
     );
 
     expect(await model.resolveVerifiedModel(), isNull);
@@ -144,9 +143,8 @@ void main() {
       downloadUrl: 'https://example.test/model.gguf',
       expectedSha256: _digest(bytes),
       maxBytes: 8,
-      clientFactory: () => MockClient(
-        (_) async => http.Response.bytes(bytes, 200),
-      ),
+      clientFactory: () =>
+          MockClient((_) async => http.Response.bytes(bytes, 200)),
     );
 
     expect(await model.resolveVerifiedModel(), isNull);

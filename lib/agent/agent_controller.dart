@@ -696,8 +696,7 @@ class AgentController {
                 'instruction_length': text.length,
                 'operation_id': operationId,
                 'local_llm_status': plan.status.name,
-                if (plan.errorCode != null)
-                  'local_llm_error': plan.errorCode,
+                if (plan.errorCode != null) 'local_llm_error': plan.errorCode,
               },
             ),
           );

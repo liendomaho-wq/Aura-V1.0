@@ -137,10 +137,9 @@ void main() {
 
       expect(result.status, LocalLlmPlanStatus.proposal);
       expect(result.proposal?.tool, 'analyze_domain');
-      expect(
-        result.proposal?.arguments,
-        <String, dynamic>{'domain': 'example.org'},
-      );
+      expect(result.proposal?.arguments, <String, dynamic>{
+        'domain': 'example.org',
+      });
       expect(runtime.startCalls, 1);
       expect(runtime.loadCalls, 0);
     });
@@ -160,11 +159,7 @@ void main() {
 
         final result = await _planner(runtime).plan('haz algo raro');
 
-        expect(
-          result.status,
-          LocalLlmPlanStatus.noProposal,
-          reason: output,
-        );
+        expect(result.status, LocalLlmPlanStatus.noProposal, reason: output);
         expect(result.proposal, isNull, reason: output);
       }
     });
@@ -200,22 +195,25 @@ void main() {
       expect(runtime.loadCalls, 0);
     });
 
-    test('bounds model resolution so a download cannot block an order', () async {
-      final runtime = _FakeLlmRuntime();
-      addTearDown(runtime.dispose);
-      final never = Completer<String?>();
+    test(
+      'bounds model resolution so a download cannot block an order',
+      () async {
+        final runtime = _FakeLlmRuntime();
+        addTearDown(runtime.dispose);
+        final never = Completer<String?>();
 
-      final result = await _planner(
-        runtime,
-        resolver: () => never.future,
-        modelResolveTimeout: const Duration(milliseconds: 30),
-      ).plan('audita el dispositivo');
+        final result = await _planner(
+          runtime,
+          resolver: () => never.future,
+          modelResolveTimeout: const Duration(milliseconds: 30),
+        ).plan('audita el dispositivo');
 
-      expect(result.status, LocalLlmPlanStatus.failed);
-      expect(result.errorCode, 'llm_model_prepare_timeout');
-      expect(runtime.startCalls, 0);
-      expect(runtime.loadCalls, 0);
-    });
+        expect(result.status, LocalLlmPlanStatus.failed);
+        expect(result.errorCode, 'llm_model_prepare_timeout');
+        expect(runtime.startCalls, 0);
+        expect(runtime.loadCalls, 0);
+      },
+    );
 
     test('prefetch warms the model outside the order path', () async {
       final runtime = _FakeLlmRuntime();
@@ -301,10 +299,9 @@ void main() {
       final runtime = _FakeLlmRuntime(loaded: true)..autoRespond = false;
       addTearDown(runtime.dispose);
       final token = AgentCancellationToken();
-      final pending = _planner(runtime).plan(
-        'audita el dispositivo',
-        cancellationToken: token,
-      );
+      final pending = _planner(
+        runtime,
+      ).plan('audita el dispositivo', cancellationToken: token);
 
       await Future<void>.delayed(const Duration(milliseconds: 10));
       expect(token.cancel(), isTrue);

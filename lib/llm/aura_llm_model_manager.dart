@@ -88,9 +88,7 @@ class AuraLlmModelManager {
 
   Future<Directory> _modelDirectory() async {
     final base = await _resolveDirectory();
-    final directory = Directory(
-      '${base.path}${Platform.pathSeparator}models',
-    );
+    final directory = Directory('${base.path}${Platform.pathSeparator}models');
     await directory.create(recursive: true);
     return directory;
   }

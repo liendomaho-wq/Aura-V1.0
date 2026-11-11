@@ -298,10 +298,7 @@ class LocalLlmPlanner {
             return;
           }
           finish(
-            LocalLlmPlanResult(
-              LocalLlmPlanStatus.proposal,
-              proposal: proposal,
-            ),
+            LocalLlmPlanResult(LocalLlmPlanStatus.proposal, proposal: proposal),
           );
           return;
         case 'error':
