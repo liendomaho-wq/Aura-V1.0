@@ -75,6 +75,20 @@ class _FakeLlmRuntime extends AuraLlmRuntime {
   @override
   Future<bool> cancel(String operationId) async {
     cancelCalls++;
+    // The native contract reports exactly one terminal event for an accepted
+    // cancellation. Deliver it asynchronously, like the platform channel does,
+    // so a timeout that already finished its plan is not overtaken by it.
+    scheduleMicrotask(() {
+      if (!_events.isClosed) {
+        _events.add(
+          AuraLlmEvent(
+            operationId: operationId,
+            type: 'error',
+            error: 'operation_cancelled',
+          ),
+        );
+      }
+    });
     return true;
   }
 

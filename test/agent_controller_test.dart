@@ -374,7 +374,7 @@ void main() {
         events.any(
           (event) =>
               event.kind == AgentEventKind.action &&
-              event.data?['intent'] == 'audit_device',
+              event.message == 'audit_device',
         ),
         isTrue,
       );
