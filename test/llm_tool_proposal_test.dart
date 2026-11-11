@@ -58,6 +58,32 @@ void main() {
       }
     });
 
+    test('rejects duplicate keys at every JSON object level', () {
+      for (final output in <String>[
+        '{"tool":"scan_apps","tool":"audit_device","arguments":{}}',
+        '{"tool":"analyze_domain","arguments":{"domain":"example.org","domain":"evil.org"}}',
+        '{"tool":"scan_apps","arguments":{"nested":{"x":1,"x":2}}}',
+        r'{"tool":"scan_apps","arguments":{"a":1,"\u0061":2}}',
+      ]) {
+        expect(LlmToolProposal.parse(output), isNull, reason: output);
+      }
+    });
+
+    test('rejects excessively nested and oversized JSON collections', () {
+      final nested =
+          '{"tool":"scan_apps","arguments":{"x":' +
+          ('[' * 18) +
+          '0' +
+          (']' * 18) +
+          '}}';
+      final tooManyArguments =
+          '{"tool":"scan_apps","arguments":{' +
+          List<String>.generate(65, (index) => '"k$index":$index').join(',') +
+          '}}';
+      expect(LlmToolProposal.parse(nested), isNull);
+      expect(LlmToolProposal.parse(tooManyArguments), isNull);
+    });
+
     test('rejects oversized model output in bytes', () {
       expect(LlmToolProposal.parse(' ' * 8193), isNull);
       expect(LlmToolProposal.parse('ñ' * 4097), isNull);
