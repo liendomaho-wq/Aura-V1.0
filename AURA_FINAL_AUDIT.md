@@ -831,3 +831,51 @@ Existe el APK debug de `029efe1` identificado arriba, además de los históricos
 verificadas en dispositivo: ninguna.** No se atribuyen a esos artefactos los cambios posteriores
 ni una validación Flutter completa. No hacer merge, publicar ni declarar Aura
 terminada mientras los criterios pendientes no tengan evidencia del SHA correcto.
+
+
+---
+
+## 9. Actualización de evidencia — 2026-11-11 UTC
+
+Esta sección prevalece sobre las afirmaciones históricas de las secciones 1, 7 y
+8 cuando describen el estado de PR #26 y de la migración SecureVault.
+
+- PR [#26](https://github.com/liendomaho-wq/Aura-V1.0/pull/26), head
+  `d448e0cb7650cf00f94398229381a318c219380e`, fue fusionada mediante squash
+  después de completar las verificaciones de Flutter Quality y Android Debug
+  Build y la migración instrumentada. Commit de merge en `main`:
+  `f361f7af50ebd9a6e24de6eabc4f873f82b6ea84`.
+- La migración real de SecureVault v9→v10 ejecutó cinco pruebas instrumentadas
+  en emulador Android 16. El job
+  [130220913617](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42927314684/job/130220913617)
+  terminó **completed / success**. El log muestra
+  `Starting 5 tests on emulator-5554 - 16`,
+  `Finished 5 tests` y `BUILD SUCCESSFUL in 4m 39s`.
+  Esto valida ese conjunto de pruebas en emulador; no sustituye una prueba de
+  migración en el Redmi ni certifica todos los escenarios de recuperación.
+- El job [Aura Android Debug Build
+  130217059998](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42927314684/job/130217059998)
+  y Flutter Quality run **42927314799** constan como success para el candidato
+  de PR. La APK generada en ese run validó compilación y empaquetado de las
+  bibliotecas nativas del túnel; **no contiene aún el runtime llama.cpp enlazado
+  ni DeepSeek funcionando**.
+- El endurecimiento del parser de propuestas LLM rechaza claves JSON duplicadas
+  (incluidas claves equivalentes escapadas), profundidad excesiva y colecciones
+  demasiado grandes. Solo acepta propuestas de herramientas de lectura; no
+  concede permisos ni ejecuta acciones.
+- Estado de IA comprobado tras el merge: Dart define el contrato de canal
+  `com.ciberdefensa.aura/llm`, pero `MainActivity` todavía no registra esos
+  canales; no hay puente JNI de inferencia enlazado al APK, descarga privada
+  verificada del GGUF ni generación real conectada a `AgentController`.
+  El workflow de compilación llama.cpp sigue siendo una prueba de compilación
+  aislada de archivos estáticos, no integración de producto.
+
+### Dictamen actualizado
+
+**La migración de bóveda en emulador y el endurecimiento de propuestas están
+cerrados para el SHA indicado. Aura como producto sigue NO CERRADA y NO LISTA
+PARA RELEASE.** No pedir al propietario que use Codemagic como prueba de DeepSeek
+hasta que el runtime nativo, el ciclo de vida Kotlin/JNI, el servicio Dart y la
+orquestación segura del agente estén realmente integrados y CI verifique la APK.
+La validación física en el Redmi y el tráfico VPN extremo a extremo siguen
+pendientes.
