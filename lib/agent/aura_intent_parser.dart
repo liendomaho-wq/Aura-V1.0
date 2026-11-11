@@ -103,7 +103,7 @@ class AuraIntentParser {
   }
 
   static final RegExp _blockCommand = RegExp(
-    r'\b(?:bloquea|bloquear|bloquee|bloqueo|block|blockear|deniega|denegar)\b',
+    r'\b(?:bloquea|bloquear|bloqueame|bloquearme|bloquee|bloqueo|block|blockear|deniega|denegar)\b',
     caseSensitive: false,
   );
   static final RegExp _isolateCommand = RegExp(
@@ -111,11 +111,11 @@ class AuraIntentParser {
     caseSensitive: false,
   );
   static final RegExp _statusCommand = RegExp(
-    r'\b(?:estado|status|salud|state|health|cómo está|como esta)\b',
+    r'\b(?:estado|status|salud|state|health|c[oó]mo est[aá]|estado del sistema)\b',
     caseSensitive: false,
   );
   static final RegExp _panicIsolationCommand = RegExp(
-    r'\b(?:pánico|panico|panic isolation|aislamiento de emergencia|aislar (?:la )?red|cortar (?:la )?red)\b',
+    r'\b(?:p[aá]nico|panic isolation|aislamiento de emergencia|aislar (?:la )?red|cortar (?:la )?red)\b',
     caseSensitive: false,
   );
   static final RegExp _resumeNetworkCommand = RegExp(
@@ -123,23 +123,23 @@ class AuraIntentParser {
     caseSensitive: false,
   );
   static final RegExp _cryptographicPurgeCommand = RegExp(
-    r'\b(?:purga criptográfica|purga criptografica|cryptographic purge|purga segura|borrado seguro de credenciales)\b',
+    r'\b(?:purga criptogr[aá]fica|cryptographic purge|purga segura|borrado seguro de credenciales)\b',
     caseSensitive: false,
   );
   static final RegExp _activateDefensesCommand = RegExp(
-    r'\b(activar|activa|enciende|encender|habilitar|habilita|conectar|conecta)\s+(las?\s+|el\s+|los?\s+)?(defensas|defensa|escudo|vpn|protecci[oó]n|t[uú]nel)\b',
+    r'\b(?:activar|activa|active|enciende|encender|prende|prender|habilitar|habilita|conectar|conecta)\s+(?:las?\s+|el\s+|los?\s+)?(?:defensas|defensa|escudo|vpn|protecci[oó]n|t[uú]nel)\b',
     caseSensitive: false,
   );
   static final RegExp _deactivateDefensesCommand = RegExp(
-    r'\b(desactivar|desactiva|apagar|apaga|desconectar|desconecta)\s+(las?\s+|el\s+|los?\s+)?(defensas|defensa|escudo|vpn|protecci[oó]n|t[uú]nel)\b',
+    r'\b(?:desactivar|desactiva|apagar|apaga|desconectar|desconecta)\s+(?:las?\s+|el\s+|los?\s+)?(?:defensas|defensa|escudo|vpn|protecci[oó]n|t[uú]nel)\b',
     caseSensitive: false,
   );
   static final RegExp _helpCommand = RegExp(
-    r'\b(ayuda|help|comandos|[oó]rdenes|que puedes hacer|qué puedes hacer)\b',
+    r'\b(?:ayuda|help|comandos|[oó]rdenes|que puedes hacer|qu[eé] puedes hacer)\b',
     caseSensitive: false,
   );
   static final RegExp _analyzeDomainCommand = RegExp(
-    r'\b(?:analiza|analizar|revisa|revisar|eval[uú]a|evaluar|comprueba|comprobar)\s+(?:el\s+)?(?:dominio|host|sitio|website)\b',
+    r'\b(?:analiza|analizar|revisa|revisar|eval[uú]a|evaluar|comprueba|comprobar|verifica|verificar|chequea|chequear|inspecciona|inspeccionar|examina|examinar)\s+(?:el\s+|la\s+)?(?:dominio|host|sitio|website|url|enlace)\b',
     caseSensitive: false,
   );
   static final RegExp _analyzeThreatsCommand = RegExp(
@@ -147,11 +147,11 @@ class AuraIntentParser {
     caseSensitive: false,
   );
   static final RegExp _auditDeviceCommand = RegExp(
-    r'\b(?:audita|auditar|revisa|revisar|comprueba|comprobar)\s+(?:el\s+)?(?:dispositivo|entorno|seguridad del dispositivo|integridad del dispositivo)\b|\b(?:auditor[ií]a)\s+(?:de\s+)?(?:seguridad|dispositivo|entorno)\b',
+    r'\b(?:audita|auditar|revisa|revisar|comprueba|comprobar|verifica|verificar|chequea|chequear|inspecciona|inspeccionar|examina|examinar)\s+(?:el\s+|la\s+|mi\s+|tu\s+)?(?:dispositivo|telefono|celular|movil|equipo|android|aparato|entorno|seguridad del dispositivo|integridad del dispositivo|device|phone)\b|\b(?:auditor[ií]a)\s+(?:de\s+)?(?:seguridad|dispositivo|entorno|telefono|celular|movil|equipo)\b',
     caseSensitive: false,
   );
   static final RegExp _scanAppsCommand = RegExp(
-    r'\b(?:analiza|analizar|escanea|escanear|revisa|revisar)\s+(?:(?:las?|los)\s+)?(?:apps|aplicaciones|aplicativos)\b|\b(?:escaneo|an[aá]lisis)\s+de\s+(?:apps|aplicaciones)\b|\b(?:scan|scan apps|scan applications)\b',
+    r'\b(?:analiza|analizar|escanea|escanear|revisa|revisar|verifica|verificar|chequea|chequear|inspecciona|inspeccionar|examina|examinar)\s+(?:(?:las?|los)\s+)?(?:apps|aplicaciones|aplicativos|programas)\b|\b(?:escaneo|an[aá]lisis)\s+de\s+(?:apps|aplicaciones)\b|\b(?:scan|scan apps|scan applications)\b',
     caseSensitive: false,
   );
   static final RegExp _updateDefensesCommand = RegExp(
@@ -284,6 +284,11 @@ class AuraIntentParser {
   }
 
   static Future<AuraIntent> parse(String text) {
+    // Command matching runs on a lowercased, accent-folded copy so that
+    // "AUDITÁ", "revisá" or "PÁNICO" resolve like their unaccented forms.
+    // Entity extraction and every security boundary below still use the
+    // original text.
+    final command = _normalizeCommandText(text);
     // Treat pasted feeds, quoted reports and multi-command text as data.
     // A single user message may resolve to at most one executable intent.
     final executablePatterns = <RegExp>[
@@ -302,8 +307,8 @@ class AuraIntentParser {
     final executableMatches = executablePatterns
         .where(
           (pattern) => identical(pattern, _isolateCommand)
-              ? _hasIndependentIsolateCommand(text)
-              : pattern.hasMatch(text),
+              ? _hasIndependentIsolateCommand(command)
+              : pattern.hasMatch(command),
         )
         .length;
     final hasEmbeddedCommandBoundary = RegExp(r'[;:\n]').hasMatch(text);
@@ -320,11 +325,11 @@ class AuraIntentParser {
     }
 
     final host = _extractHost(text);
-    final isBlockCommand = _blockCommand.hasMatch(text);
-    final isIsolateCommand = _isolateCommand.hasMatch(text);
+    final isBlockCommand = _blockCommand.hasMatch(command);
+    final isIsolateCommand = _isolateCommand.hasMatch(command);
 
     late final AuraIntent intent;
-    if (_panicIsolationCommand.hasMatch(text)) {
+    if (_panicIsolationCommand.hasMatch(command)) {
       intent = AuraIntent(
         name: 'panic_isolation',
         kind: AuraIntentKind.panicIsolation,
@@ -333,7 +338,7 @@ class AuraIntentParser {
         },
         confidence: 0.96,
       );
-    } else if (_resumeNetworkCommand.hasMatch(text)) {
+    } else if (_resumeNetworkCommand.hasMatch(command)) {
       intent = AuraIntent(
         name: 'resume_network',
         kind: AuraIntentKind.resumeNetwork,
@@ -342,7 +347,7 @@ class AuraIntentParser {
         },
         confidence: 0.96,
       );
-    } else if (_cryptographicPurgeCommand.hasMatch(text)) {
+    } else if (_cryptographicPurgeCommand.hasMatch(command)) {
       intent = AuraIntent(
         name: 'cryptographic_purge',
         kind: AuraIntentKind.cryptographicPurge,
@@ -351,7 +356,7 @@ class AuraIntentParser {
         },
         confidence: 0.96,
       );
-    } else if (_activateDefensesCommand.hasMatch(text)) {
+    } else if (_activateDefensesCommand.hasMatch(command)) {
       intent = AuraIntent(
         name: 'toggle_defenses',
         kind: AuraIntentKind.toggleDefenses,
@@ -361,7 +366,7 @@ class AuraIntentParser {
         },
         confidence: 0.96,
       );
-    } else if (_deactivateDefensesCommand.hasMatch(text)) {
+    } else if (_deactivateDefensesCommand.hasMatch(command)) {
       intent = AuraIntent(
         name: 'toggle_defenses',
         kind: AuraIntentKind.toggleDefenses,
@@ -371,42 +376,42 @@ class AuraIntentParser {
         },
         confidence: 0.96,
       );
-    } else if (_helpCommand.hasMatch(text)) {
+    } else if (_helpCommand.hasMatch(command)) {
       intent = AuraIntent(
         name: 'help',
         kind: AuraIntentKind.help,
         entities: <String, dynamic>{},
         confidence: 0.9,
       );
-    } else if (_analyzeThreatsCommand.hasMatch(text)) {
+    } else if (_analyzeThreatsCommand.hasMatch(command)) {
       intent = AuraIntent(
         name: 'analyze_threats',
         kind: AuraIntentKind.analyzeThreats,
         entities: <String, dynamic>{},
         confidence: 0.96,
       );
-    } else if (_analyzeDomainCommand.hasMatch(text) && host != null) {
+    } else if (_analyzeDomainCommand.hasMatch(command) && host != null) {
       intent = AuraIntent(
         name: 'analyze_domain',
         kind: AuraIntentKind.analyzeDomain,
         entities: <String, dynamic>{'domain': host},
         confidence: 0.96,
       );
-    } else if (_auditDeviceCommand.hasMatch(text)) {
+    } else if (_auditDeviceCommand.hasMatch(command)) {
       intent = AuraIntent(
         name: 'audit_device',
         kind: AuraIntentKind.auditDevice,
         entities: <String, dynamic>{},
         confidence: 0.95,
       );
-    } else if (_scanAppsCommand.hasMatch(text)) {
+    } else if (_scanAppsCommand.hasMatch(command)) {
       intent = AuraIntent(
         name: 'scan_apps',
         kind: AuraIntentKind.scanApps,
         entities: <String, dynamic>{},
         confidence: 0.95,
       );
-    } else if (_updateDefensesCommand.hasMatch(text)) {
+    } else if (_updateDefensesCommand.hasMatch(command)) {
       intent = AuraIntent(
         name: 'update_defenses',
         kind: AuraIntentKind.updateDefenses,
@@ -434,7 +439,7 @@ class AuraIntentParser {
         },
         confidence: packageName == null ? 0.62 : 0.96,
       );
-    } else if (_statusCommand.hasMatch(text)) {
+    } else if (_statusCommand.hasMatch(command)) {
       intent = AuraIntent(
         name: 'status',
         kind: AuraIntentKind.status,
@@ -460,6 +465,157 @@ class AuraIntentParser {
 
     _remember(intent);
     return Future<AuraIntent>.value(intent);
+  }
+
+  /// Folds case and Spanish diacritics so accented imperatives match the
+  /// same rules as their plain forms. It never removes whitespace or
+  /// punctuation, so the security boundaries in [parse] keep their meaning.
+  static String _normalizeCommandText(String text) {
+    final buffer = StringBuffer();
+    for (final unit in text.toLowerCase().codeUnits) {
+      buffer.write(_diacriticFold[unit] ?? String.fromCharCode(unit));
+    }
+    return buffer.toString();
+  }
+
+  static const Map<int, String> _diacriticFold = <int, String>{
+    0x00E1: 'a',
+    0x00E0: 'a',
+    0x00E2: 'a',
+    0x00E4: 'a',
+    0x00E3: 'a',
+    0x00E9: 'e',
+    0x00E8: 'e',
+    0x00EA: 'e',
+    0x00EB: 'e',
+    0x00ED: 'i',
+    0x00EC: 'i',
+    0x00EE: 'i',
+    0x00EF: 'i',
+    0x00F3: 'o',
+    0x00F2: 'o',
+    0x00F4: 'o',
+    0x00F6: 'o',
+    0x00F5: 'o',
+    0x00FA: 'u',
+    0x00F9: 'u',
+    0x00FB: 'u',
+    0x00FC: 'u',
+    0x00F1: 'n',
+    0x00E7: 'c',
+  };
+
+  /// Advisory suggestion for an unrecognized order, or null.
+  ///
+  /// It only produces a canonical string for the warning message; it never
+  /// executes anything. Matching is bounded to 64 input words, tolerates one
+  /// edit per long token and understands the same Spanish synonyms as
+  /// [parse], so "activaar las defensas" suggests "ACTIVAR DEFENSAS".
+  static String? hintFor(String text) {
+    final words = _normalizeCommandText(text)
+        .split(RegExp(r'[^a-z0-9]+'))
+        .where((word) => word.isNotEmpty)
+        .take(64)
+        .toList(growable: false);
+    if (words.isEmpty) return null;
+    String? best;
+    var bestScore = 0.0;
+    var bestVerbMatched = false;
+    for (final entry in _hintPhrases.entries) {
+      final tokens = entry.key.split(' ');
+      var matched = 0;
+      for (final token in tokens) {
+        if (words.any((word) => _hintTokenMatches(word, token))) matched++;
+      }
+      final verbMatched = words.any(
+        (word) => _hintTokenMatches(word, tokens.first),
+      );
+      final score = matched / tokens.length;
+      if (score > bestScore) {
+        bestScore = score;
+        best = entry.value;
+        bestVerbMatched = verbMatched;
+      }
+    }
+    if (best == null || bestScore < 0.5 || !bestVerbMatched) return null;
+    return best;
+  }
+
+  static const Map<String, String> _hintPhrases = <String, String>{
+    'activar defensas': 'ACTIVAR DEFENSAS',
+    'desactivar defensas': 'DESACTIVAR DEFENSAS',
+    'auditar dispositivo': 'AUDITAR DISPOSITIVO',
+    'escanear aplicaciones': 'ESCANEAR APLICACIONES',
+    'analizar dominio': 'ANALIZAR DOMINIO <host>',
+    'bloquear dominio': 'BLOQUEAR <dominio>',
+    'aislar aplicacion': 'AISLAR APP <paquete>',
+    'aislamiento de emergencia': 'AISLAMIENTO DE EMERGENCIA',
+    'reanudar red': 'REANUDAR LA RED',
+    'purga criptografica': 'PURGA CRIPTOGRÁFICA',
+    'actualizar defensas': 'ACTUALIZAR DEFENSAS',
+    'estado': 'ESTADO',
+    'ayuda': 'AYUDA',
+  };
+
+  static const Map<String, Set<String>> _hintSynonyms = <String, Set<String>>{
+    'defensas': <String>{'defensa', 'escudo', 'vpn', 'proteccion', 'tunel'},
+    'dispositivo': <String>{
+      'telefono',
+      'celular',
+      'movil',
+      'equipo',
+      'android',
+      'aparato',
+      'device',
+      'phone',
+    },
+    'aplicaciones': <String>{'apps', 'aplicativos', 'programas'},
+    'dominio': <String>{'host', 'sitio', 'website', 'url', 'enlace'},
+    'red': <String>{'network'},
+  };
+
+  static bool _hintTokenMatches(String word, String token) {
+    if (word == token) return true;
+    final synonyms = _hintSynonyms[token];
+    if (synonyms != null) {
+      for (final synonym in synonyms) {
+        if (word == synonym) return true;
+        if (word.length >= 4 && _withinOneEdit(word, synonym)) return true;
+      }
+    }
+    if (word.length < 4 || token.length < 4) return false;
+    return _withinOneEdit(word, token);
+  }
+
+  /// True when [a] can become [b] with one insertion, deletion or substitution.
+  static bool _withinOneEdit(String a, String b) {
+    if ((a.length - b.length).abs() > 1) return false;
+    if (a.length == b.length) {
+      var differences = 0;
+      for (var index = 0; index < a.length; index++) {
+        if (a.codeUnitAt(index) != b.codeUnitAt(index)) {
+          differences++;
+          if (differences > 1) return false;
+        }
+      }
+      return true;
+    }
+    final shorter = a.length < b.length ? a : b;
+    final longer = a.length < b.length ? b : a;
+    var shortIndex = 0;
+    var longIndex = 0;
+    var skipped = false;
+    while (shortIndex < shorter.length && longIndex < longer.length) {
+      if (shorter.codeUnitAt(shortIndex) == longer.codeUnitAt(longIndex)) {
+        shortIndex++;
+        longIndex++;
+        continue;
+      }
+      if (skipped) return false;
+      skipped = true;
+      longIndex++;
+    }
+    return true;
   }
 
   static bool _hasIndependentIsolateCommand(String text) {

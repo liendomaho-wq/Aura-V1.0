@@ -324,6 +324,11 @@ class MainActivity: FlutterFragmentActivity() {
             NETWORK_STREAM_CHANNEL,
         ).setStreamHandler(AuraNetworkStream)
 
+        // Local llama.cpp runtime for lib/llm/aura_llm_runtime.dart. The
+        // plugin stays fail-closed: if libaura_llm.so or its worker cannot
+        // start, capabilities report unavailable and no generation runs.
+        AuraLlmPlugin.install(flutterEngine)
+
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             ENGINE_CHANNEL,

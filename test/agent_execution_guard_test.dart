@@ -105,5 +105,41 @@ void main() {
       expect(token.cancel(), isFalse);
       expect(token.isCancelled, isFalse);
     });
+
+    test('notifies registered cancellation observers exactly once', () {
+      final token = AgentCancellationToken();
+      var calls = 0;
+      expect(token.addCancelListener(() => calls++), isTrue);
+      expect(token.cancel(), isTrue);
+      expect(token.cancel(), isFalse);
+      expect(calls, 1);
+    });
+
+    test('removed observers are not notified', () {
+      final token = AgentCancellationToken();
+      var calls = 0;
+      void observer() => calls++;
+      token.addCancelListener(observer);
+      token.removeCancelListener(observer);
+      expect(token.cancel(), isTrue);
+      expect(calls, 0);
+    });
+
+    test('a failing observer cannot block cancellation', () {
+      final token = AgentCancellationToken();
+      var calls = 0;
+      token.addCancelListener(() => throw StateError('observer failed'));
+      token.addCancelListener(() => calls++);
+      expect(token.cancel(), isTrue);
+      expect(calls, 1);
+    });
+
+    test('observers are refused after execution or cancellation', () {
+      final running = AgentCancellationToken()..markExecutionStarted();
+      expect(running.addCancelListener(() {}), isFalse);
+      final cancelled = AgentCancellationToken();
+      expect(cancelled.cancel(), isTrue);
+      expect(cancelled.addCancelListener(() {}), isFalse);
+    });
   });
 }

@@ -879,3 +879,160 @@ hasta que el runtime nativo, el ciclo de vida Kotlin/JNI, el servicio Dart y la
 orquestación segura del agente estén realmente integrados y CI verifique la APK.
 La validación física en el Redmi y el tráfico VPN extremo a extremo siguen
 pendientes.
+
+## 10. Fase 1 — runtime LLM local y NLU determinista (2026-11-11 UTC)
+
+Esta sección sustituye las afirmaciones de la sección 9 sobre canales sin
+registrar, ausencia de puente JNI y ausencia de commits. Toda la evidencia
+siguiente está atada a commits concretos y a runs de GitHub Actions. Nada de
+esta sección procede de una prueba en hardware físico.
+
+### 10.1 Rama, commits y PR
+
+- `main` remoto al iniciar esta fase: `3ba34c55d773c80bba9c3f78ffa31e373bdc5c88`.
+- Rama `feat/llm-native-bridge`, PR
+  [#29](https://github.com/liendomaho-wq/Aura-V1.0/pull/29), base `main`.
+- Cuatro commits sobre `main`:
+  - `147da0a` — runtime llama.cpp fijado, puente JNI, contrato Kotlin, plugin
+    de orquestación, planificador Dart y gestor verificado del GGUF.
+  - `ffd773b` — NLU tolerante a acentos y sinónimos sin perder fronteras.
+  - `09bb350` — corrección de dos pruebas LLM (evento terminal tras cancelación
+    y aserción de `intent.toEvent()`).
+  - `83e4606` — sugerencias deterministas ante typos (`hintFor`).
+
+### 10.2 Qué quedó integrado en el código
+
+- JNI: `android/app/src/main/cpp/aura_llm/aura_llm_jni.cpp` con `JNI_OnLoad`
+  que exige `com/ciberdefensa/aura/AuraLlmBridge` y la firma
+  `(Ljava/lang/String;ILjava/lang/String;)V`; si falta, devuelve `JNI_ERR`.
+- `CMakeLists.txt` enlaza `llama → ggml → ggml-cpu → ggml-base` y `Threads`,
+  `dl`, `m`, `log`, `android`.
+- Kotlin: `AuraLlmContract.kt` (canales, rangos y respuestas),
+  `AuraLlmOperationRegistry.kt` (una sola generación activa, cancelación
+  cooperativa), `AuraLlmBridge.kt` (carga JNI), `AuraLlmPlugin.kt`
+  (orquestación) y registro en `MainActivity`.
+- Gradle: descarga del tarball de llama.cpp fijada por commit
+  `806b3c2bed44490233f1e8ffa403519370965fe7` y SHA-256
+  `1c073db9bf1dfbaf7dfdfa27c0a1720147d593c6d704acf81a3c4470e6e95d37`,
+  caché por stamp y compilación de las 4 ABIs.
+- Dart: `LocalLlmPlanner` (prompt estricto, carga lazy, timeout de resolución,
+  cancelación nativa, buffer acotado y revalidación con `LlmToolProposal.parse`),
+  `AuraLlmModelManager` (descarga HTTPS a `.partial`, SHA-256 antes del rename
+  atómico, single-flight) y la rama `AuraIntentKind.unknown` del
+  `AgentController`.
+- El modelo es entrada no confiable: solo produce propuestas read-only
+  (`analyze_domain`, `audit_device`, `scan_apps`) que vuelven a pasar por el
+  parser endurecido; nunca ejecuta herramientas ni concede confirmaciones.
+
+### 10.3 Evidencia real de CI
+
+Runs del commit `83e4606` (cabeza de la rama):
+
+- [Flutter Quality 43049717136](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43049717136)
+  — **completed / success**:
+  - `dart format --set-exit-if-changed .`: 66 archivos, 0 cambios.
+  - `flutter analyze`: `No issues found!` (7.9 s).
+  - `flutter test`: **246 pruebas pasan, 1 omitida**.
+  - Suite Python completa: **223 passed + 132 subtests passed** (10.76 s).
+  - Guards de seguridad, plantilla VPN, JNI con fixtures y AAB firmados: OK.
+- [Aura Android Debug Build 43049716539](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43049716539)
+  — **completed / success** (ambos jobs):
+  - Job de APK: `flutter build apk --debug` OK; las 4 ABIs exportan los JNI
+    requeridos; JVM **40 pruebas, 0 fallos, 0 errores**.
+  - Job de Keystore real en emulador Android 16: log con
+    `Starting 5 tests on emulator-5554 - 16`, `Finished 5 tests` y
+    `BUILD SUCCESSFUL in 11m 27s` para la migración instrumentada SecureVault
+    v9→v10.
+  - APK `app-debug.apk`:
+    `6f81724accb0a823e65d42dcebca980521dc4f2d9ec6d7a9da3e91aefac89f43`;
+    artefacto `aura-debug-83e4606…` de 96,476,260 bytes.
+  - `libaura_llm.so` empaquetado (mismo tamaño que en `09bb350`, hash distinto:
+    el enlace nativo **no es bit-reproducible** entre runs):
+    - arm64-v8a: 6,573,040 bytes,
+      `86a73767b43e82a2fb26dccd9650d0e35aff4533b9523333e87905e52bbb6e54`
+    - armeabi-v7a: 4,798,484 bytes,
+      `64967013d8033116a697c83427ae5e21d4146ab3f0fa5a176700235cfee45318`
+    - x86: 7,062,420 bytes,
+      `222b983867340a9c3c62e6b9c167ee2ee8a5fcf7932979c2ce536e081c5bec1a`
+    - x86_64: 7,058,568 bytes,
+      `ebd8c3f3947ed05fed091541888da0ba06f3bfcf19e2a278735ea2f9bf5e836c`
+  - Modelo empaquetado verificado byte a byte:
+    `d190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2`.
+- [Release signing integrity 43049716535](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43049716535)
+  — **completed / success**.
+- [Aura Model Dataset, Training and Benchmark 43049716570](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43049716570)
+  — **completed / success**.
+
+Runs del commit anterior `09bb350`, conservados como referencia:
+
+- Flutter Quality
+  [43044305962](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43044305962)
+  — success, 241 pruebas + 1 omitida.
+- Android Debug Build
+  [43044305879](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43044305879)
+  — success; APK `de46d7ad2cccddfe6572d05cac712166ac5fcfef8c4ee5d227416c5ff4da96d3`.
+- Release signing integrity
+  [43044305893](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43044305893)
+  y Model Dataset
+  [43044305986](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43044305986)
+  — success.
+
+### 10.4 NLU determinista y sugerencias
+
+- La normalización de acentos se usa **solo para comparar**; las entidades, los
+  textos de confirmación y las fronteras `;`, `:`, `\n` conservan el texto
+  original. Así «analiza ejemplo.com» y «análiza ejemplo.com» producen la misma
+  intención sin alterar el dominio capturado.
+- Sinónimos y variantes de órdenes se resuelven antes de invocar al modelo. El
+  LLM local solo recibe órdenes que el NLU no reconoce.
+- `hintFor` compara la orden fallida contra frases canónicas y devuelve la más
+  cercana. Es **asesoría**: se muestra en el warning como `suggested_command` y
+  nunca se ejecuta ni se autoconfirma.
+- Las respuestas del modelo siguen pasando por `LlmToolProposal.parse`
+  (esquema de dos claves, allowlist read-only, rechazo de claves duplicadas,
+  profundidad y colecciones acotadas).
+
+### 10.5 Evidencia local (no sustituye CI)
+
+- `python3 tool/test_llm_native_integration.py`: **25 guards OK** entre Dart,
+  Kotlin, C++ y Gradle. No ejecutan Android, JNI ni inferencia.
+- `python3 tool/check_apk_jni.py`: OK; los `.so` de las 4 ABIs exportan los
+  símbolos JNI requeridos.
+- `clang++ -std=c++17 -fsyntax-only -Wall -Wextra` sobre
+  `aura_llm_jni.cpp`: exit 0 contra las cabeceras de la revisión fijada.
+- `PyYAML` valida los workflows.
+- `dart analyze` local sobre el parser: `No issues found!`.
+- El harness Dart de NLU/sugerencias pasó los casos de acentos, sinónimos,
+  fronteras y typos. El gate de formato se replicó con `languageVersion: 3.12`
+  para coincidir con CI (66 archivos, 0 cambios), pero la ejecución oficial es
+  la del run de CI citado.
+
+### 10.6 Límites reales: lo que sigue abierto
+
+- **No hay GGUF elegido, alojado ni fijado.** `AURA_LLM_MODEL_URL` y
+  `AURA_LLM_MODEL_SHA256` no se definen en ningún workflow ni build; con el
+  fail-closed actual, toda orden no reconocida termina en
+  `modelNotConfigured`. La app no ejecuta inferencia real.
+- **`prefetchModel()` no se llama en el arranque** y no existe UI de descarga,
+  progreso, consentimiento ni control de espacio libre. Aunque se fijara un
+  GGUF, la primera descarga ocurriría dentro del presupuesto corto de una orden
+  y fallaría por timeout.
+- **No hay inferencia observada en el TECNO LH7n** ni carga del modelo, primer
+  token o cancelación real fuera de tests JVM/Dart simulados.
+- **El enlace nativo no es bit-reproducible**: mismos tamaños, hashes distintos
+  entre `09bb350` y `83e4606`. Los hashes identifican artefactos, no garantizan
+  reproducibilidad byte a byte del `.so`.
+- **La fusión a `main` no aprueba release.** El merge integra código verificado
+  por CI; los criterios de producto de la sección 8 (hardware, VPN extremo a
+  extremo, IA en dispositivo, Codemagic, SecureVault en dispositivo) siguen
+  abiertos.
+
+### 10.7 Dictamen de esta sección
+
+La ruta completa Dart → canal → Kotlin → JNI → llama.cpp **compila, se empaqueta
+y pasa los gates de CI** para `83e4606`, y el NLU determinista ya resuelve
+órdenes con acentos, sinónimos y typos sin depender del modelo. Aura **no está
+lista para release**: falta un GGUF verificado, el calentamiento/descarga desde
+la app y la validación en hardware. El siguiente paso de producto es elegir y
+alojar un GGUF con URL y SHA-256 fijos, exponer una acción de preparación con
+progreso y verificar la primera generación y la cancelación en el TECNO LH7n.
