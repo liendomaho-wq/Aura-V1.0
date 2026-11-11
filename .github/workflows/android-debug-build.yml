@@ -123,10 +123,31 @@ jobs:
           AURA_ALLOW_DEBUG_SIGNING: 'true'
         run: python3 ../tool/ci_run.py ./gradlew :app:assembleStorageMigration :app:assembleStorageMigrationAndroidTest --no-daemon
 
+      - name: Load pinned local-model configuration
+        run: |
+          set -euo pipefail
+          source tool/aura_llm_model.env
+          for model_variable in \
+              AURA_LLM_MODEL_URL \
+              AURA_LLM_MODEL_SHA256 \
+              AURA_LLM_MODEL_LABEL \
+              AURA_LLM_MODEL_LICENSE \
+              AURA_LLM_MODEL_SIZE_BYTES; do
+            test -n "${!model_variable:-}"
+            printf '%s=%s\n' "$model_variable" "${!model_variable}" >> "$GITHUB_ENV"
+          done
+          echo "Local model pinned: $AURA_LLM_MODEL_LABEL"
+
       - name: Build debug APK including native tunnel
         env:
           AURA_ALLOW_DEBUG_SIGNING: 'true'
-        run: python3 tool/ci_run.py flutter build apk --debug
+        run: >-
+          python3 tool/ci_run.py flutter build apk --debug
+          --dart-define=AURA_LLM_MODEL_URL=${AURA_LLM_MODEL_URL}
+          --dart-define=AURA_LLM_MODEL_SHA256=${AURA_LLM_MODEL_SHA256}
+          --dart-define=AURA_LLM_MODEL_LABEL=${AURA_LLM_MODEL_LABEL}
+          --dart-define=AURA_LLM_MODEL_LICENSE=${AURA_LLM_MODEL_LICENSE}
+          --dart-define=AURA_LLM_MODEL_SIZE_BYTES=${AURA_LLM_MODEL_SIZE_BYTES}
 
       - name: Verify debug APK exists
         run: |

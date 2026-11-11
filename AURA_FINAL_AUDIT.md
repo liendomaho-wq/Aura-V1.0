@@ -1036,3 +1036,45 @@ lista para release**: falta un GGUF verificado, el calentamiento/descarga desde
 la app y la validación en hardware. El siguiente paso de producto es elegir y
 alojar un GGUF con URL y SHA-256 fijos, exponer una acción de preparación con
 progreso y verificar la primera generación y la cancelación en el TECNO LH7n.
+
+### 10.8 IA local preparable desde la app (2026-11-11 UTC)
+
+Esta sección sustituye el primer límite de 10.6: ya hay un GGUF fijado y una
+ruta de preparación desde la interfaz. **No** afirma inferencia validada en
+hardware; eso sigue en 10.6.
+
+- Modelo fijado por commit inmutable en `tool/aura_llm_model.env`:
+  `Qwen2.5-0.5B-Instruct Q4_K_M`, licencia Apache-2.0, 491,400,032 bytes,
+  SHA-256 `74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db`.
+  La URL usa `/resolve/<commit>/…`, nunca `/resolve/main/`.
+- `tool/compile_aura.sh` sourcea ese archivo y pasa los cinco `--dart-define` a
+  APK y AAB; el workflow de debug los exporta antes de compilar y Flutter
+  Quality ejecuta `tool/test_local_llm_model_config.py` (pin, digest, HTTPS,
+  tamaño y wiring). Codemagic usa `bash tool/compile_aura.sh`, así que hereda
+  el mismo pin.
+- `AuraLlmModelManager.shared` es el único escritor: descarga a `.partial` en
+  el directorio privado, exige HTTPS, acota el tamaño, verifica SHA-256 y solo
+  entonces renombra. Un archivo instalado que ya no coincide con el digest no
+  se carga. `resolveInstalledModel()` no usa red y es lo que calienta el
+  arranque (`main.dart` → `prefetchInstalledModel()`).
+- La descarga es explícita: tile «Aura AI» → `LocalLlmSetupController` y
+  diálogo con fases `downloading`/`verifying`/`ready`/`failed`, tamaño,
+  licencia y aviso de privacidad. **Una orden nunca descarga**: `plan()` usa
+  solo el modelo instalado y devuelve `modelNotConfigured` si falta, con un
+  warning que remite a «Aura AI».
+- JNI aplica la plantilla de chat incluida en el GGUF
+  (`llama_model_chat_template` + `llama_chat_apply_template`) y conserva el
+  prompt crudo si no existe; así un modelo ChatML como Qwen no recibe el bloque
+  de instrucciones fuera de formato.
+- Los tests de descarga usan un cliente HTTP falso y directorios temporales;
+  sin `--dart-define` no hay red. La verificación byte a byte del GGUF real y
+  la latencia quedan para el dispositivo del propietario.
+- Evidencia de CI de esta sección: se registra tras el primer run de la rama.
+  Hasta entonces no se declara verde ningún workflow de este cambio.
+
+**Dictamen:** el modelo ya está fijado, se descarga con consentimiento
+explícito y se verifica antes de cargar; la app degrada al NLU determinista si
+falta o falla. Sigue **sin probarse inferencia real en el TECNO LH7n**, y la
+calidad de un modelo de 0.5B para emitir JSON estricto en español no está
+medida. Aura continúa **NO LISTA PARA RELEASE**.
+

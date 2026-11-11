@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'infrastructure/security/aura_dynamic_whitelist.dart';
+import 'llm/local_llm_planner.dart';
 import 'providers/aura_state_provider.dart';
 import 'screens/splash_screen.dart';
 import 'theme/aura_tokens.dart';
@@ -28,6 +30,10 @@ Future<void> main() async {
       child: const AuraApp(),
     ),
   );
+  // Warm an already installed model without networking so the first order does
+  // not pay the hash + load cost while the agent is busy. A missing model is a
+  // no-op; downloads only start from the explicit preparation dialog.
+  unawaited(LocalLlmPlanner().prefetchInstalledModel());
 }
 
 class AuraApp extends StatelessWidget {

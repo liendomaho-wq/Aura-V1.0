@@ -10,12 +10,14 @@ import '../agent/agent_event.dart';
 import '../ai_brain.dart';
 import '../explanation/aura_verdict_explanation.dart';
 import '../infrastructure/agent/aura_intent_parser.dart';
+import '../llm/local_llm_setup_controller.dart';
 import '../models/aura_model_integrity_report.dart';
 import '../network_auditor.dart';
 import '../providers/aura_state_provider.dart';
 import '../services/aura_local_telemetry.dart';
 import '../theme/aura_tokens.dart';
 import '../widgets/aura_avatar.dart';
+import '../widgets/local_ai_dialog.dart';
 
 const Color _terminalGreen = Color(0xFF00FF00);
 const Color _terminalYellow = Color(0xFFFFFF00);
@@ -56,6 +58,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
       GlobalKey<NestedScrollViewState>();
   AuraNetworkAuditor? _networkAuditor;
   AuraAIBrain? _aiBrain;
+  late final LocalLlmSetupController _localAiSetup;
   StreamSubscription<NetworkAuditEvent>? _networkEventSubscription;
   bool _isListening = false;
   bool _isRunning = false;
@@ -78,6 +81,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
   @override
   void initState() {
     super.initState();
+    _localAiSetup = LocalLlmSetupController();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _authenticateConsole();
@@ -223,6 +227,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
     WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     _inputController.dispose();
+    _localAiSetup.dispose();
     unawaited(_disposeNetworkAuditor());
     super.dispose();
   }
@@ -1139,8 +1144,11 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                                   featureTile(
                                     icon: Icons.auto_awesome_rounded,
                                     title: 'Aura AI',
-                                    subtitle: 'Asistente',
-                                    onTap: () => _dispatch('ayuda'),
+                                    subtitle: 'Motor local',
+                                    onTap: () => showLocalAiDialog(
+                                      context,
+                                      _localAiSetup,
+                                    ),
                                     color: AuraTokens.accentViolet,
                                   ),
                                   const SizedBox(width: 8),
