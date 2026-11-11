@@ -879,3 +879,32 @@ hasta que el runtime nativo, el ciclo de vida Kotlin/JNI, el servicio Dart y la
 orquestación segura del agente estén realmente integrados y CI verifique la APK.
 La validación física en el Redmi y el tráfico VPN extremo a extremo siguen
 pendientes.
+
+
+---
+
+## 10. Evidencia de integración documental — PR #27
+
+- PR [#27](https://github.com/liendomaho-wq/Aura-V1.0/pull/27) fue fusionada
+  mediante el commit
+  [3ba34c55d773c80bba9c3f78ffa31e373bdc5c88](https://github.com/liendomaho-wq/Aura-V1.0/commit/3ba34c55d773c80bba9c3f78ffa31e373bdc5c88).
+- Para el head de PR #27
+  `1737b7f7ed3a0b97f514a97e29a5f9776be117e0`, los flujos
+  [Flutter Quality #199](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42929721256)
+  y
+  [Android Debug Build #186](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/42929721280)
+  finalizaron **completed / success**.
+- Flutter Quality completó formato Dart, comprobaciones estáticas de seguridad,
+  análisis estático, suite Python, pruebas unitarias/widget y reproducibilidad
+  del lockfile.
+- Android Debug Build completó tests JVM del túnel/SOCKS5, verificación de
+  exports JNI para los ABIs, APK debug con túnel nativo y el job de migración
+  real de Keystore en emulador Android 16.
+- Estas ejecuciones validan el candidato documental de PR #27 y la configuración
+  actual que dichos workflows cubren. **No demuestran integración llama.cpp,
+  carga de GGUF, generación DeepSeek ni funcionamiento en el Redmi físico.**
+
+La documentación queda sincronizada con la fusión de PR #27. El dictamen de la
+sección 9 permanece vigente: Aura no debe declararse lista para compilar una
+versión funcional de DeepSeek hasta cerrar y probar la integración nativa y del
+agente.
