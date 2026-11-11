@@ -182,6 +182,28 @@ bool request_cancel(const std::string &op_id) {
     return true;
 }
 
+// Wraps the operator prompt with the GGUF's own chat template when present.
+// Models such as Qwen are trained on ChatML; feeding the raw instruction block
+// degrades the JSON contract. Any failure falls back to the original text so a
+// missing template never blocks inference.
+std::string apply_model_chat_template(llama_model *model, const std::string &text) {
+    if (model == nullptr) return text;
+    const char *tmpl = llama_model_chat_template(model, nullptr);
+    if (tmpl == nullptr || *tmpl == '\0') return text;
+    llama_chat_message chat[1] = {{"user", text.c_str()}};
+    const int32_t needed =
+        llama_chat_apply_template(tmpl, chat, 1, true, nullptr, 0);
+    if (needed <= 0 || needed > static_cast<int32_t>(kMaxPromptTokens * 16)) {
+        return text;
+    }
+    std::string formatted(static_cast<size_t>(needed), '\0');
+    const int32_t written = llama_chat_apply_template(
+        tmpl, chat, 1, true, formatted.data(), needed);
+    if (written <= 0) return text;
+    if (written < needed) formatted.resize(static_cast<size_t>(written));
+    return formatted;
+}
+
 void run_generation(JNIEnv *env, const GenerationJob &job) {
     llama_model *model = nullptr;
     llama_context *ctx = nullptr;
@@ -202,8 +224,12 @@ void run_generation(JNIEnv *env, const GenerationJob &job) {
     }
 
     // Tokenize the prompt with special tokens so BOS/EOS behave like the
-    // upstream simple example for the pinned revision.
-    const std::string &prompt = job.prompt;
+    // upstream simple example for the pinned revision. The prompt is wrapped
+    // with the model's own chat template first; list/plain models fall back to
+    // the raw text.
+    const std::string templated_prompt =
+        apply_model_chat_template(model, job.prompt);
+    const std::string &prompt = templated_prompt;
     const jint prompt_bytes = static_cast<jint>(prompt.size());
     if (prompt_bytes > kMaxPromptTokens * 16) {  // Hard bound before tokenizing.
         emit_event(env, job.operation_id, AuraLlmEventType::kError, "prompt_too_large");

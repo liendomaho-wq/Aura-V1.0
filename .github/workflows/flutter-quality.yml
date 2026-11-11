@@ -66,6 +66,7 @@ jobs:
           python3 tool/ci_run.py python3 tool/test_tun_packet_filter.py
           python3 tool/ci_run.py python3 tool/test_lwip_fragment_policy.py
           python3 tool/ci_run.py python3 tool/test_verify_packaged_model.py
+          python3 tool/ci_run.py python3 tool/test_local_llm_model_config.py
           python3 tool/ci_run.py python3 tool/test_release_signing_policy.py
           python3 tool/ci_run.py python3 tool/test_release_signing_runtime.py
           python3 tool/ci_run.py python3 tool/test_verify_aab.py

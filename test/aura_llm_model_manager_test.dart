@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:aura_mobile_defens/llm/aura_llm_model_manager.dart';
+import 'package:aura_mobile_defens/llm/local_llm_planner.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -189,5 +190,85 @@ void main() {
     expect(await model.resolveVerifiedModel(), isNull);
     final models = Directory('${root.path}/models');
     expect(await models.list().toList(), isEmpty);
+  });
+
+  test('reports download, verification and readiness phases', () async {
+    final bytes = List<int>.generate(160, (index) => index % 251);
+    final events = <AuraLlmModelProgress>[];
+    final model = manager(
+      downloadUrl: 'https://example.test/model.gguf',
+      expectedSha256: _digest(bytes),
+      maxBytes: bytes.length,
+      clientFactory: () =>
+          MockClient((_) async => http.Response.bytes(bytes, 200)),
+    );
+    final subscription = model.progress.listen(events.add);
+    addTearDown(subscription.cancel);
+
+    await model.resolveVerifiedModel();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      events.map((event) => event.phase),
+      containsAllInOrder(<AuraLlmModelPhase>[
+        AuraLlmModelPhase.downloading,
+        AuraLlmModelPhase.verifying,
+        AuraLlmModelPhase.ready,
+      ]),
+    );
+    expect(events.last.fraction, 1.0);
+  });
+
+  test('reports a failed phase when the digest does not match', () async {
+    final events = <AuraLlmModelProgress>[];
+    final model = manager(
+      downloadUrl: 'https://example.test/model.gguf',
+      expectedSha256: _digest(<int>[1, 2, 3]),
+      clientFactory: () =>
+          MockClient((_) async => http.Response.bytes(<int>[4, 5, 6], 200)),
+    );
+    final subscription = model.progress.listen(events.add);
+    addTearDown(subscription.cancel);
+
+    await model.resolveVerifiedModel();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(events.last.phase, AuraLlmModelPhase.failed);
+    expect(events.last.errorCode, 'model_digest_mismatch');
+  });
+
+  test('installed resolution never performs a download', () async {
+    final bytes = List<int>.generate(64, (index) => index);
+    final file = await installedModel(bytes);
+    var downloaded = false;
+    final model = manager(
+      expectedSha256: _digest(bytes),
+      clientFactory: () {
+        downloaded = true;
+        return MockClient((_) async => http.Response('', 500));
+      },
+    );
+
+    expect(await model.resolveInstalledModel(), file.path);
+    expect(downloaded, isFalse);
+
+    await file.delete();
+    expect(await model.resolveInstalledModel(), isNull);
+  });
+
+  test('installed resolution rejects a file that no longer matches', () async {
+    final file = await installedModel(<int>[1, 2, 3]);
+    final model = manager(expectedSha256: _digest(<int>[4, 5, 6]));
+
+    expect(await model.resolveInstalledModel(), isNull);
+    // It is not deleted here: the order path re-verifies and replaces it.
+    expect(await file.exists(), isTrue);
+  });
+
+  test('the default planner and the setup UI share one manager', () {
+    expect(
+      identical(LocalLlmPlanner().modelManager, AuraLlmModelManager.shared),
+      isTrue,
+    );
   });
 }

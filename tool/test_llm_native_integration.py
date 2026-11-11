@@ -143,6 +143,16 @@ class AuraLlmNativeIntegrationTest(unittest.TestCase):
         self.assertIn('emit_event(env, job.operation_id, AuraLlmEventType::kError, failure)', jni)
         self.assertIn('emit_event(env, job.operation_id, AuraLlmEventType::kCompleted, generated)', jni)
 
+    def test_native_applies_the_gguf_chat_template(self):
+        jni = read(JNI_SOURCE)
+        # The pinned runtime exposes the template stored in the GGUF metadata.
+        self.assertIn("llama_model_chat_template(model, nullptr)", jni)
+        self.assertIn("llama_chat_apply_template(", jni)
+        self.assertIn("apply_model_chat_template(model, job.prompt)", jni)
+        # Without a template the raw operator text is used, never dropped.
+        self.assertIn("if (tmpl == nullptr || *tmpl == '\\0') return text;", jni)
+        self.assertIn("return text;", jni)
+
     def test_packaged_runtime_is_verified_per_abi(self):
         verifier = read(VERIFY_APK)
         self.assertIn('"libaura_llm.so"', verifier)
@@ -244,7 +254,9 @@ class AuraLlmDartWiringTest(unittest.TestCase):
         self.assertIn("AURA_LLM_MODEL_SHA256", manager)
         self.assertIn("_digestPattern = RegExp(r'^[0-9a-f]{64}$')", manager)
         self.assertIn("uri.scheme != 'https'", manager)
-        self.assertIn("sha256.bind(file.openRead()).first", manager)
+        self.assertIn("sha256.bind(File(path).openRead()).first", manager)
+        # The ~491 MiB digest is computed off the UI isolate.
+        self.assertIn("Isolate.run(", manager)
         self.assertIn("await temporary.rename(target.path)", manager)
         # Verification happens before the rename; a mismatch never installs.
         mismatch = manager.split("if (!await _matchesDigest(temporary))", 1)[1]
@@ -265,11 +277,22 @@ class AuraLlmDartWiringTest(unittest.TestCase):
     def test_an_order_never_waits_for_a_model_download(self):
         planner = read(DART_PLANNER)
         self.assertIn("modelResolveTimeout", planner)
-        self.assertIn("_resolveModelPath().timeout(modelResolveTimeout)", planner)
+        # The order path resolves only an already installed model; a first-time
+        # download belongs to the explicit preparation UI.
+        self.assertIn(
+            "_resolveInstalledModelPath().timeout(", planner
+        )
+        resolve = planner.split("modelPath = await _resolveInstalledModelPath()", 1)[1]
+        resolve = resolve.split("if (modelPath == null", 1)[0]
+        self.assertIn("modelResolveTimeout", resolve)
         self.assertIn("llm_model_prepare_timeout", planner)
         self.assertIn("Future<void> prefetchModel()", planner)
-        # Prefetch is explicitly outside the order path.
+        # Prefetch is explicitly outside the order path and may download.
         self.assertIn("outside the order path", planner)
+        prefetch = planner.split("Future<void> prefetchModel()", 1)[1]
+        prefetch = prefetch.split("Future<void> prefetchInstalledModel()", 1)[0]
+        self.assertIn("_resolveModelPath()", prefetch)
+        self.assertNotIn("_resolveInstalledModelPath", prefetch)
 
     def test_cancellation_token_notifies_the_planner(self):
         token = read(ROOT / "lib/agent/agent_execution_guard.dart")

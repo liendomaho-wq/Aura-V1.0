@@ -73,6 +73,32 @@ Las reglas DNS/IP/SNI son políticas concretas; las señales de root, emulación
 instrumentación y riesgo de apps son heurísticas; el bosque de dominios es ML.
 Ninguno convierte al parser conversacional en un LLM.
 
+### IA local opcional (GGUF)
+
+Además del parser determinista, Aura puede cargar un modelo de lenguaje local
+para interpretar **solo** órdenes que el NLU no reconoce:
+
+- Modelo fijado: **Qwen2.5-0.5B-Instruct Q4_K_M**, licencia **Apache-2.0**.
+- Fuente inmutable (commit, no `main`), tamaño y SHA-256 declarados en
+  `tool/aura_llm_model.env`. `tool/compile_aura.sh` los inyecta como
+  `--dart-define`; Codemagic hereda esa ruta.
+- La descarga es **explícita** desde el diálogo «Aura AI» (tile `Aura AI`),
+  viaja por HTTPS y se verifica con SHA-256 antes del `rename` atómico. Sin
+  digest fiable no se carga ningún archivo (fail-closed).
+- El archivo vive en el directorio privado de la app; no se empaqueta en el
+  APK. Los tests no descargan nada: sin `--dart-define` no hay red.
+- La respuesta del modelo es entrada no confiable: se extrae un objeto JSON
+  acotado y se revalida con `LlmToolProposal.parse` (dos claves, allowlist
+  read-only `analyze_domain`/`audit_device`/`scan_apps`, política de
+  argumentos). El modelo nunca ejecuta herramientas ni añade confirmaciones.
+- Sin modelo preparado la app sigue funcionando con el NLU determinista y el
+  warning indica abrir «Aura AI». Una orden nunca inicia la descarga.
+- El runtime nativo aplica la plantilla de chat del propio GGUF (ChatML para
+  Qwen) y cae al prompt crudo si el archivo no declara plantilla.
+- **Sin validar en hardware físico**: la carga, el primer token, el JSON real
+  de este modelo y la cancelación deben probarse en el dispositivo del
+  propietario. La compilación y los gates de CI no demuestran inferencia real.
+
 ### Modelo activo
 
 - Asset: `assets/model/aura_brain_model.json`, versión **3.0.0**, 500 árboles.

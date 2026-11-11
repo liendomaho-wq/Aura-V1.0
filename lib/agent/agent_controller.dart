@@ -688,12 +688,17 @@ class AgentController {
             : intentFromLlmProposal(proposal);
         if (proposal == null || plannedIntent == null) {
           final hint = AuraIntentParser.hintFor(text);
+          final modelPending =
+              plan.status == LocalLlmPlanStatus.modelNotConfigured;
           _securityState?.setSecurityLevel(AuraSecurityLevel.warning);
           _emit(
             AgentEvent(
               kind: AgentEventKind.warning,
               message: hint == null
-                  ? 'No se reconoció una acción local segura.'
+                  ? modelPending
+                        ? 'No se reconoció una acción local segura. La IA local '
+                              'no está preparada: ábrela en «Aura AI».'
+                        : 'No se reconoció una acción local segura.'
                   : 'No se reconoció una acción local segura. '
                         '¿Quisiste decir «$hint»?',
               data: <String, dynamic>{

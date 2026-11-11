@@ -60,6 +60,7 @@ class LocalLlmPlanner {
     AuraLlmRuntime? runtime,
     AuraLlmModelManager? modelManager,
     Future<String?> Function()? resolveModelPath,
+    Future<String?> Function()? resolveInstalledModelPath,
     this.contextTokens = 2048,
     this.threads = 2,
     this.maxTokens = 256,
@@ -70,12 +71,21 @@ class LocalLlmPlanner {
     this.maxInstructionLength = 2048,
     this.maxCaptureChars = 16384,
   }) : _runtime = runtime ?? AuraLlmRuntime(),
+       modelManager = modelManager ?? AuraLlmModelManager.shared,
        _resolveModelPath =
            resolveModelPath ??
-           (modelManager ?? AuraLlmModelManager()).resolveVerifiedModel;
+           (modelManager ?? AuraLlmModelManager.shared).resolveVerifiedModel,
+       _resolveInstalledModelPath =
+           resolveInstalledModelPath ??
+           resolveModelPath ??
+           (modelManager ?? AuraLlmModelManager.shared).resolveInstalledModel;
 
   final AuraLlmRuntime _runtime;
+
+  /// Shared manager that owns the single-flight download and its progress.
+  final AuraLlmModelManager modelManager;
   final Future<String?> Function() _resolveModelPath;
+  final Future<String?> Function() _resolveInstalledModelPath;
   final int contextTokens;
   final int threads;
   final int maxTokens;
@@ -136,10 +146,13 @@ class LocalLlmPlanner {
     if (!capabilities.loaded) {
       final String? modelPath;
       try {
-        // A first-time download must not block an operator order for minutes
-        // while the agent is marked busy. [prefetchModel] is the path allowed
-        // to wait; here the budget is short and failure is diagnosable.
-        modelPath = await _resolveModelPath().timeout(modelResolveTimeout);
+        // The order path never downloads: a first-time download belongs to the
+        // explicit preparation dialog, which has its own progress and time
+        // budget. Here only an already installed, digest-verified model can be
+        // loaded; otherwise the order fails closed with a stable diagnostic.
+        modelPath = await _resolveInstalledModelPath().timeout(
+          modelResolveTimeout,
+        );
       } on TimeoutException {
         return const LocalLlmPlanResult(
           LocalLlmPlanStatus.failed,
@@ -201,6 +214,33 @@ class LocalLlmPlanner {
       await _ensureModelLoaded(modelPath);
     } on Object {
       // Best effort: a missing or unreachable model is reported by plan().
+    }
+  }
+
+  /// Warms the runtime with an already installed model, without networking.
+  ///
+  /// Called at app start: it only hashes and loads a file that was previously
+  /// downloaded and verified. If the model is missing or tampered with, this is
+  /// a no-op and the next order fails closed or asks for preparation.
+  Future<void> prefetchInstalledModel() async {
+    try {
+      final capabilities = await _runtime.capabilities();
+      if (!capabilities.available || capabilities.loaded) return;
+      final modelPath = await _resolveInstalledModelPath();
+      if (modelPath == null || !modelPath.startsWith('/')) return;
+      await _ensureModelLoaded(modelPath);
+    } on Object {
+      // Best effort: plan() re-validates and reports a stable diagnostic.
+    }
+  }
+
+  /// True only when the native runtime is available and a model is loaded.
+  Future<bool> isModelReady() async {
+    try {
+      final capabilities = await _runtime.capabilities();
+      return capabilities.available && capabilities.loaded;
+    } on Object {
+      return false;
     }
   }
 

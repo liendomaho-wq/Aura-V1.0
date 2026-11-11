@@ -188,6 +188,37 @@ project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 android_dir="$project_root/android"
 local_properties="$android_dir/local.properties"
 
+# Pinned GGUF for the on-device planner. Without both values the app keeps the
+# deterministic NLU only and fails closed instead of loading an unverified
+# model. The env file is the single source of truth for every build entry point.
+model_env="$project_root/tool/aura_llm_model.env"
+[[ -r "$model_env" ]] || fail "Missing pinned local-model configuration: $model_env"
+# shellcheck disable=SC1090
+source "$model_env"
+for model_variable in \
+    AURA_LLM_MODEL_URL \
+    AURA_LLM_MODEL_SHA256 \
+    AURA_LLM_MODEL_LABEL \
+    AURA_LLM_MODEL_LICENSE \
+    AURA_LLM_MODEL_SIZE_BYTES; do
+    [[ -n "${!model_variable:-}" ]] ||
+        fail "Pinned local-model configuration is missing $model_variable."
+done
+if [[ ! "$AURA_LLM_MODEL_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+    fail "AURA_LLM_MODEL_SHA256 must be a lowercase SHA-256 digest."
+fi
+if [[ ! "$AURA_LLM_MODEL_URL" =~ ^https:// ]]; then
+    fail "AURA_LLM_MODEL_URL must use HTTPS."
+fi
+llm_defines=(
+    --dart-define="AURA_LLM_MODEL_URL=$AURA_LLM_MODEL_URL"
+    --dart-define="AURA_LLM_MODEL_SHA256=$AURA_LLM_MODEL_SHA256"
+    --dart-define="AURA_LLM_MODEL_LABEL=$AURA_LLM_MODEL_LABEL"
+    --dart-define="AURA_LLM_MODEL_LICENSE=$AURA_LLM_MODEL_LICENSE"
+    --dart-define="AURA_LLM_MODEL_SIZE_BYTES=$AURA_LLM_MODEL_SIZE_BYTES"
+)
+log "Local model: $AURA_LLM_MODEL_LABEL ($AURA_LLM_MODEL_SIZE_BYTES bytes, ${AURA_LLM_MODEL_LICENSE})."
+
 if [[ "$USE_DEBUG_SIGNING" == "false" ]]; then
     resolve_keystore
     validate_signing_credentials
@@ -346,7 +377,8 @@ if [[ "$build_format" == "apk" ]]; then
         log "Building the release APK with the ${public_key_source} RSA public key."
     fi
     "$FLUTTER_ROOT/bin/flutter" build apk --release \
-        --dart-define="AURA_PUBLIC_KEY=$AURA_PUBLIC_KEY_ENV"
+        --dart-define="AURA_PUBLIC_KEY=$AURA_PUBLIC_KEY_ENV" \
+        "${llm_defines[@]}"
     release_artifact="$project_root/build/app/outputs/flutter-apk/app-release.apk"
 else
     if [[ "$USE_DEBUG_SIGNING" == "true" ]]; then
@@ -355,7 +387,8 @@ else
         log "Building the release app bundle with the ${public_key_source} RSA public key."
     fi
     "$FLUTTER_ROOT/bin/flutter" build appbundle --release \
-        --dart-define="AURA_PUBLIC_KEY=$AURA_PUBLIC_KEY_ENV"
+        --dart-define="AURA_PUBLIC_KEY=$AURA_PUBLIC_KEY_ENV" \
+        "${llm_defines[@]}"
     release_artifact="$project_root/build/app/outputs/bundle/release/app-release.aab"
 fi
 [[ -f "$release_artifact" ]] || fail "Release artifact was not created."
