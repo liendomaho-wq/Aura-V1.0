@@ -1,9 +1,52 @@
+import 'dart:async';
+
 import 'package:aura_mobile_defens/agent/agent_controller.dart';
 import 'package:aura_mobile_defens/agent/agent_event.dart';
+import 'package:aura_mobile_defens/llm/aura_llm_runtime.dart';
+import 'package:aura_mobile_defens/llm/local_llm_planner.dart';
 import 'package:aura_mobile_defens/providers/aura_state_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+class _AuditOnlyLlmRuntime extends AuraLlmRuntime {
+  final StreamController<AuraLlmEvent> _events =
+      StreamController<AuraLlmEvent>.broadcast(sync: true);
+
+  @override
+  Stream<AuraLlmEvent> get events => _events.stream;
+
+  @override
+  Future<AuraLlmCapabilities> capabilities() async => const AuraLlmCapabilities(
+    available: true,
+    loaded: true,
+    backend: 'llama.cpp',
+    abi: 'arm64-v8a',
+    maxContextTokens: 2048,
+  );
+
+  @override
+  Future<String> startGeneration({
+    required String prompt,
+    int maxTokens = 512,
+    double temperature = 0.2,
+  }) async {
+    const operationId = 'op-integration';
+    _events.add(
+      const AuraLlmEvent(
+        operationId: operationId,
+        type: 'token',
+        text: '{"tool":"audit_device","arguments":{}}',
+      ),
+    );
+    _events.add(
+      const AuraLlmEvent(operationId: operationId, type: 'completed'),
+    );
+    return operationId;
+  }
+
+  Future<void> dispose() => _events.close();
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -279,4 +322,73 @@ void main() {
     expect(controller.history.last.message, 'evento-404');
     controller.history.clear();
   });
+
+  test(
+    'una orden desconocida usa el planificador local solo para lectura',
+    () async {
+      const securityChannel = MethodChannel('com.ciberdefensa.aura/security');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      FlutterSecureStorage.setMockInitialValues(<String, String>{});
+      messenger.setMockMethodCallHandler(securityChannel, (call) async {
+        if (call.method != 'checkHostileEnvironment') return null;
+        return <String, dynamic>{
+          'isEmulator': false,
+          'isRooted': false,
+          'rootConfidence': 0.0,
+          'isInstrumented': false,
+          'isScreenOverlayDetected': false,
+          'isHostile': false,
+          'indicators': <String>[],
+          'environmentCheckErrors': <String>[],
+          'untrustedAccessibilityServicePackages': <String>[],
+          'timestamp': '2026-01-01T00:00:00Z',
+        };
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(securityChannel, null),
+      );
+
+      final runtime = _AuditOnlyLlmRuntime();
+      final controller = AgentController.instance;
+      controller.bindLocalLlmPlanner(
+        LocalLlmPlanner(
+          runtime: runtime,
+          resolveModelPath: () async => '/data/model.gguf',
+        ),
+      );
+      addTearDown(() {
+        controller.bindLocalLlmPlanner(null);
+        runtime.dispose();
+      });
+
+      final start = controller.history.length;
+      await controller.run('qwertyuiop zxcvbnm');
+
+      final events = controller.history.skip(start).toList();
+      expect(
+        events.any((event) => event.data?['source'] == 'local_llm'),
+        isTrue,
+      );
+      expect(
+        events.any(
+          (event) =>
+              event.kind == AgentEventKind.action &&
+              event.data?['intent'] == 'audit_device',
+        ),
+        isTrue,
+      );
+      expect(
+        events.any(
+          (event) => event.data?['error'] == 'user_confirmation_required',
+        ),
+        isFalse,
+      );
+      expect(
+        events.any((event) => event.data?['tool'] == 'audit_device'),
+        isTrue,
+      );
+      expect(controller.isRunning, isFalse);
+    },
+  );
 }

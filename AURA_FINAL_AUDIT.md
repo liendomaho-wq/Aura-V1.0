@@ -879,3 +879,81 @@ hasta que el runtime nativo, el ciclo de vida Kotlin/JNI, el servicio Dart y la
 orquestación segura del agente estén realmente integrados y CI verifique la APK.
 La validación física en el Redmi y el tráfico VPN extremo a extremo siguen
 pendientes.
+
+## 10. Fase 1 — runtime LLM local: estado de integración (2026-11-11, sin CI)
+
+Esta sección describe trabajo **no verificado por CI** ni en dispositivo. Se
+registra para no confundir código escrito con código probado.
+
+### Qué existe ahora en la rama local `feat/llm-native-bridge` (sin commit)
+
+- Puente JNI `android/app/src/main/cpp/aura_llm/aura_llm_jni.cpp` con
+  `JNI_OnLoad` que exige `com/ciberdefensa/aura/AuraLlmBridge` y la firma
+  `(Ljava/lang/String;ILjava/lang/String;)V`; si falta, devuelve `JNI_ERR`.
+- `CMakeLists.txt` con el orden estático `llama → ggml → ggml-cpu → ggml-base`
+  y enlace a `Threads`, `dl`, `m`, `log`, `android`.
+- Lado Kotlin completo: `AuraLlmContract.kt` (canales, rangos y formas de
+  respuesta), `AuraLlmOperationRegistry.kt` (máquina de estados con una sola
+  generación activa), `AuraLlmBridge.kt` (carga JNI) y `AuraLlmPlugin.kt`
+  (orquestación, cancelación cooperativa), registrado en `MainActivity`.
+- `android/app/build.gradle`: descarga del tarball de llama.cpp fijada por
+  commit y SHA-256, extracción con stamp/caché, compilación de las 4 ABIs en
+  paralelo con `ProcessBuilder` y binding a las tareas de merge.
+- Dart: `lib/llm/local_llm_planner.dart` (prompt estricto con bloque de datos,
+  carga lazy, timeout de generación, cancelación nativa, buffer acotado y
+  revalidación con `LlmToolProposal.parse`), `lib/llm/aura_llm_model_manager.dart`
+  (descarga HTTPS a `.partial`, verificación SHA-256 antes del rename atómico,
+  resolución single-flight) y la rama `AuraIntentKind.unknown` de
+  `AgentController`, que solo puede producir las herramientas de lectura
+  `analyze_domain`, `audit_device` y `scan_apps`.
+
+### Evidencia local real (sí ejecutada)
+
+- `python3 tool/test_llm_native_integration.py`: **25 tests OK**. Son guards de
+  código fuente entre Dart, Kotlin, C++ y Gradle; no ejecutan Android, JNI ni
+  inferencia.
+- `python3 tool/check_apk_jni.py`: OK; los objetos `libaura_llm.so` de las 4 ABIs
+  exportan los símbolos JNI requeridos.
+- `clang++ -std=c++17 -fsyntax-only -Wall -Wextra` sobre `aura_llm_jni.cpp`:
+  exit 0 contra las cabeceras reales de la revisión fijada.
+- `PyYAML` valida los tres workflows.
+
+### Evidencia que falta (no afirmar lo contrario)
+
+- **No hay `flutter analyze`, `dart format` ni `flutter test` ejecutados**: este
+  entorno no tiene SDK de Flutter/Dart y la descarga falla por red inestable.
+  Los archivos Dart nuevos están formateados a mano y podrían fallar el gate de
+  formato de CI.
+- **No hay compilación Android real**: sin JDK, NDK ni CMake locales. El `.so`
+  contenido en el APK solo existe si el CI lo compila.
+- **No hay commit ni push**: el repositorio no tiene autenticación configurada
+  en este entorno; no existe SHA de este trabajo.
+- **No hay modelo GGUF configurado**: no se define `AURA_LLM_MODEL_URL` ni
+  `AURA_LLM_MODEL_SHA256` en ningún workflow ni en el código de producto. Con el
+  fail-closed actual, la app empaquetada **nunca usa el modelo**: toda orden no
+  reconocida termina en `local_llm_status = modelNotConfigured`. La Fase 1 no
+  está cerrada de punta a punta hasta que exista un GGUF elegido, alojado y con
+  digest fijado.
+- **No hay inferencia verificada en dispositivo.** El TECNO LH7n sigue pendiente;
+  ni la carga del modelo, ni el primer token, ni la cancelación cooperativa se
+  han observado fuera de tests JVM/Dart simulados.
+
+### Riesgos conocidos del diseño actual
+
+- El planificador acota la resolución del modelo a 15 s
+  (`llm_model_prepare_timeout`) para que una descarga no bloquee una orden con el
+  agente marcado como ocupado. La descarga debe calentarse fuera de la ruta de
+  órdenes con `prefetchModel()`; hoy **ningún punto de arranque de la app lo
+  llama**, así que la primera descarga real nunca ocurrirá.
+- El modelo no se descarga desde la UI ni muestra progreso; no hay control de
+  espacio libre antes de escribir varios cientos de MB.
+- La cancelación nativa es cooperativa: Dart deja la operación activa hasta que
+  el worker reporta el evento terminal. Está probado en JVM simulado, no contra
+  inferencia real.
+
+### Dictamen de esta sección
+
+El código de Fase 1 existe y sus invariantes están protegidos por guards locales,
+pero **no hay una sola prueba de que el APK compile, arranque el runtime o
+ejecute inferencia**. Fase 1 permanece ABIERTA hasta que CI compile la APK con el
+`.so` enlazado, se fije un GGUF real y la generación se observe en el TECNO LH7n.

@@ -242,6 +242,322 @@ def hevJniLibsDir = hevBuildDir.map { it.dir("jniLibs") }
 
 android.sourceSets.main.jniLibs.srcDir(hevJniLibsDir)
 
+// ---------------------------------------------------------------------------
+// Local llama.cpp runtime (libaura_llm.so) for the com.ciberdefensa.aura/llm
+// channels. The upstream revision is pinned and its tarball digest verified
+// before extraction; the CPU-only cmake flags mirror the validated spike in
+// .github/workflows/aura-llama-android-build.yml. Fail-closed: any download,
+// digest or compile failure fails the build instead of shipping an APK with
+// a missing runtime.
+// ---------------------------------------------------------------------------
+
+def auraLlmAbis = ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
+def llamaCppCommit = "806b3c2bed44490233f1e8ffa403519370965fe7"
+def llamaCppSha256 = "1c073db9bf1dfbaf7dfdfa27c0a1720147d593c6d704acf81a3c4470e6e95d37"
+def llamaCppTarball = layout.buildDirectory.file(
+    "generated/llama-cpp/llama-${llamaCppCommit}.tar.gz",
+)
+def llamaCppExtractDir = layout.buildDirectory.dir("generated/llama-cpp/src")
+def llamaCppSourceDir = llamaCppExtractDir.map { it.dir("llama.cpp-${llamaCppCommit}") }
+def auraLlmBuildDir = layout.buildDirectory.dir("generated/aura-llm")
+def auraLlmJniLibsDir = auraLlmBuildDir.map { it.dir("jniLibs") }
+
+android.sourceSets.main.jniLibs.srcDir(auraLlmJniLibsDir)
+
+def fileSha256 = { File target ->
+    def digest = java.security.MessageDigest.getInstance("SHA-256")
+    target.withInputStream { stream ->
+        def buffer = new byte[65536]
+        int read
+        while ((read = stream.read(buffer)) > 0) {
+            digest.update(buffer, 0, read)
+        }
+    }
+    digest.digest().collect { String.format("%02x", it) }.join()
+}
+
+// Runs a command, streams its output and fails the build on a non-zero exit.
+// ProcessBuilder (instead of Project.exec) is safe to call from the parallel
+// ABI workers and does not depend on deprecated Gradle APIs.
+def runProcess = { List<String> command, boolean verbose = true ->
+    def builder = new ProcessBuilder(command.collect { it.toString() })
+    builder.redirectErrorStream(true)
+    def process = builder.start()
+    if (verbose) {
+        process.inputStream.eachLine { line -> println "  ${line}" }
+    } else {
+        process.inputStream.text
+    }
+    def exitCode = process.waitFor()
+    if (exitCode != 0) {
+        throw new GradleException("Command failed (exit ${exitCode}): ${command.join(' ')}")
+    }
+}
+
+def commandAvailable = { List<String> command ->
+    try {
+        def process = new ProcessBuilder(command.collect { it.toString() })
+            .redirectErrorStream(true)
+            .start()
+        process.inputStream.text
+        return process.waitFor() == 0
+    } catch (java.io.IOException ignored) {
+        return false
+    }
+}
+
+// Fingerprint of everything that affects the produced libaura_llm.so. It
+// keys the build cache used by CI and the in-task reuse decision, so a new
+// llama.cpp revision, NDK, ABI list, JNI source or Gradle recipe forces a
+// real rebuild instead of silently reusing stale binaries.
+def auraLlmFingerprint = [
+    llamaCppCommit,
+    llamaCppSha256,
+    android.ndkVersion,
+    auraLlmAbis.join(","),
+    fileSha256(file("src/main/cpp/aura_llm/aura_llm_jni.cpp")),
+    fileSha256(file("src/main/cpp/aura_llm/CMakeLists.txt")),
+    fileSha256(file("build.gradle")),
+].join("|")
+
+tasks.register("downloadLlamaCppSource") {
+    group = "build"
+    description = "Downloads the pinned llama.cpp tarball and verifies its SHA-256."
+    inputs.property("commit", llamaCppCommit)
+    inputs.property("sha256", llamaCppSha256)
+    outputs.file(llamaCppTarball)
+
+    doLast {
+        def tarball = llamaCppTarball.get().asFile
+        if (tarball.exists() && fileSha256(tarball) == llamaCppSha256) {
+            return
+        }
+        tarball.parentFile.mkdirs()
+        def partial = new File(tarball.parentFile, "${tarball.name}.partial")
+        partial.delete()
+        def url = "https://github.com/ggml-org/llama.cpp/archive/${llamaCppCommit}.tar.gz"
+        runProcess(["curl", "--fail", "--location", "--silent", "--show-error",
+                    "--output", partial.absolutePath, url], false)
+        if (!partial.isFile() || partial.length() == 0) {
+            partial.delete()
+            throw new GradleException("Could not download the pinned llama.cpp tarball from ${url}.")
+        }
+        def observed = fileSha256(partial)
+        if (observed != llamaCppSha256) {
+            partial.delete()
+            throw new GradleException(
+                "Pinned llama.cpp tarball digest mismatch: expected ${llamaCppSha256}, got ${observed}.",
+            )
+        }
+        if (!partial.renameTo(tarball)) {
+            partial.delete()
+            throw new GradleException("Could not finalize the verified llama.cpp tarball at ${tarball}.")
+        }
+    }
+}
+
+tasks.register("extractLlamaCppSource") {
+    group = "build"
+    description = "Extracts the verified llama.cpp tarball into the build directory."
+    dependsOn "downloadLlamaCppSource"
+    inputs.file(llamaCppTarball)
+    outputs.dir(llamaCppExtractDir)
+    outputs.file(llamaCppExtractDir.map { it.file(".extracted-${llamaCppCommit}") })
+
+    doLast {
+        def extractRoot = llamaCppExtractDir.get().asFile
+        def marker = new File(extractRoot, ".extracted-${llamaCppCommit}")
+        if (marker.isFile() && marker.text.trim() == llamaCppCommit) {
+            return
+        }
+        extractRoot.deleteDir()
+        extractRoot.mkdirs()
+        runProcess(["tar", "-xzf", llamaCppTarball.get().asFile.absolutePath,
+                    "-C", extractRoot.absolutePath], false)
+        if (!new File(extractRoot, "llama.cpp-${llamaCppCommit}/include/llama.h").isFile()) {
+            throw new GradleException("Extracted llama.cpp source is missing include/llama.h.")
+        }
+        marker.text = llamaCppCommit
+    }
+}
+
+tasks.register("buildAuraLlmRuntime") {
+    group = "build"
+    description = "Builds llama.cpp CPU-only static libraries and links libaura_llm.so for every declared ABI."
+    dependsOn "extractLlamaCppSource"
+    inputs.property("fingerprint", auraLlmFingerprint)
+    inputs.files(
+        file("src/main/cpp/aura_llm/aura_llm_jni.cpp"),
+        file("src/main/cpp/aura_llm/CMakeLists.txt"),
+    )
+    outputs.dir(auraLlmJniLibsDir)
+
+    doLast {
+        def sourceDir = llamaCppSourceDir.get().asFile
+        if (!file("${sourceDir}/include/llama.h").isFile()) {
+            throw new GradleException("Extracted llama.cpp source is missing include/llama.h.")
+        }
+        def base = auraLlmBuildDir.get().asFile
+        def jniLibs = auraLlmJniLibsDir.get().asFile
+        jniLibs.mkdirs()
+        def stamp = new File(jniLibs, ".aura-llm-runtime")
+        def packaged = auraLlmAbis.collect { abi -> new File(jniLibs, "${abi}/libaura_llm.so") }
+        if (stamp.isFile() && stamp.text.trim() == auraLlmFingerprint &&
+                packaged.every { it.isFile() && it.length() > 0 }) {
+            println "Reusing cached libaura_llm.so for ${auraLlmAbis.join(', ')}."
+            return
+        }
+
+        def sdkCmake = null
+        if (file("${android.sdkDirectory}/cmake").isDirectory()) {
+            sdkCmake = file("${android.sdkDirectory}/cmake")
+                .listFiles({ File dir, String name -> new File(dir, name).isDirectory() } as FilenameFilter)
+                ?.findAll { new File(it, "bin/cmake").isFile() }
+                ?.sort { it.name }
+                ?.last()
+        }
+        def cmakeBin = sdkCmake != null
+            ? new File(sdkCmake, "bin/cmake").absolutePath
+            : "cmake"
+        if (!commandAvailable([cmakeBin, "--version"])) {
+            throw new GradleException(
+                "cmake is required to build the pinned llama.cpp runtime; " +
+                    "install cmake (or the SDK cmake package) and retry.",
+            )
+        }
+        // c++_static matches the HEV native build (ndk-build default): no
+        // libc++_shared.so must be packaged for Aura's own libraries.
+        def generator = commandAvailable(["ninja", "--version"]) ? "Ninja" : "Unix Makefiles"
+        def cmakeJobs = (System.getenv("AURA_LLM_CMAKE_JOBS") ?: "1").toInteger()
+        if (cmakeJobs < 1) {
+            cmakeJobs = 1
+        }
+        def toolchain = file(
+            "${android.sdkDirectory}/ndk/${android.ndkVersion}/build/cmake/android.toolchain.cmake",
+        )
+        if (!toolchain.isFile()) {
+            throw new GradleException("NDK ${android.ndkVersion} toolchain not found for libaura_llm.so.")
+        }
+        def shimSource = file("src/main/cpp/aura_llm").absolutePath
+        def jobsArgument = cmakeJobs.toString()
+        stamp.delete()
+
+        def buildAbi = { String abi ->
+            def llamaBuild = new File(base, "llama-${abi}")
+            def shimBuild = new File(base, "shim-${abi}")
+            // Always start from a clean tree so a previous failure cannot leak
+            // partially built static libraries into this build.
+            llamaBuild.deleteDir()
+            shimBuild.deleteDir()
+            println "Building pinned llama.cpp static libraries for ${abi} (${generator}, ${jobsArgument} job(s))."
+            runProcess([
+                cmakeBin, "-S", sourceDir.absolutePath, "-B", llamaBuild.absolutePath,
+                "-G", generator,
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DCMAKE_TOOLCHAIN_FILE=${toolchain.absolutePath}",
+                "-DANDROID_ABI=${abi}",
+                "-DANDROID_PLATFORM=android-24",
+                "-DANDROID_STL=c++_static",
+                "-DBUILD_SHARED_LIBS=OFF",
+                "-DGGML_NATIVE=OFF",
+                "-DGGML_OPENMP=OFF",
+                "-DGGML_LLAMAFILE=OFF",
+                "-DGGML_VULKAN=OFF",
+                "-DLLAMA_OPENSSL=OFF",
+                "-DLLAMA_BUILD_TESTS=OFF",
+                "-DLLAMA_BUILD_EXAMPLES=OFF",
+                "-DLLAMA_BUILD_SERVER=OFF",
+            ])
+            runProcess([
+                cmakeBin, "--build", llamaBuild.absolutePath,
+                "--config", "Release", "--target", "llama", "--parallel", jobsArgument,
+            ])
+            def llamaLib = new File(llamaBuild, "src/libllama.a")
+            def ggmlLib = new File(llamaBuild, "ggml/src/libggml.a")
+            def ggmlBaseLib = new File(llamaBuild, "ggml/src/libggml-base.a")
+            def ggmlCpuLib = new File(llamaBuild, "ggml/src/libggml-cpu.a")
+            [llamaLib, ggmlLib, ggmlBaseLib, ggmlCpuLib].each { library ->
+                if (!library.isFile() || library.length() == 0) {
+                    throw new GradleException("llama.cpp static library missing after build: ${library}")
+                }
+            }
+            println "Linking libaura_llm.so for ${abi}."
+            runProcess([
+                cmakeBin, "-S", shimSource, "-B", shimBuild.absolutePath,
+                "-G", generator,
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DCMAKE_TOOLCHAIN_FILE=${toolchain.absolutePath}",
+                "-DANDROID_ABI=${abi}",
+                "-DANDROID_PLATFORM=android-24",
+                "-DANDROID_STL=c++_static",
+                "-DLLAMA_INCLUDE_DIR=${sourceDir.absolutePath}/include",
+                "-DGGML_INCLUDE_DIR=${sourceDir.absolutePath}/ggml/include",
+                "-DLLAMA_STATIC_LIB=${llamaLib.absolutePath}",
+                "-DGGML_STATIC_LIB=${ggmlLib.absolutePath}",
+                "-DGGML_BASE_STATIC_LIB=${ggmlBaseLib.absolutePath}",
+                "-DGGML_CPU_STATIC_LIB=${ggmlCpuLib.absolutePath}",
+            ])
+            runProcess([
+                cmakeBin, "--build", shimBuild.absolutePath,
+                "--config", "Release", "--parallel", jobsArgument,
+            ])
+            def builtLibrary = new File(shimBuild, "libaura_llm.so")
+            if (!builtLibrary.isFile() || builtLibrary.length() == 0) {
+                throw new GradleException("libaura_llm.so was not produced for ${abi}.")
+            }
+            def destination = new File(jniLibs, "${abi}/libaura_llm.so")
+            destination.parentFile.mkdirs()
+            java.nio.file.Files.copy(
+                builtLibrary.toPath(),
+                destination.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+            )
+            // Keep the runner within its disk budget; only the final .so is
+            // preserved (and re-created from the pinned source when needed).
+            llamaBuild.deleteDir()
+            shimBuild.deleteDir()
+        }
+
+        // Build the four ABIs concurrently: the pinned llama.cpp compile is
+        // the dominant cost and the CI runner offers several cores. Each ABI
+        // still uses its own clean build tree, so failures cannot cross over.
+        def failures = java.util.Collections.synchronizedList([])
+        def pool = java.util.concurrent.Executors.newFixedThreadPool(auraLlmAbis.size())
+        try {
+            def futures = auraLlmAbis.collect { abi ->
+                pool.submit({
+                    try {
+                        buildAbi(abi)
+                    } catch (Throwable error) {
+                        failures.add(error)
+                        throw error
+                    }
+                } as java.util.concurrent.Callable)
+            }
+            futures.each { future ->
+                try {
+                    future.get()
+                } catch (java.util.concurrent.ExecutionException ignored) {
+                    // The original failure is rethrown below with its message.
+                }
+            }
+        } finally {
+            pool.shutdownNow()
+        }
+        if (!failures.isEmpty()) {
+            def first = failures.first()
+            throw new GradleException("Failed to build libaura_llm.so: ${first.message}", first)
+        }
+        auraLlmAbis.each { abi ->
+            def library = new File(jniLibs, "${abi}/libaura_llm.so")
+            if (!library.isFile() || library.length() == 0) {
+                throw new GradleException("Missing libaura_llm.so for ${abi} after the runtime build.")
+            }
+        }
+        stamp.text = auraLlmFingerprint
+    }
+}
+
 tasks.register("buildHevSocks5Tunnel", Exec) {
     inputs.dir(hevSourceDir)
     inputs.files(
@@ -268,4 +584,14 @@ tasks.register("buildHevSocks5Tunnel", Exec) {
 
 tasks.named("preBuild").configure {
     dependsOn("buildHevSocks5Tunnel")
+}
+
+// The local LLM runtime is only needed when native libraries are merged into
+// an APK/AAB. Binding it to the merge tasks keeps JVM unit tests from paying
+// the llama.cpp compile cost while still failing any packaging build that
+// would ship an APK without libaura_llm.so.
+tasks.configureEach { task ->
+    if (task.name.endsWith("JniLibFolders") || task.name.endsWith("NativeLibs")) {
+        task.dependsOn("buildAuraLlmRuntime")
+    }
 }

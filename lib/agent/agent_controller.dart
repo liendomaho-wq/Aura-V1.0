@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../ai_brain.dart';
 import '../infrastructure/security/aura_dynamic_whitelist.dart';
+import '../llm/local_llm_planner.dart';
 import '../providers/aura_state_provider.dart';
 import '../services/aura_local_telemetry.dart';
 import '../services/aura_threat_correlator.dart';
@@ -13,6 +14,7 @@ import 'aura_intent_parser.dart';
 import 'aura_tools.dart';
 import 'agent_event.dart';
 import 'agent_execution_guard.dart';
+import 'llm_tool_proposal.dart';
 
 class AgentController {
   AgentController._() {
@@ -165,6 +167,7 @@ class AgentController {
   bool _locallyAuthenticated = false;
   static int _operationSequence = 0;
   AgentCancellationToken? _activeCancellationToken;
+  LocalLlmPlanner? _localLlmPlanner;
   String? _pendingConfirmationInstruction;
   DateTime? _pendingConfirmationCreatedAt;
   static final RegExp _confirmationOnly = RegExp(
@@ -183,6 +186,33 @@ class AgentController {
   );
 
   bool get isRunning => _activeCancellationToken != null;
+
+  /// Replaces (or disables) the local planner used for unrecognized orders.
+  /// Production uses the default lazy planner; tests inject a deterministic
+  /// one. Passing null restores the default construction on next use.
+  void bindLocalLlmPlanner(LocalLlmPlanner? planner) {
+    _localLlmPlanner = planner;
+  }
+
+  /// Maps a validated read-only proposal to an executable intent.
+  ///
+  /// Only the same three tools accepted by [LlmToolProposal] are mapped; every
+  /// other name yields null and the caller keeps the unknown-intent path.
+  static AuraIntent? intentFromLlmProposal(LlmToolProposal proposal) {
+    final kind = switch (proposal.tool) {
+      'analyze_domain' => AuraIntentKind.analyzeDomain,
+      'audit_device' => AuraIntentKind.auditDevice,
+      'scan_apps' => AuraIntentKind.scanApps,
+      _ => null,
+    };
+    if (kind == null) return null;
+    return AuraIntent(
+      name: proposal.tool,
+      kind: kind,
+      entities: proposal.arguments,
+      confidence: 0.6,
+    );
+  }
 
   /// Cancels only while an instruction is still being parsed/prepared.
   /// Once a native or other side-effecting tool starts, cancellation is
@@ -486,7 +516,7 @@ class AgentController {
       ),
     );
     try {
-      final intent = await AuraIntentParser.parse(text);
+      var intent = await AuraIntentParser.parse(text);
       cancellationToken.throwIfCancelled();
       const confirmationKinds = <AuraIntentKind>{
         AuraIntentKind.block,
@@ -650,18 +680,47 @@ class AgentController {
       }
 
       if (intent.kind == AuraIntentKind.unknown) {
-        _securityState?.setSecurityLevel(AuraSecurityLevel.warning);
+        final plan = await _planWithLocalModel(text, cancellationToken);
+        cancellationToken.throwIfCancelled();
+        final proposal = plan.proposal;
+        final plannedIntent = proposal == null
+            ? null
+            : intentFromLlmProposal(proposal);
+        if (proposal == null || plannedIntent == null) {
+          _securityState?.setSecurityLevel(AuraSecurityLevel.warning);
+          _emit(
+            AgentEvent(
+              kind: AgentEventKind.warning,
+              message: 'No se reconoció una acción local segura.',
+              data: <String, dynamic>{
+                'instruction_length': text.length,
+                'operation_id': operationId,
+                'local_llm_status': plan.status.name,
+                if (plan.errorCode != null)
+                  'local_llm_error': plan.errorCode,
+              },
+            ),
+          );
+          return;
+        }
+        // The plan only ever names a read-only tool; the existing policy,
+        // audit-before-execute and confirmation rules below still apply.
         _emit(
           AgentEvent(
-            kind: AgentEventKind.warning,
-            message: 'No se reconoció una acción local segura.',
+            kind: AgentEventKind.thought,
+            message:
+                'El planificador local propuso una herramienta de solo lectura.',
             data: <String, dynamic>{
-              'instruction_length': text.length,
+              'source': 'local_llm',
+              'tool': proposal.tool,
+              'argument_names': proposal.arguments.keys
+                  .map((key) => key.toString())
+                  .toList(growable: false),
               'operation_id': operationId,
             },
           ),
         );
-        return;
+        intent = plannedIntent;
       }
 
       if (intent.kind == AuraIntentKind.help) {
@@ -853,6 +912,26 @@ class AgentController {
             'operation_id': operationId,
           },
         ),
+      );
+    }
+  }
+
+  Future<LocalLlmPlanResult> _planWithLocalModel(
+    String instruction,
+    AgentCancellationToken cancellationToken,
+  ) async {
+    try {
+      final planner = _localLlmPlanner ??= LocalLlmPlanner();
+      return await planner.plan(
+        instruction,
+        cancellationToken: cancellationToken,
+      );
+    } on Object {
+      // The planner maps its own failures; this guards against a programming
+      // or platform error so an unrecognized order never crashes the agent.
+      return const LocalLlmPlanResult(
+        LocalLlmPlanStatus.failed,
+        errorCode: 'local_planner_failed',
       );
     }
   }

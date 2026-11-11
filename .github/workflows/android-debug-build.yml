@@ -23,7 +23,7 @@ jobs:
   android-debug:
     name: Aura Android Debug Build
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 110
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,7 +43,21 @@ jobs:
           packages: platform-tools
 
       - name: Install declared Android toolchain
-        run: python3 tool/ci_run.py sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+        run: python3 tool/ci_run.py sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358" "cmake;3.31.6"
+
+      # llama.cpp is compiled for four ABIs. Cache the pinned source and the
+      # produced libaura_llm.so; the Gradle task also verifies a fingerprint
+      # stamp, so a stale cache can never be reused for a different revision,
+      # NDK, ABI list or JNI recipe.
+      - name: Cache pinned llama.cpp runtime
+        uses: actions/cache@v4
+        with:
+          path: |
+            android/app/build/generated/llama-cpp
+            android/app/build/generated/aura-llm
+          key: aura-llm-${{ hashFiles('android/app/build.gradle', 'android/app/src/main/cpp/aura_llm/**', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            aura-llm-
 
       - name: Setup Flutter stable
         uses: subosito/flutter-action@v2
@@ -128,14 +142,15 @@ jobs:
           targets = {"armeabi-v7a": (1, 40), "arm64-v8a": (2, 183),
                      "x86": (1, 3), "x86_64": (2, 62)}
           with zipfile.ZipFile(apk) as archive:
-              for abi, (elf_class, machine) in targets.items():
-                  member = f"lib/{abi}/libhev-socks5-tunnel.so"
-                  data = archive.read(member)
-                  if (len(data) < 20 or data[:4] != b"\x7fELF"
-                          or data[4] != elf_class or data[5] != 1
-                          or int.from_bytes(data[18:20], "little") != machine):
-                      raise SystemExit(f"Invalid or mismatched packaged ELF: {member}")
-                  print(f"::notice title=Packaged native ELF::{member}; bytes={len(data)}; sha256={hashlib.sha256(data).hexdigest()}")
+              for library in ("libhev-socks5-tunnel.so", "libaura_llm.so"):
+                  for abi, (elf_class, machine) in targets.items():
+                      member = f"lib/{abi}/{library}"
+                      data = archive.read(member)
+                      if (len(data) < 20 or data[:4] != b"\x7fELF"
+                              or data[4] != elf_class or data[5] != 1
+                              or int.from_bytes(data[18:20], "little") != machine):
+                          raise SystemExit(f"Invalid or mismatched packaged ELF: {member}")
+                      print(f"::notice title=Packaged native ELF::{member}; bytes={len(data)}; sha256={hashlib.sha256(data).hexdigest()}")
               model_path = "assets/model/aura_brain_model.json"
               for relative in (model_path, model_path + ".sha256", model_path + ".sig"):
                   if archive.read("assets/flutter_assets/" + relative) != Path(relative).read_bytes():
@@ -167,7 +182,7 @@ jobs:
     name: Real Android Keystore migration (not a JVM substitute)
     needs: android-debug
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 110
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -210,7 +225,7 @@ jobs:
           packages: platform-tools
 
       - name: Install declared Android toolchain
-        run: python3 tool/ci_run.py sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+        run: python3 tool/ci_run.py sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358" "cmake;3.31.6"
 
       - name: Setup Flutter stable
         uses: subosito/flutter-action@v2

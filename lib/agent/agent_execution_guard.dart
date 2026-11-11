@@ -4,13 +4,38 @@
 class AgentCancellationToken {
   bool _cancelled = false;
   bool _executionStarted = false;
+  final Set<void Function()> _cancelListeners = <void Function()>{};
 
   bool get isCancelled => _cancelled;
   bool get executionStarted => _executionStarted;
 
+  /// Registers a best-effort observer that runs when [cancel] succeeds.
+  ///
+  /// Used by the local LLM planner to abort native generation immediately
+  /// instead of waiting for the next token or its timeout. Observers are only
+  /// notified for cancellations that happen before execution started.
+  bool addCancelListener(void Function() listener) {
+    if (_cancelled || _executionStarted) return false;
+    _cancelListeners.add(listener);
+    return true;
+  }
+
+  void removeCancelListener(void Function() listener) {
+    _cancelListeners.remove(listener);
+  }
+
   bool cancel() {
     if (_executionStarted || _cancelled) return false;
     _cancelled = true;
+    final listeners = _cancelListeners.toList(growable: false);
+    _cancelListeners.clear();
+    for (final listener in listeners) {
+      try {
+        listener();
+      } on Object {
+        // Cancellation must never be blocked by a broken observer.
+      }
+    }
     return true;
   }
 
