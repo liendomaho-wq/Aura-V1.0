@@ -391,4 +391,29 @@ void main() {
       expect(controller.isRunning, isFalse);
     },
   );
+
+  test(
+    'una orden con error de tipeo sugiere la forma canónica sin ejecutarla',
+    () async {
+      final controller = AgentController.instance;
+      controller.bindLocalLlmPlanner(null);
+      addTearDown(() => controller.bindLocalLlmPlanner(null));
+
+      final start = controller.history.length;
+      await controller.run('activaar las defensas');
+
+      final events = controller.history.skip(start).toList();
+      expect(
+        events.any(
+          (event) => event.data?['suggested_command'] == 'ACTIVAR DEFENSAS',
+        ),
+        isTrue,
+      );
+      expect(
+        events.any((event) => event.kind == AgentEventKind.action),
+        isFalse,
+      );
+      expect(controller.isRunning, isFalse);
+    },
+  );
 }

@@ -687,16 +687,21 @@ class AgentController {
             ? null
             : intentFromLlmProposal(proposal);
         if (proposal == null || plannedIntent == null) {
+          final hint = AuraIntentParser.hintFor(text);
           _securityState?.setSecurityLevel(AuraSecurityLevel.warning);
           _emit(
             AgentEvent(
               kind: AgentEventKind.warning,
-              message: 'No se reconoció una acción local segura.',
+              message: hint == null
+                  ? 'No se reconoció una acción local segura.'
+                  : 'No se reconoció una acción local segura. '
+                        '¿Quisiste decir «$hint»?',
               data: <String, dynamic>{
                 'instruction_length': text.length,
                 'operation_id': operationId,
                 'local_llm_status': plan.status.name,
                 if (plan.errorCode != null) 'local_llm_error': plan.errorCode,
+                if (hint != null) 'suggested_command': hint,
               },
             ),
           );

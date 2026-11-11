@@ -505,6 +505,119 @@ class AuraIntentParser {
     0x00E7: 'c',
   };
 
+  /// Advisory suggestion for an unrecognized order, or null.
+  ///
+  /// It only produces a canonical string for the warning message; it never
+  /// executes anything. Matching is bounded to 64 input words, tolerates one
+  /// edit per long token and understands the same Spanish synonyms as
+  /// [parse], so "activaar las defensas" suggests "ACTIVAR DEFENSAS".
+  static String? hintFor(String text) {
+    final words = _normalizeCommandText(text)
+        .split(RegExp(r'[^a-z0-9]+'))
+        .where((word) => word.isNotEmpty)
+        .take(64)
+        .toList(growable: false);
+    if (words.isEmpty) return null;
+    String? best;
+    var bestScore = 0.0;
+    var bestVerbMatched = false;
+    for (final entry in _hintPhrases.entries) {
+      final tokens = entry.key.split(' ');
+      var matched = 0;
+      for (final token in tokens) {
+        if (words.any((word) => _hintTokenMatches(word, token))) matched++;
+      }
+      final verbMatched = words.any(
+        (word) => _hintTokenMatches(word, tokens.first),
+      );
+      final score = matched / tokens.length;
+      if (score > bestScore) {
+        bestScore = score;
+        best = entry.value;
+        bestVerbMatched = verbMatched;
+      }
+    }
+    if (best == null || bestScore < 0.5 || !bestVerbMatched) return null;
+    return best;
+  }
+
+  static const Map<String, String> _hintPhrases = <String, String>{
+    'activar defensas': 'ACTIVAR DEFENSAS',
+    'desactivar defensas': 'DESACTIVAR DEFENSAS',
+    'auditar dispositivo': 'AUDITAR DISPOSITIVO',
+    'escanear aplicaciones': 'ESCANEAR APLICACIONES',
+    'analizar dominio': 'ANALIZAR DOMINIO <host>',
+    'bloquear dominio': 'BLOQUEAR <dominio>',
+    'aislar aplicacion': 'AISLAR APP <paquete>',
+    'aislamiento de emergencia': 'AISLAMIENTO DE EMERGENCIA',
+    'reanudar red': 'REANUDAR LA RED',
+    'purga criptografica': 'PURGA CRIPTOGRÁFICA',
+    'actualizar defensas': 'ACTUALIZAR DEFENSAS',
+    'estado': 'ESTADO',
+    'ayuda': 'AYUDA',
+  };
+
+  static const Map<String, Set<String>> _hintSynonyms = <String, Set<String>>{
+    'defensas': <String>{'defensa', 'escudo', 'vpn', 'proteccion', 'tunel'},
+    'dispositivo': <String>{
+      'telefono',
+      'celular',
+      'movil',
+      'equipo',
+      'android',
+      'aparato',
+      'device',
+      'phone',
+    },
+    'aplicaciones': <String>{'apps', 'aplicativos', 'programas'},
+    'dominio': <String>{'host', 'sitio', 'website', 'url', 'enlace'},
+    'red': <String>{'network'},
+  };
+
+  static bool _hintTokenMatches(String word, String token) {
+    if (word == token) return true;
+    final synonyms = _hintSynonyms[token];
+    if (synonyms != null) {
+      for (final synonym in synonyms) {
+        if (word == synonym) return true;
+        if (word.length >= 4 && _withinOneEdit(word, synonym)) return true;
+      }
+    }
+    if (word.length < 4 || token.length < 4) return false;
+    return _withinOneEdit(word, token);
+  }
+
+  /// True when [a] can become [b] with one insertion, deletion or substitution.
+  static bool _withinOneEdit(String a, String b) {
+    if ((a.length - b.length).abs() > 1) return false;
+    if (a.length == b.length) {
+      var differences = 0;
+      for (var index = 0; index < a.length; index++) {
+        if (a.codeUnitAt(index) != b.codeUnitAt(index)) {
+          differences++;
+          if (differences > 1) return false;
+        }
+      }
+      return true;
+    }
+    final shorter = a.length < b.length ? a : b;
+    final longer = a.length < b.length ? b : a;
+    var shortIndex = 0;
+    var longIndex = 0;
+    var skipped = false;
+    while (shortIndex < shorter.length && longIndex < longer.length) {
+      if (shorter.codeUnitAt(shortIndex) == longer.codeUnitAt(longIndex)) {
+        shortIndex++;
+        longIndex++;
+        continue;
+      }
+      if (skipped) return false;
+      skipped = true;
+      longIndex++;
+    }
+    return true;
+  }
+
   static bool _hasIndependentIsolateCommand(String text) {
     final panicMatches = _panicIsolationCommand.allMatches(text);
     return _isolateCommand.allMatches(text).any((isolateMatch) {

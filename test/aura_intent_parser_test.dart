@@ -357,4 +357,44 @@ void main() {
       expect(intent.kind, AuraIntentKind.unknown);
     });
   });
+
+  group('sugerencias deterministas', () {
+    test('un verbo con error de tipeo sugiere la orden canónica', () {
+      expect(
+        AuraIntentParser.hintFor('activaar las defensas'),
+        'ACTIVAR DEFENSAS',
+      );
+      expect(
+        AuraIntentParser.hintFor('desactivaar el vpn'),
+        'DESACTIVAR DEFENSAS',
+      );
+      expect(
+        AuraIntentParser.hintFor('auditaar mi telefono'),
+        'AUDITAR DISPOSITIVO',
+      );
+      expect(
+        AuraIntentParser.hintFor('escanear programaas'),
+        'ESCANEAR APLICACIONES',
+      );
+    });
+
+    test('las tildes no impiden la sugerencia', () {
+      expect(
+        AuraIntentParser.hintFor('ACTIVÁ LAS DEFENSAS'),
+        'ACTIVAR DEFENSAS',
+      );
+    });
+
+    test('una orden peligrosa incompleta solo se sugiere, no se ejecuta', () {
+      expect(
+        AuraIntentParser.hintFor('purga las credenciales'),
+        'PURGA CRIPTOGRÁFICA',
+      );
+    });
+
+    test('texto no relacionado no produce sugerencia', () {
+      expect(AuraIntentParser.hintFor('qwertyuiop zxcvbnm'), isNull);
+      expect(AuraIntentParser.hintFor(''), isNull);
+    });
+  });
 }
