@@ -18,8 +18,13 @@ import '../services/aura_local_telemetry.dart';
 import '../theme/aura_tokens.dart';
 import '../widgets/aura_avatar.dart';
 import '../widgets/aura_capability_ring.dart';
+import '../widgets/aura_command_filament.dart';
+import '../widgets/aura_intent_constellation.dart';
 import '../widgets/aura_llm_setup_scope.dart';
 import '../widgets/aura_llm_setup_sheet.dart';
+import '../widgets/aura_neural_field.dart';
+import '../widgets/aura_presence.dart';
+import '../widgets/aura_signal_header.dart';
 
 const Color _terminalGreen = Color(0xFF00FF00);
 const Color _terminalYellow = Color(0xFFFFFF00);
@@ -56,8 +61,6 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
 
   final TextEditingController _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final GlobalKey<NestedScrollViewState> _overviewScrollKey =
-      GlobalKey<NestedScrollViewState>();
   AuraNetworkAuditor? _networkAuditor;
   AuraAIBrain? _aiBrain;
   StreamSubscription<NetworkAuditEvent>? _networkEventSubscription;
@@ -728,16 +731,15 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
     _lastRenderedEventCount = eventCount;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || keepInitialOverview) return;
-      final controller = _overviewScrollKey.currentState?.innerController;
-      if (controller == null || !controller.hasClients) return;
-      controller.jumpTo(controller.position.maxScrollExtent);
+      if (!_scrollController.hasClients) return;
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AuraStateProvider>();
-    final compactLayout = MediaQuery.sizeOf(context).height < 700;
+    final compactLayout = MediaQuery.sizeOf(context).height < 720;
     final vpnActive = state.isVpnActive;
     final quickActionsEnabled = !_isRunning && _isAuthenticated;
     final llmSetup = AuraLlmSetupScope.maybeOf(context);
@@ -753,93 +755,111 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
         modelCapability = AuraCapabilityState.unavailable;
     }
 
-    OutlinedButton quickAction(String label, VoidCallback? onPressed) =>
-        OutlinedButton(
-          onPressed: quickActionsEnabled ? onPressed : null,
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AuraTokens.accent,
-            side: BorderSide(color: AuraTokens.accent.withValues(alpha: 0.30)),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            textStyle: const TextStyle(
-              color: AuraTokens.accent,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.2,
-            ),
-            shape: const StadiumBorder(),
-          ),
-          child: Text(label),
-        );
+    final avatarMode = _isListening
+        ? AuraAvatarMode.listening
+        : _isRunning
+        ? AuraAvatarMode.analyzing
+        : switch (state.securityLevel) {
+            AuraSecurityLevel.critical => AuraAvatarMode.alert,
+            AuraSecurityLevel.warning => AuraAvatarMode.warning,
+            AuraSecurityLevel.safe =>
+              vpnActive ? AuraAvatarMode.protecting : AuraAvatarMode.available,
+          };
 
-    Widget featureTile({
-      required IconData icon,
-      required String title,
-      required String subtitle,
-      required VoidCallback onTap,
-      Color color = AuraTokens.accent,
-    }) {
-      return Expanded(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: quickActionsEnabled ? onTap : null,
-          child: Container(
-            constraints: BoxConstraints(minHeight: compactLayout ? 66 : 88),
-            padding: EdgeInsets.symmetric(
-              horizontal: 8,
-              vertical: compactLayout ? 6 : 10,
-            ),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: color.withValues(alpha: 0.30)),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  color.withValues(alpha: 0.15),
-                  const Color(0xE9081530),
-                ],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.08),
-                  blurRadius: 18,
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: color, size: compactLayout ? 19 : 24),
-                SizedBox(height: compactLayout ? 3 : 6),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AuraTokens.textPrimary,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AuraTokens.textMuted,
-                    fontSize: 8,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
+    final neuralMode = !_isAuthenticated
+        ? AuraNeuralMode.idle
+        : _isListening
+        ? AuraNeuralMode.listening
+        : _isRunning
+        ? AuraNeuralMode.thinking
+        : switch (state.securityLevel) {
+            AuraSecurityLevel.critical => AuraNeuralMode.alert,
+            AuraSecurityLevel.warning => AuraNeuralMode.warning,
+            AuraSecurityLevel.safe =>
+              vpnActive ? AuraNeuralMode.guarding : AuraNeuralMode.idle,
+          };
+
+    final statusLine = _isRunning
+        ? 'Estoy procesando tu solicitud…'
+        : _isListening
+        ? 'Te escucho. Hablá con naturalidad.'
+        : state.securityLevel == AuraSecurityLevel.critical
+        ? 'Detecté una amenaza crítica. Necesito tu atención.'
+        : state.securityLevel == AuraSecurityLevel.warning
+        ? 'Hay señales que no cierran. Puedo explicártelas.'
+        : modelCapability == AuraCapabilityState.ready
+        ? 'IA local activa. Puedo pensar, explicar y actuar contigo.'
+        : 'Presencia activa. Prepará la IA para razonar en tu dispositivo.';
+
+    final shieldMetric = !_shieldStatusKnown
+        ? 'VPN local opcional · estado no confirmado'
+        : vpnActive
+        ? 'VPN local opcional · activa'
+        : _shieldServiceActive
+        ? 'VPN local opcional · sin forwarding'
+        : 'VPN local opcional · inactiva';
+    final presenceMetrics = <String>[
+      '${state.blockedEvents} señales de bloqueo',
+      shieldMetric,
+    ];
+    final showLlmBanner =
+        llmSetup != null && _showsLlmSetupBanner(llmSetup.status);
+
+    final intents = <AuraIntentSpec>[
+      AuraIntentSpec(
+        label: 'Analizar',
+        icon: Icons.manage_search_rounded,
+        color: AuraTokens.accent,
+        onTap: quickActionsEnabled
+            ? () => _dispatch('audita dispositivo')
+            : null,
+      ),
+      AuraIntentSpec(
+        label: vpnActive ? 'Desconectar escudo' : 'Activar escudo',
+        icon: Icons.wifi_rounded,
+        color: vpnActive ? AuraTokens.success : AuraTokens.accentViolet,
+        onTap: quickActionsEnabled && !_isShieldBusy && _shieldStatusKnown
+            ? _toggleShield
+            : null,
+      ),
+      AuraIntentSpec(
+        label: 'Privacidad',
+        icon: Icons.lock_outline_rounded,
+        color: AuraTokens.accentViolet,
+        onTap: _showTelemetrySettings,
+      ),
+      AuraIntentSpec(
+        label: 'IA local',
+        icon: Icons.auto_awesome_rounded,
+        color: modelCapability == AuraCapabilityState.ready
+            ? AuraTokens.success
+            : AuraTokens.accentViolet,
+        onTap: llmSetup == null
+            ? (quickActionsEnabled ? () => _dispatch('ayuda') : null)
+            : () => showAuraLlmSetupSheet(context, llmSetup),
+      ),
+      AuraIntentSpec(
+        label: 'Informes',
+        icon: Icons.query_stats_rounded,
+        color: AuraTokens.accent,
+        onTap: quickActionsEnabled ? () => _dispatch('estado') : null,
+      ),
+      AuraIntentSpec(
+        label: 'Auditoría',
+        icon: Icons.fact_check_outlined,
+        color: AuraTokens.success,
+        onTap: () {
+          setState(() => _showCoverageAudit = true);
+          _runCoverageAutotest();
+        },
+      ),
+      AuraIntentSpec(
+        label: 'Ayuda',
+        icon: Icons.help_outline_rounded,
+        color: AuraTokens.textMuted,
+        onTap: quickActionsEnabled ? () => _dispatch('ayuda') : null,
+      ),
+    ];
 
     return Scaffold(
       backgroundColor: AuraTokens.bg,
@@ -847,587 +867,134 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment(0, -0.72),
-                radius: 1.35,
-                colors: [Color(0xFF10294C), Color(0xFF071326), AuraTokens.bg],
-                stops: [0, 0.48, 1],
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: Opacity(
-                opacity: 0.035,
-                child: GridPaper(
-                  color: AuraTokens.accent,
-                  interval: 30,
-                  divisions: 1,
-                  subdivisions: 1,
-                ),
-              ),
-            ),
-          ),
+          AuraNeuralField(mode: neuralMode),
           SafeArea(
             child: Column(
               children: [
-                SizedBox(height: compactLayout ? 2 : 12),
-                Row(
-                  children: [
-                    IconButton(
-                      tooltip: 'Privacidad y telemetría opcional',
-                      onPressed: _showTelemetrySettings,
-                      constraints: BoxConstraints.tightFor(
-                        width: 48,
-                        height: compactLayout ? 40 : 48,
-                      ),
-                      icon: const Icon(Icons.tune, color: AuraTokens.accent),
-                    ),
-                    IconButton(
-                      key: const ValueKey<String>('coverage-audit-toggle'),
-                      tooltip: _showCoverageAudit
-                          ? 'Volver a la consola'
-                          : 'Auditoría de cobertura',
-                      onPressed: () => setState(
-                        () => _showCoverageAudit = !_showCoverageAudit,
-                      ),
-                      constraints: const BoxConstraints.tightFor(
-                        width: 48,
-                        height: 48,
-                      ),
-                      icon: Icon(
-                        Icons.fact_check_outlined,
-                        color: _showCoverageAudit
-                            ? AuraTokens.accent
-                            : AuraTokens.textMuted,
-                      ),
-                    ),
-                    const Expanded(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'AURA',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: AuraTokens.textPrimary,
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 3.2,
-                            ),
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            'SISTEMA DE DEFENSA PERSONAL',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: AuraTokens.accent,
-                              fontSize: 8,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 1.1,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    TextButton(
-                      key: const ValueKey<String>('vpn-toggle'),
-                      onPressed:
-                          _isAuthenticated &&
-                              !_isShieldBusy &&
-                              _shieldStatusKnown
-                          ? _toggleShield
-                          : null,
-                      style: TextButton.styleFrom(
-                        side: BorderSide(
-                          color: _isShieldBusy
-                              ? Colors.grey
-                              : vpnActive
-                              ? AuraTokens.success
-                              : AuraTokens.textMuted,
-                        ),
-                        backgroundColor: vpnActive
-                            ? AuraTokens.success.withValues(alpha: 0.10)
-                            : AuraTokens.surfaceAlt,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        shape: const StadiumBorder(),
-                      ),
-                      child: _isShieldBusy
-                          ? const SizedBox.square(
-                              dimension: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(
-                              !_shieldStatusKnown
-                                  ? 'DEFENSA: ?'
-                                  : vpnActive
-                                  ? 'DEFENSA: ON'
-                                  : _shieldServiceActive
-                                  ? 'DEFENSA: SIN FLUJO'
-                                  : 'DEFENSA: OFF',
-                              style: TextStyle(
-                                color: vpnActive
-                                    ? AuraTokens.success
-                                    : AuraTokens.textMuted,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.4,
-                              ),
-                            ),
-                    ),
-                  ],
+                AuraSignalHeader(
+                  compact: compactLayout,
+                  showCoverageAudit: _showCoverageAudit,
+                  onTelemetry: _showTelemetrySettings,
+                  onCoverageAudit: () =>
+                      setState(() => _showCoverageAudit = !_showCoverageAudit),
+                  isAuthenticated: _isAuthenticated,
+                  isShieldBusy: _isShieldBusy,
+                  shieldStatusKnown: _shieldStatusKnown,
+                  shieldServiceActive: _shieldServiceActive,
+                  vpnActive: vpnActive,
+                  onToggleShield: _toggleShield,
                 ),
-                // Keep VPN controls and input pinned; let the overview and
-                // warnings scroll instead of exhausting the bounded console.
                 Expanded(
                   key: const ValueKey<String>('aura-overview-scroll'),
-                  child: NestedScrollView(
-                    key: _overviewScrollKey,
-                    controller: _scrollController,
-                    headerSliverBuilder: (context, innerBoxIsScrolled) => [
-                      SliverToBoxAdapter(
-                        child: Column(
-                          children: [
-                            Container(
-                              margin: EdgeInsets.fromLTRB(
-                                14,
-                                compactLayout ? 2 : 6,
-                                14,
-                                compactLayout ? 6 : 14,
-                              ),
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: compactLayout ? 8 : 15,
-                              ),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(26),
-                                border: Border.all(
-                                  color: AuraTokens.accent.withValues(
-                                    alpha: 0.28,
-                                  ),
-                                ),
-                                gradient: const LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    Color(0xF20B1B36),
-                                    Color(0xE90B1530),
-                                    Color(0xC9162050),
-                                  ],
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AuraTokens.accent.withValues(
-                                      alpha: 0.07,
-                                    ),
-                                    blurRadius: 34,
-                                    spreadRadius: 2,
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                children: [
-                                  AuraCapabilityRing(
-                                    size: (compactLayout ? 88 : 138) + 18,
-                                    model: modelCapability,
-                                    classifier: AuraCapabilityState.ready,
-                                    defense: vpnActive
-                                        ? AuraCapabilityState.ready
-                                        : AuraCapabilityState.unavailable,
-                                    child: AuraAvatar(
-                                      size: compactLayout ? 88 : 138,
-                                      mode: _isListening
-                                          ? AuraAvatarMode.listening
-                                          : _isRunning
-                                          ? AuraAvatarMode.analyzing
-                                          : switch (state.securityLevel) {
-                                              AuraSecurityLevel.critical =>
-                                                AuraAvatarMode.alert,
-                                              AuraSecurityLevel.warning =>
-                                                AuraAvatarMode.warning,
-                                              AuraSecurityLevel.safe =>
-                                                state.isVpnActive
-                                                    ? AuraAvatarMode.protecting
-                                                    : AuraAvatarMode.available,
-                                            },
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Hola, soy Aura.',
-                                          style: TextStyle(
-                                            color: AuraTokens.textPrimary,
-                                            fontSize: compactLayout ? 18 : 22,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        SizedBox(height: compactLayout ? 2 : 4),
-                                        Text(
-                                          _isRunning
-                                              ? 'Estoy ejecutando tu solicitud…'
-                                              : _isListening
-                                              ? 'Te estoy escuchando…'
-                                              : state.securityLevel ==
-                                                    AuraSecurityLevel.critical
-                                              ? 'Alerta crítica: revisa los hallazgos de seguridad.'
-                                              : state.securityLevel ==
-                                                    AuraSecurityLevel.warning
-                                              ? 'Hay señales que requieren tu atención.'
-                                              : 'Lista para recibir instrucciones y ejecutar comprobaciones locales.',
-                                          style: const TextStyle(
-                                            color: AuraTokens.accent,
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                        SizedBox(height: compactLayout ? 3 : 8),
-                                        Text(
-                                          '${state.blockedEvents} señales de bloqueo en esta sesión',
-                                          style: const TextStyle(
-                                            color: AuraTokens.textMuted,
-                                            fontSize: 10,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 3),
-                                        Text(
-                                          'VPN local opcional · ${!_shieldStatusKnown
-                                              ? 'estado no confirmado'
-                                              : state.isVpnActive
-                                              ? 'activa'
-                                              : _shieldServiceActive
-                                              ? 'sin forwarding'
-                                              : 'inactiva'}',
-                                          style: const TextStyle(
-                                            color: AuraTokens.textMuted,
-                                            fontSize: 10,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Align(
-                                          alignment: Alignment.centerLeft,
-                                          child: TextButton.icon(
-                                            key: const ValueKey<String>(
-                                              'aura-ai-status',
-                                            ),
-                                            onPressed: llmSetup == null
-                                                ? null
-                                                : () => showAuraLlmSetupSheet(
-                                                    context,
-                                                    llmSetup,
-                                                  ),
-                                            style: TextButton.styleFrom(
-                                              foregroundColor:
-                                                  modelCapability ==
-                                                      AuraCapabilityState.ready
-                                                  ? AuraTokens.success
-                                                  : AuraTokens.accent,
-                                              padding: EdgeInsets.zero,
-                                              minimumSize: const Size(0, 24),
-                                              tapTargetSize:
-                                                  MaterialTapTargetSize
-                                                      .shrinkWrap,
-                                              alignment: Alignment.centerLeft,
-                                            ),
-                                            icon: Icon(
-                                              modelCapability ==
-                                                      AuraCapabilityState.ready
-                                                  ? Icons.verified_rounded
-                                                  : Icons.memory_rounded,
-                                              size: 12,
-                                            ),
-                                            label: Text(
-                                              llmSetup?.statusLabel ??
-                                                  'Aura Básica · IA local no configurada',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-                              child: Row(
-                                children: [
-                                  featureTile(
-                                    icon: Icons.manage_search_rounded,
-                                    title: 'Analizar',
-                                    subtitle: 'Dispositivo',
-                                    onTap: () =>
-                                        _dispatch('audita dispositivo'),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  featureTile(
-                                    icon: Icons.wifi_rounded,
-                                    title: 'VPN Aura',
-                                    subtitle: !_shieldStatusKnown
-                                        ? 'Sin confirmar'
-                                        : vpnActive
-                                        ? 'Conectada'
-                                        : _shieldServiceActive
-                                        ? 'Sin flujo'
-                                        : 'Desconectada',
-                                    onTap: _toggleShield,
-                                    color: vpnActive
-                                        ? AuraTokens.success
-                                        : AuraTokens.accentViolet,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  featureTile(
-                                    icon: Icons.lock_outline_rounded,
-                                    title: 'Privacidad',
-                                    subtitle: 'Revisar',
-                                    onTap: _showTelemetrySettings,
-                                    color: AuraTokens.accentViolet,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-                              child: Row(
-                                children: [
-                                  featureTile(
-                                    icon: Icons.auto_awesome_rounded,
-                                    title: 'Aura AI',
-                                    subtitle: switch (llmSetup?.status) {
-                                      AuraLlmSetupStatus.ready => 'Local lista',
-                                      AuraLlmSetupStatus.downloading =>
-                                        'Descargando',
-                                      AuraLlmSetupStatus.verifying =>
-                                        'Verificando',
-                                      AuraLlmSetupStatus.loading => 'Cargando',
-                                      AuraLlmSetupStatus.paused => 'En pausa',
-                                      AuraLlmSetupStatus.failed => 'Revisar',
-                                      _ => 'Preparar IA',
-                                    },
-                                    onTap: llmSetup == null
-                                        ? () => _dispatch('ayuda')
-                                        : () => showAuraLlmSetupSheet(
-                                            context,
-                                            llmSetup,
-                                          ),
-                                    color: AuraTokens.accentViolet,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  featureTile(
-                                    icon: Icons.query_stats_rounded,
-                                    title: 'Informes',
-                                    subtitle: 'Actividad',
-                                    onTap: () => _dispatch('estado'),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  featureTile(
-                                    icon: Icons.fact_check_outlined,
-                                    title: 'Auditoría',
-                                    subtitle: 'Cobertura',
-                                    onTap: () {
-                                      setState(() => _showCoverageAudit = true);
-                                      _runCoverageAutotest();
-                                    },
-                                    color: AuraTokens.success,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (_untrustedAccessibilityPackages.isNotEmpty)
-                              Container(
-                                width: double.infinity,
-                                margin: const EdgeInsets.fromLTRB(
-                                  14,
-                                  10,
-                                  14,
-                                  0,
-                                ),
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF1A1A00),
-                                  border: Border.all(color: _terminalYellow),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'SERVICIOS DE ACCESIBILIDAD ACTIVOS PODRÍAN MANIPULAR LA APP',
-                                      style: TextStyle(
-                                        color: _terminalYellow,
-                                        fontFamily: 'monospace',
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Paquetes: ${_untrustedAccessibilityPackages.join(', ')}',
-                                      style: const TextStyle(
-                                        color: _terminalYellow,
-                                        fontFamily: 'monospace',
-                                        fontSize: 11,
-                                      ),
-                                    ),
-                                    Wrap(
-                                      children: [
-                                        TextButton(
-                                          onPressed: _openAccessibilitySettings,
-                                          child: const Text('ABRIR AJUSTES'),
-                                        ),
-                                        TextButton(
-                                          onPressed:
-                                              _refreshAccessibilityServices,
-                                          child: const Text(
-                                            'VERIFICAR DE NUEVO',
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              )
-                            else if (_accessibilityCheckFailed)
-                              Padding(
-                                padding: const EdgeInsets.all(10),
-                                child: TextButton(
-                                  onPressed: _refreshAccessibilityServices,
-                                  child: const Text(
-                                    '[WARN] No se pudo verificar accesibilidad · REINTENTAR',
-                                    style: TextStyle(
-                                      color: _terminalYellow,
-                                      fontFamily: 'monospace',
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            SizedBox(height: compactLayout ? 4 : 16),
-                          ],
-                        ),
-                      ),
-                    ],
-                    body: _isAuthenticated
-                        ? StreamBuilder<AgentEvent>(
-                            stream: AgentController.instance.events,
-                            builder: (context, snapshot) {
-                              final events = AgentController.instance.history;
-                              final explanationCount =
-                                  state.explanationHistory.length;
-                              final showLlmBanner =
-                                  llmSetup != null &&
-                                  _showsLlmSetupBanner(llmSetup.status);
-                              final leadingCardCount =
-                                  (_showCoverageAudit || explanationCount > 0
-                                      ? 1
-                                      : 0) +
-                                  (!_telemetryEndpointConfigured ? 1 : 0) +
-                                  (showLlmBanner ? 1 : 0);
-                              _scrollToLatest(events.length + leadingCardCount);
-                              return ListView(
-                                key: const ValueKey<String>('aura-event-list'),
-                                primary: true,
-                                padding: const EdgeInsets.fromLTRB(
-                                  14,
-                                  14,
-                                  14,
-                                  18,
-                                ),
-                                children: [
-                                  if (showLlmBanner)
-                                    _AuraLlmSetupBanner(
-                                      controller: llmSetup,
-                                      onPrepare: () => showAuraLlmSetupSheet(
-                                        context,
-                                        llmSetup,
-                                      ),
-                                    ),
-                                  if (_showCoverageAudit)
-                                    _CoverageAuditCard(
-                                      isVpnActive: state.isVpnActive,
-                                      sniObserved: state.sniObservedEvents,
-                                      encryptedSni: state.encryptedSniEvents,
-                                      directIp: state.directIpEvents,
-                                      blocked: state.blockedEvents,
-                                      dgaAlerts: state.dgaAlertEvents,
-                                      encryptedDnsBlocked:
-                                          state.encryptedDnsBlocks,
-                                      quicBlocked: state.quicBlocked,
-                                      decisionThreshold:
-                                          state.activeDecisionThreshold,
-                                      observedResolvers:
-                                          state.observedPublicDnsResolvers,
-                                      autotestStatus: _coverageAutotestStatus,
-                                      onRunAutotest: _runCoverageAutotest,
-                                    )
-                                  else if (explanationCount > 0)
-                                    _ExplanationCard(
-                                      explanation:
-                                          state.explanationHistory.last,
-                                      onVerifyIntegrity: _verifyModelIntegrity,
-                                      onReportFalsePositive:
-                                          _reportFalsePositive,
-                                      onOpenModelCard: _openModelCard,
-                                    ),
-                                  if (!_telemetryEndpointConfigured)
-                                    _LocalTelemetryPanel(
-                                      events: _localTelemetryEvents,
-                                      enabled: _localTelemetryEnabled,
-                                    ),
-                                  for (final event in events)
-                                    _SyslogLine(event: event),
-                                ],
-                              );
-                            },
-                          )
-                        : const SizedBox.expand(),
-                  ),
-                ),
-                SizedBox(
-                  height: compactLayout ? 38 : 44,
                   child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    key: const ValueKey<String>('aura-event-list'),
+                    controller: _scrollController,
+                    padding: EdgeInsets.fromLTRB(
+                      18,
+                      compactLayout ? 2 : 10,
+                      18,
+                      22,
+                    ),
                     children: [
-                      quickAction('AYUDA', () => _dispatch('ayuda')),
-                      const SizedBox(width: 8),
-                      quickAction('ESTADO', () => _dispatch('estado')),
-                      const SizedBox(width: 8),
-                      quickAction(
-                        !_shieldStatusKnown
-                            ? 'VPN SIN CONFIRMAR'
-                            : _shieldServiceActive
-                            ? 'DETENER VPN'
-                            : 'ACTIVAR VPN',
-                        _isShieldBusy || !_shieldStatusKnown
+                      AuraPresence(
+                        compact: compactLayout,
+                        avatarMode: avatarMode,
+                        model: modelCapability,
+                        classifier: AuraCapabilityState.ready,
+                        defense: vpnActive
+                            ? AuraCapabilityState.ready
+                            : AuraCapabilityState.unavailable,
+                        statusLine: statusLine,
+                        aiStatusLabel:
+                            llmSetup?.statusLabel ??
+                            'Aura Básica · IA local no configurada',
+                        aiStatusReady:
+                            modelCapability == AuraCapabilityState.ready,
+                        onAiStatusTap: llmSetup == null
                             ? null
-                            : _toggleShield,
+                            : () => showAuraLlmSetupSheet(context, llmSetup),
+                        metrics: presenceMetrics,
                       ),
-                      const SizedBox(width: 8),
-                      quickAction(
-                        'AUDITORÍA',
-                        () => setState(
-                          () => _showCoverageAudit = !_showCoverageAudit,
+                      SizedBox(height: compactLayout ? 12 : 18),
+                      AuraIntentConstellation(intents: intents),
+                      SizedBox(height: compactLayout ? 10 : 18),
+                      if (showLlmBanner)
+                        _AuraLlmSetupBanner(
+                          controller: llmSetup,
+                          onPrepare: () =>
+                              showAuraLlmSetupSheet(context, llmSetup),
                         ),
-                      ),
+                      if (_isAuthenticated)
+                        StreamBuilder<AgentEvent>(
+                          stream: AgentController.instance.events,
+                          builder: (context, snapshot) {
+                            final events = AgentController.instance.history;
+                            final explanationCount =
+                                state.explanationHistory.length;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (_showCoverageAudit)
+                                  _CoverageAuditCard(
+                                    isVpnActive: state.isVpnActive,
+                                    sniObserved: state.sniObservedEvents,
+                                    encryptedSni: state.encryptedSniEvents,
+                                    directIp: state.directIpEvents,
+                                    blocked: state.blockedEvents,
+                                    dgaAlerts: state.dgaAlertEvents,
+                                    encryptedDnsBlocked:
+                                        state.encryptedDnsBlocks,
+                                    quicBlocked: state.quicBlocked,
+                                    decisionThreshold:
+                                        state.activeDecisionThreshold,
+                                    observedResolvers:
+                                        state.observedPublicDnsResolvers,
+                                    autotestStatus: _coverageAutotestStatus,
+                                    onRunAutotest: _runCoverageAutotest,
+                                  )
+                                else if (explanationCount > 0)
+                                  _ExplanationCard(
+                                    explanation: state.explanationHistory.last,
+                                    onVerifyIntegrity: _verifyModelIntegrity,
+                                    onReportFalsePositive: _reportFalsePositive,
+                                    onOpenModelCard: _openModelCard,
+                                  ),
+                                if (!_telemetryEndpointConfigured)
+                                  _LocalTelemetryPanel(
+                                    events: _localTelemetryEvents,
+                                    enabled: _localTelemetryEnabled,
+                                  ),
+                                if (_untrustedAccessibilityPackages.isNotEmpty)
+                                  _AccessibilitySignal(
+                                    packages: _untrustedAccessibilityPackages,
+                                    onOpenSettings: _openAccessibilitySettings,
+                                    onRetry: _refreshAccessibilityServices,
+                                  )
+                                else if (_accessibilityCheckFailed)
+                                  _AccessibilityRetry(
+                                    onRetry: _refreshAccessibilityServices,
+                                  ),
+                                if (events.isEmpty) const _SilentStream(),
+                                for (final event in events)
+                                  _SyslogLine(event: event),
+                              ],
+                            );
+                          },
+                        )
+                      else
+                        const _SilentStream(),
                     ],
                   ),
                 ),
-                _TerminalInput(
+                _SignalReadout(
+                  blocked: state.blockedEvents,
+                  aiReady: modelCapability == AuraCapabilityState.ready,
+                  vpnActive: vpnActive,
+                ),
+                AuraCommandFilament(
                   controller: _inputController,
                   isListening: _isListening,
-                  isRunning: _isRunning || !_isAuthenticated,
+                  isProcessing: _isRunning || !_isAuthenticated,
                   onSubmitted: _dispatch,
                   onVoice: _captureVoice,
                 ),
@@ -1460,17 +1027,15 @@ class _AuraLlmSetupBanner extends StatelessWidget {
     final failed = controller.status == AuraLlmSetupStatus.failed;
     return Container(
       key: const ValueKey<String>('aura-llm-setup-banner'),
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.only(left: 14, top: 2, bottom: 2, right: 4),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: AuraTokens.accentViolet.withValues(alpha: 0.35),
-        ),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xF2141F3D), Color(0xE90B1730)],
+        border: Border(
+          left: BorderSide(
+            color: (failed ? AuraTokens.danger : AuraTokens.accentViolet)
+                .withValues(alpha: 0.55),
+            width: 1.4,
+          ),
         ),
       ),
       child: Column(
@@ -1559,11 +1124,15 @@ class _LocalTelemetryPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     key: const ValueKey<String>('local-telemetry-panel'),
-    margin: const EdgeInsets.only(bottom: 12),
-    padding: const EdgeInsets.all(12),
+    margin: const EdgeInsets.only(bottom: 18),
+    padding: const EdgeInsets.only(left: 14, top: 2, bottom: 2, right: 4),
     decoration: BoxDecoration(
-      color: const Color(0xFF07110E),
-      border: Border.all(color: _terminalGreen.withAlpha(115)),
+      border: Border(
+        left: BorderSide(
+          color: _terminalGreen.withValues(alpha: 0.42),
+          width: 1.4,
+        ),
+      ),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1709,185 +1278,202 @@ class _ExplanationCardState extends State<_ExplanationCard> {
         ? explanation.modelSha256.substring(0, 8)
         : explanation.modelSha256;
 
-    return Card(
-      color: AuraTokens.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AuraTokens.rMd),
-        side: const BorderSide(color: AuraTokens.accent),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 18),
+      decoration: BoxDecoration(
+        border: Border(
+          left: BorderSide(
+            color: AuraTokens.accent.withValues(alpha: 0.55),
+            width: 1.4,
+          ),
+        ),
       ),
-      child: ExpansionTile(
-        key: ValueKey<String>('verdict-explanation-card-${explanation.id}'),
-        iconColor: AuraTokens.accent,
-        collapsedIconColor: AuraTokens.accent,
-        title: Text(
-          key: ValueKey<String>('verdict-explanation-title-${explanation.id}'),
-          explanation.isThreat
-              ? '¿Por qué se bloqueó?'
-              : '¿Por qué se consideró seguro?',
-          style: TextStyle(
-            color: AuraTokens.accent,
-            fontWeight: FontWeight.bold,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          key: ValueKey<String>('verdict-explanation-card-${explanation.id}'),
+          tilePadding: const EdgeInsets.only(left: 12, right: 4),
+          backgroundColor: Colors.transparent,
+          collapsedBackgroundColor: Colors.transparent,
+          iconColor: AuraTokens.accent,
+          collapsedIconColor: AuraTokens.accent,
+          title: Text(
+            key: ValueKey<String>(
+              'verdict-explanation-title-${explanation.id}',
+            ),
+            explanation.isThreat
+                ? '¿Por qué se bloqueó?'
+                : '¿Por qué se consideró seguro?',
+            style: TextStyle(
+              color: AuraTokens.accent,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-        ),
-        subtitle: Text(
-          '${explanation.host} · '
-          '${explanation.isThreat ? 'amenaza' : 'seguro'} · '
-          '${explanation.source}',
-          style: const TextStyle(
-            color: AuraTokens.textPrimary,
-            fontFamily: 'monospace',
+          subtitle: Text(
+            '${explanation.host} · '
+            '${explanation.isThreat ? 'amenaza' : 'seguro'} · '
+            '${explanation.source}',
+            style: const TextStyle(
+              color: AuraTokens.textPrimary,
+              fontFamily: 'monospace',
+            ),
           ),
-        ),
-        onExpansionChanged: (expanded) {
-          if (expanded) _verifyIntegrity();
-        },
-        childrenPadding: const EdgeInsets.fromLTRB(
-          AuraTokens.s3,
-          0,
-          AuraTokens.s3,
-          AuraTokens.s3,
-        ),
-        children: [
-          if (explanation.signals.isEmpty)
-            const Align(
+          onExpansionChanged: (expanded) {
+            if (expanded) _verifyIntegrity();
+          },
+          childrenPadding: const EdgeInsets.fromLTRB(
+            AuraTokens.s3,
+            0,
+            AuraTokens.s3,
+            AuraTokens.s3,
+          ),
+          children: [
+            if (explanation.signals.isEmpty)
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Sin señales de riesgo relevantes observadas.',
+                  style: TextStyle(color: AuraTokens.textPrimary),
+                ),
+              ),
+            for (final signal in explanation.signals)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AuraTokens.s2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${signal.label} · ${signal.value.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: AuraTokens.warning,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      signal.description,
+                      style: const TextStyle(
+                        color: AuraTokens.textPrimary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: AuraTokens.s1),
+            Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Sin señales de riesgo relevantes observadas.',
-                style: TextStyle(color: AuraTokens.textPrimary),
+                'UMBRAL DE DECISIÓN: '
+                '${explanation.decisionThreshold.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  color: _terminalCyan,
+                  fontFamily: 'monospace',
+                ),
               ),
             ),
-          for (final signal in explanation.signals)
-            Padding(
-              padding: const EdgeInsets.only(bottom: AuraTokens.s2),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${signal.label} · ${signal.value.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      color: AuraTokens.warning,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    signal.description,
-                    style: const TextStyle(
-                      color: AuraTokens.textPrimary,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Modelo v${explanation.modelVersion}',
+                style: const TextStyle(
+                  color: AuraTokens.textPrimary,
+                  fontFamily: 'monospace',
+                ),
               ),
             ),
-          const SizedBox(height: AuraTokens.s1),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'UMBRAL DE DECISIÓN: '
-              '${explanation.decisionThreshold.toStringAsFixed(2)}',
-              style: const TextStyle(
-                color: _terminalCyan,
-                fontFamily: 'monospace',
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: ValueKey<String>(
+                  'verdict-explanation-sha256-${explanation.id}',
+                ),
+                onPressed: _showFullDigest,
+                style: TextButton.styleFrom(
+                  foregroundColor: AuraTokens.accent,
+                  padding: EdgeInsets.zero,
+                ),
+                child: Text(
+                  'SHA-256: $digestPrefix…',
+                  textAlign: TextAlign.left,
+                ),
               ),
             ),
-          ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Modelo v${explanation.modelVersion}',
-              style: const TextStyle(
-                color: AuraTokens.textPrimary,
-                fontFamily: 'monospace',
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                _isVerifying
+                    ? 'Verificando el modelo…'
+                    : '$signatureStatus${_integrityReport == null ? '' : '\n${_integrityReport!.message}'}',
+                style: TextStyle(
+                  color: _integrityReport?.verified == false
+                      ? AuraTokens.warning
+                      : AuraTokens.textMuted,
+                  fontSize: 12,
+                ),
               ),
             ),
-          ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              key: ValueKey<String>(
-                'verdict-explanation-sha256-${explanation.id}',
-              ),
-              onPressed: _showFullDigest,
-              style: TextButton.styleFrom(
-                foregroundColor: AuraTokens.accent,
-                padding: EdgeInsets.zero,
-              ),
-              child: Text('SHA-256: $digestPrefix…', textAlign: TextAlign.left),
-            ),
-          ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              _isVerifying
-                  ? 'Verificando el modelo…'
-                  : '$signatureStatus${_integrityReport == null ? '' : '\n${_integrityReport!.message}'}',
-              style: TextStyle(
-                color: _integrityReport?.verified == false
-                    ? AuraTokens.warning
-                    : AuraTokens.textMuted,
-                fontSize: 12,
-              ),
-            ),
-          ),
-          Wrap(
-            spacing: AuraTokens.s2,
-            children: [
-              TextButton.icon(
-                onPressed: widget.onOpenModelCard,
-                icon: const Icon(Icons.open_in_new, size: 16),
-                label: const Text('Model Card'),
-                style: TextButton.styleFrom(foregroundColor: AuraTokens.accent),
-              ),
-              if (explanation.isThreat)
+            Wrap(
+              spacing: AuraTokens.s2,
+              children: [
                 TextButton.icon(
-                  key: ValueKey<String>(
-                    'report-false-positive-${explanation.id}',
-                  ),
-                  onPressed: explanation.reportedFalsePositive
-                      ? null
-                      : () => widget.onReportFalsePositive(explanation.id),
-                  icon: const Icon(Icons.flag_outlined, size: 16),
-                  label: Text(
-                    explanation.reportedFalsePositive
-                        ? 'Reportado localmente'
-                        : 'Reportar falso positivo',
-                  ),
+                  onPressed: widget.onOpenModelCard,
+                  icon: const Icon(Icons.open_in_new, size: 16),
+                  label: const Text('Model Card'),
                   style: TextButton.styleFrom(
-                    foregroundColor: AuraTokens.warning,
+                    foregroundColor: AuraTokens.accent,
                   ),
                 ),
-            ],
-          ),
-          if (explanation.isThreat)
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Se registrará localmente para revisión; no se enviará telemetría.',
-                style: TextStyle(color: AuraTokens.textMuted, fontSize: 11),
+                if (explanation.isThreat)
+                  TextButton.icon(
+                    key: ValueKey<String>(
+                      'report-false-positive-${explanation.id}',
+                    ),
+                    onPressed: explanation.reportedFalsePositive
+                        ? null
+                        : () => widget.onReportFalsePositive(explanation.id),
+                    icon: const Icon(Icons.flag_outlined, size: 16),
+                    label: Text(
+                      explanation.reportedFalsePositive
+                          ? 'Reportado localmente'
+                          : 'Reportar falso positivo',
+                    ),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AuraTokens.warning,
+                    ),
+                  ),
+              ],
+            ),
+            if (explanation.isThreat)
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Se registrará localmente para revisión; no se enviará telemetría.',
+                  style: TextStyle(color: AuraTokens.textMuted, fontSize: 11),
+                ),
+              ),
+            const SizedBox(height: AuraTokens.s2),
+            const Text(
+              'Las señales son observaciones del vector de características; '
+              'el bosque de decisión no produce probabilidades calibradas.',
+              style: TextStyle(
+                color: AuraTokens.textMuted,
+                fontSize: 11,
+                height: 1.35,
               ),
             ),
-          const SizedBox(height: AuraTokens.s2),
-          const Text(
-            'Las señales son observaciones del vector de características; '
-            'el bosque de decisión no produce probabilidades calibradas.',
-            style: TextStyle(
-              color: AuraTokens.textMuted,
-              fontSize: 11,
-              height: 1.35,
-            ),
-          ),
-          if (explanation.signals.any(
-            (signal) => signal.label.contains('(señal auxiliar)'),
-          ))
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'La distancia de edición es auxiliar y no forma parte del '
-                'vector del modelo publicado.',
-                style: TextStyle(color: AuraTokens.textMuted, fontSize: 11),
+            if (explanation.signals.any(
+              (signal) => signal.label.contains('(señal auxiliar)'),
+            ))
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'La distancia de edición es auxiliar y no forma parte del '
+                  'vector del modelo publicado.',
+                  style: TextStyle(color: AuraTokens.textMuted, fontSize: 11),
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1923,14 +1509,19 @@ class _CoverageAuditCard extends StatelessWidget {
   final VoidCallback onRunAutotest;
 
   @override
-  Widget build(BuildContext context) => Card(
-    color: AuraTokens.surface,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(AuraTokens.rMd),
-      side: const BorderSide(color: AuraTokens.accent),
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(bottom: 18),
+    padding: const EdgeInsets.only(left: 14, top: 2, bottom: 2, right: 4),
+    decoration: BoxDecoration(
+      border: Border(
+        left: BorderSide(
+          color: AuraTokens.accent.withValues(alpha: 0.55),
+          width: 1.4,
+        ),
+      ),
     ),
     child: Padding(
-      padding: const EdgeInsets.all(AuraTokens.s3),
+      padding: const EdgeInsets.only(left: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2025,144 +1616,306 @@ class _SyslogLine extends StatelessWidget {
         '${event.ts.hour.toString().padLeft(2, '0')}:'
         '${event.ts.minute.toString().padLeft(2, '0')}:'
         '${event.ts.second.toString().padLeft(2, '0')}';
+    final accent = event.kind == AgentEventKind.error
+        ? AuraTokens.danger
+        : event.kind == AgentEventKind.warning
+        ? AuraTokens.warning
+        : isUser
+        ? AuraTokens.accentViolet
+        : isAura
+        ? AuraTokens.accent
+        : AuraTokens.textMuted;
     final textColor = event.kind == AgentEventKind.error
         ? AuraTokens.danger
         : event.kind == AgentEventKind.warning
         ? AuraTokens.warning
+        : isUser
+        ? const Color(0xFFD9E8FF)
         : AuraTokens.textPrimary;
+    final speaker = isUser
+        ? 'TÚ'
+        : isAura
+        ? 'AURA'
+        : 'SISTEMA';
 
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 340),
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        decoration: BoxDecoration(
-          color: isUser ? const Color(0xFF173A70) : AuraTokens.surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isAura
-                ? AuraTokens.accent.withAlpha(65)
-                : Colors.white.withAlpha(14),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: 54,
+            top: 7,
+            bottom: -18,
+            child: Container(width: 1, color: accent.withValues(alpha: 0.16)),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (!isUser)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 42,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      timestamp,
+                      style: const TextStyle(
+                        color: AuraTokens.textMuted,
+                        fontSize: 8.5,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      speaker,
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 7.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.9,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
               Padding(
-                padding: const EdgeInsets.only(bottom: 5),
-                child: Text(
-                  isThinking ? 'AURA · ANALIZANDO' : 'AURA · $timestamp',
-                  style: const TextStyle(
-                    color: AuraTokens.accent,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.7,
+                padding: const EdgeInsets.only(top: 6),
+                child: Container(
+                  width: 5,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: accent.withValues(alpha: 0.95),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.35),
+                        blurRadius: 6,
+                      ),
+                    ],
                   ),
                 ),
               ),
-            SelectableText(
-              event.message,
-              style: TextStyle(color: textColor, fontSize: 13, height: 1.45),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (isThinking)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 3),
+                        child: Text(
+                          'PROCESANDO',
+                          style: TextStyle(
+                            color: accent.withValues(alpha: 0.85),
+                            fontSize: 7.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.4,
+                          ),
+                        ),
+                      ),
+                    SelectableText(
+                      event.message,
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: 13,
+                        height: 1.5,
+                        fontWeight: isUser ? FontWeight.w500 : FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SignalReadout extends StatelessWidget {
+  const _SignalReadout({
+    required this.blocked,
+    required this.aiReady,
+    required this.vpnActive,
+  });
+
+  final int blocked;
+  final bool aiReady;
+  final bool vpnActive;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      color: AuraTokens.textMuted.withValues(alpha: 0.9),
+      fontSize: 7.5,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.85,
+      fontFamily: 'monospace',
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 5),
+      child: Row(
+        children: [
+          _ReadoutDot(
+            color: blocked > 0 ? AuraTokens.warning : AuraTokens.success,
+          ),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Text(
+              '$blocked BLOQUEOS',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: style,
             ),
-          ],
+          ),
+          Expanded(
+            child: Text(
+              aiReady ? 'IA LOCAL' : 'IA BÁSICA',
+              maxLines: 1,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: style,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              vpnActive ? 'ESCUDO ACTIVO' : 'ESCUDO INACTIVO',
+              maxLines: 1,
+              textAlign: TextAlign.right,
+              overflow: TextOverflow.ellipsis,
+              style: style,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReadoutDot extends StatelessWidget {
+  const _ReadoutDot({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 4,
+      height: 4,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        boxShadow: [
+          BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 6),
+        ],
+      ),
+    );
+  }
+}
+
+class _SilentStream extends StatelessWidget {
+  const _SilentStream();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      child: Text(
+        'El hilo está en silencio. Pedile a Aura una comprobación.',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: AuraTokens.textMuted,
+          fontSize: 10.5,
+          height: 1.5,
         ),
       ),
     );
   }
 }
 
-class _TerminalInput extends StatelessWidget {
-  const _TerminalInput({
-    required this.controller,
-    required this.isListening,
-    required this.isRunning,
-    required this.onSubmitted,
-    required this.onVoice,
+class _AccessibilitySignal extends StatelessWidget {
+  const _AccessibilitySignal({
+    required this.packages,
+    required this.onOpenSettings,
+    required this.onRetry,
   });
 
-  final TextEditingController controller;
-  final bool isListening;
-  final bool isRunning;
-  final ValueChanged<String> onSubmitted;
-  final VoidCallback onVoice;
+  final List<String> packages;
+  final VoidCallback onOpenSettings;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 9, 10, 8),
+      margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.only(left: 14, top: 2, bottom: 2, right: 4),
       decoration: BoxDecoration(
-        color: AuraTokens.surface,
         border: Border(
-          top: BorderSide(color: AuraTokens.accent.withValues(alpha: 0.22)),
+          left: BorderSide(
+            color: AuraTokens.warning.withValues(alpha: 0.7),
+            width: 1.4,
+          ),
         ),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
-            blurRadius: 18,
-            offset: const Offset(0, -5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'SERVICIOS DE ACCESIBILIDAD ACTIVOS PODRÍAN MANIPULAR LA APP',
+            style: TextStyle(
+              color: _terminalYellow,
+              fontFamily: 'monospace',
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'Paquetes: ${packages.join(', ')}',
+            style: const TextStyle(
+              color: AuraTokens.warning,
+              fontFamily: 'monospace',
+              fontSize: 10,
+              height: 1.4,
+            ),
+          ),
+          Wrap(
+            children: [
+              TextButton(
+                onPressed: onOpenSettings,
+                child: const Text('ABRIR AJUSTES'),
+              ),
+              TextButton(
+                onPressed: onRetry,
+                child: const Text('VERIFICAR DE NUEVO'),
+              ),
+            ],
           ),
         ],
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: TextField(
-              controller: controller,
-              enabled: !isRunning,
-              autofocus: true,
-              textInputAction: TextInputAction.send,
-              onSubmitted: onSubmitted,
-              cursorColor: AuraTokens.accent,
-              style: const TextStyle(
-                color: AuraTokens.textPrimary,
-                fontSize: 14,
-              ),
-              decoration: const InputDecoration(
-                hintText: 'Dile a Aura qué necesitas proteger…',
-                hintStyle: TextStyle(color: AuraTokens.textMuted, fontSize: 13),
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(vertical: 9),
-              ),
-            ),
-          ),
-          ValueListenableBuilder<TextEditingValue>(
-            valueListenable: controller,
-            builder: (context, value, child) => IconButton(
-              key: const ValueKey<String>('send-instruction-button'),
-              tooltip: 'Enviar instrucción a Aura',
-              onPressed: isRunning || value.text.trim().isEmpty
-                  ? null
-                  : () => onSubmitted(value.text),
-              constraints: const BoxConstraints.tightFor(width: 42, height: 42),
-              padding: EdgeInsets.zero,
-              icon: const Icon(
-                Icons.arrow_upward_rounded,
-                color: AuraTokens.bg,
-                size: 21,
-              ),
-              style: IconButton.styleFrom(
-                backgroundColor: AuraTokens.accent,
-                disabledBackgroundColor: AuraTokens.surfaceAlt,
-              ),
-            ),
-          ),
-          IconButton(
-            tooltip: isListening ? 'Escuchando' : 'Dictar consulta',
-            onPressed: isRunning || isListening ? null : onVoice,
-            constraints: const BoxConstraints.tightFor(width: 38, height: 38),
-            padding: EdgeInsets.zero,
-            icon: Icon(
-              isListening ? Icons.hearing : Icons.mic_none,
-              color: AuraTokens.accent,
-              size: 20,
-            ),
-          ),
-        ],
+    );
+  }
+}
+
+class _AccessibilityRetry extends StatelessWidget {
+  const _AccessibilityRetry({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton(
+        onPressed: onRetry,
+        style: TextButton.styleFrom(foregroundColor: AuraTokens.warning),
+        child: const Text(
+          '[WARN] No se pudo verificar accesibilidad · REINTENTAR',
+          style: TextStyle(fontFamily: 'monospace', fontSize: 10.5),
+        ),
       ),
     );
   }

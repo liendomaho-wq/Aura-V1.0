@@ -1048,9 +1048,10 @@ CI: esos siguen abiertos.
 
 - Rama local: `main`.
 - HEAD base: `20a3fcefe0ac4c31ea128646737e8b16aac9661f` (merge del PR #29).
-- Los cambios de esta fase están en el working tree local y **todavía no tienen
-  commit ni push**: la credencial HTTPS de GitHub no está disponible en este
-  entorno (`could not read Username for 'https://github.com'`).
+- Commits locales de esta fase: `b315f10` (pin, consentimiento, reanudación y
+  verificación) y `3fc55bd` (guards CI alineados). **Push pendiente**: la
+  credencial HTTPS de GitHub no está disponible en este entorno
+  (`could not read Username for 'https://github.com'`).
 - No se ejecutó un build Android completo ni un run de CI para estos cambios.
 - No se observó inferencia en hardware.
 
@@ -1092,7 +1093,7 @@ digest.
 
 ### 11.4 Evidencia local ejecutada
 
-- `flutter test`: **280 pruebas pasan, 1 omitida** (línea base previa: 246
+- `flutter test`: **282 pruebas pasan, 1 omitida** (línea base previa: 246
   pasan, 1 omitida). Las nuevas cubren reanudación, cancelación, espacio,
   tamaño, digest, canal de almacenamiento, consentimiento, estados, UI y
   `unloadModel`.
@@ -1120,3 +1121,34 @@ El pin y el flujo fail-closed están implementados y cubiertos por pruebas
 locales; la integridad del GGUF fue verificada de forma independiente. Aura
 **sigue sin estar lista para release**: falta CI sobre estos cambios, push,
 validación Android y observación de inferencia real en hardware.
+
+## 12. Fase 3 — Interfaz centrada en la IA (2026-11-12 UTC)
+
+La consola deja de ser un tablero de paneles y pasa a una composición única
+alrededor de la presencia local de Aura:
+
+- `AuraNeuralField` pinta un campo neuronal animado a pantalla completa (nodos,
+  sinapsis y pulsos) que cambia con el estado real: escucha, razonamiento,
+  escudo, advertencia o alerta. Respeta `disableAnimations`.
+- `AuraPresence` concentra avatar, anillo de capacidades, saludo, estado del
+  modelo local y métricas de sesión sin tarjetas ni contenedores rellenos.
+- `AuraIntentConstellation` sustituye la rejilla de accesos por nodos de
+  intención conectados: analizar, escudo, privacidad, IA local, informes,
+  auditoría y ayuda.
+- `AuraCommandFilament` reemplaza la barra de entrada por un filamento con
+  pulso, microcopy de privacidad local y controles de voz/envío. El campo se
+  deshabilita mientras Aura procesa o la consola no está autenticada.
+- El hilo de eventos ya no usa burbujas: cada evento es una línea temporal con
+  espina, nodo, hablante y texto seleccionable.
+- El banner de preparación, la telemetría local, la explicación del veredicto,
+  la auditoría de cobertura y las advertencias de accesibilidad se presentan
+  como márgenes de señal con una regla lateral, sin `Card` ni fondos de panel.
+- Se conservan las claves y textos exigidos por la suite: `vpn-toggle` como
+  `TextButton`, `aura-event-list`, `aura-overview-scroll`,
+  `local-telemetry-panel`, `Hola, soy Aura.`,
+  `verdict-explanation-card-*` y el layout compacto 320x568.
+
+Evidencia local: `flutter test` → **282 pasan, 1 omitida**; `flutter analyze`
+sin errores ni warnings (solo infos de deprecaciones del master local); formato
+limpio en los archivos tocados. No se validó visualmente en un dispositivo
+físico ni se ejecutó CI para este rediseño.

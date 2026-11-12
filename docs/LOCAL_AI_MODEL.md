@@ -123,7 +123,7 @@ carga ningún GGUF.
 - `test/local_llm_planner_test.dart` — `prefetchModel` devuelve estado real,
   `unloadModel` libera el runtime y el path de órdenes no descarga.
 
-Suites locales: **280 pruebas pasan, 1 omitida**. `flutter analyze` en el
+Suites locales: **282 pruebas pasan, 1 omitida**. `flutter analyze` en el
 Flutter master local solo reporta avisos informativos de deprecaciones de
 `material.dart`/`activeColor`; CI stable sigue siendo la referencia.
 
