@@ -25,6 +25,11 @@ APP_GRADLE = ROOT / "android/app/build.gradle"
 VERIFY_APK = ROOT / "tool/verify_apk_jni.py"
 DART_PLANNER = ROOT / "lib/llm/local_llm_planner.dart"
 DART_MODEL_MANAGER = ROOT / "lib/llm/aura_llm_model_manager.dart"
+DART_SETUP_CONTROLLER = ROOT / "lib/llm/aura_llm_setup_controller.dart"
+DART_STORAGE = ROOT / "lib/infrastructure/storage/aura_storage.dart"
+KOTLIN_STORAGE = (
+    ROOT / "android/app/src/main/kotlin/com/ciberdefensa/aura/AuraStoragePlugin.kt"
+)
 DART_CONTROLLER = ROOT / "lib/agent/agent_controller.dart"
 DART_PROPOSAL = ROOT / "lib/agent/llm_tool_proposal.dart"
 
@@ -101,9 +106,23 @@ class AuraLlmNativeIntegrationTest(unittest.TestCase):
             bridge,
         )
 
-    def test_main_activity_registers_the_llm_plugin(self):
+    def test_main_activity_registers_the_llm_and_storage_plugins(self):
         main = read(MAIN_ACTIVITY)
         self.assertIn("AuraLlmPlugin.install(flutterEngine)", main)
+        self.assertIn(
+            "AuraStoragePlugin.install(flutterEngine, applicationContext)", main
+        )
+
+    def test_storage_channel_and_method_match_between_dart_and_kotlin(self):
+        dart = read(DART_STORAGE)
+        kotlin = read(KOTLIN_STORAGE)
+        channel = "com.ciberdefensa.aura/storage"
+        self.assertIn(channel, dart)
+        self.assertIn(channel, kotlin)
+        self.assertIn("invokeMethod<int>('freeBytes')", dart)
+        self.assertIn('"freeBytes" ->', kotlin)
+        self.assertIn("StatFs(context.filesDir.absolutePath)", kotlin)
+        self.assertIn("availableBytes", kotlin)
 
     def test_gradle_pins_and_verifies_the_llama_source(self):
         gradle = read(APP_GRADLE)
@@ -244,13 +263,38 @@ class AuraLlmDartWiringTest(unittest.TestCase):
         self.assertIn("AURA_LLM_MODEL_SHA256", manager)
         self.assertIn("_digestPattern = RegExp(r'^[0-9a-f]{64}$')", manager)
         self.assertIn("uri.scheme != 'https'", manager)
-        self.assertIn("sha256.bind(file.openRead()).first", manager)
+        self.assertIn("sha256.startChunkedConversion(output)", manager)
+        self.assertIn(
+            "if (digest == null || digest.toString() != _expectedSha256) "
+            "return false;",
+            manager,
+        )
         self.assertIn("await temporary.rename(target.path)", manager)
         # Verification happens before the rename; a mismatch never installs.
-        mismatch = manager.split("if (!await _matchesDigest(temporary))", 1)[1]
+        mismatch = manager.split(
+            "if (!await _matchesDigest(temporary, "
+            "onHashProgress: onHashProgress))",
+            1,
+        )[1]
         mismatch = mismatch.split("await temporary.rename", 1)[0]
-        self.assertIn("return null", mismatch)
+        self.assertIn("AuraLlmInstallError.digestMismatch", mismatch)
         self.assertIn("_deleteIfPresent(temporary)", mismatch)
+
+    def test_downloads_resume_and_never_run_on_the_order_path(self):
+        manager = read(DART_MODEL_MANAGER)
+        planner = read(DART_PLANNER)
+        self.assertIn("request.headers['Range'] = 'bytes=$startAt-'", manager)
+        self.assertIn("_freeSpaceProvider", manager)
+        self.assertIn("AuraLlmInstallError.insufficientStorage", manager)
+        self.assertIn(".resolveInstalledModel;", planner)
+        self.assertNotIn(".resolveVerifiedModel;", planner)
+
+    def test_setup_requires_consent_and_persists_the_choice(self):
+        controller = read(DART_SETUP_CONTROLLER)
+        self.assertIn("aura.llm.consent.v1", controller)
+        self.assertIn("aura.llm.prefetch.v1", controller)
+        self.assertIn("if (!consent)", controller)
+        self.assertIn("setup_initialization_failed", controller)
 
     def test_model_resolution_is_single_flight(self):
         manager = read(DART_MODEL_MANAGER)
@@ -258,7 +302,7 @@ class AuraLlmDartWiringTest(unittest.TestCase):
         # must not start a second writer against the same .partial file.
         self.assertIn("Future<String?>? _resolveFuture;", manager)
         resolve = manager.split("Future<String?> resolveVerifiedModel() {", 1)[1]
-        resolve = resolve.split("Future<String?> _resolveOrDownload()", 1)[0]
+        resolve = resolve.split("Future<AuraLlmInstallResult> _resolveOrDownload(", 1)[0]
         self.assertIn("final pending = _resolveFuture;", resolve)
         self.assertIn("if (pending != null) return pending;", resolve)
 
@@ -267,7 +311,7 @@ class AuraLlmDartWiringTest(unittest.TestCase):
         self.assertIn("modelResolveTimeout", planner)
         self.assertIn("_resolveModelPath().timeout(modelResolveTimeout)", planner)
         self.assertIn("llm_model_prepare_timeout", planner)
-        self.assertIn("Future<void> prefetchModel()", planner)
+        self.assertIn("Future<bool> prefetchModel()", planner)
         # Prefetch is explicitly outside the order path.
         self.assertIn("outside the order path", planner)
 
