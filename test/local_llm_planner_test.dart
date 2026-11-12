@@ -19,6 +19,7 @@ class _FakeLlmRuntime extends AuraLlmRuntime {
       StreamController<AuraLlmEvent>.broadcast(sync: true);
 
   int loadCalls = 0;
+  int unloadCalls = 0;
   int startCalls = 0;
   int cancelCalls = 0;
   int lastContextTokens = 0;
@@ -52,6 +53,12 @@ class _FakeLlmRuntime extends AuraLlmRuntime {
     lastContextTokens = contextTokens;
     lastThreads = threads;
     loaded = true;
+  }
+
+  @override
+  Future<void> unloadModel() async {
+    unloadCalls++;
+    loaded = false;
   }
 
   @override
@@ -234,7 +241,7 @@ void main() {
       addTearDown(runtime.dispose);
       final planner = _planner(runtime);
 
-      await planner.prefetchModel();
+      expect(await planner.prefetchModel(), isTrue);
 
       expect(runtime.loadCalls, 1);
       expect(runtime.startCalls, 0);
@@ -250,10 +257,31 @@ void main() {
       final runtime = _FakeLlmRuntime(available: false);
       addTearDown(runtime.dispose);
 
-      await _planner(runtime, resolver: () async => null).prefetchModel();
+      expect(
+        await _planner(runtime, resolver: () async => null).prefetchModel(),
+        isFalse,
+      );
 
       expect(runtime.loadCalls, 0);
       expect(runtime.startCalls, 0);
+    });
+
+    test('unloading releases the runtime and forces a fresh load', () async {
+      final runtime = _FakeLlmRuntime();
+      addTearDown(runtime.dispose);
+      final planner = _planner(runtime);
+
+      expect(await planner.prefetchModel(), isTrue);
+      expect(runtime.loadCalls, 1);
+
+      await planner.unloadModel();
+      expect(runtime.unloadCalls, 1);
+      expect(runtime.loaded, isFalse);
+
+      runtime.response = '{"tool":"audit_device","arguments":{}}';
+      final result = await planner.plan('audita el dispositivo');
+      expect(result.status, LocalLlmPlanStatus.proposal);
+      expect(runtime.loadCalls, 2);
     });
 
     test('fails closed when the native runtime is unavailable', () async {

@@ -1036,3 +1036,87 @@ lista para release**: falta un GGUF verificado, el calentamiento/descarga desde
 la app y la validación en hardware. El siguiente paso de producto es elegir y
 alojar un GGUF con URL y SHA-256 fijos, exponer una acción de preparación con
 progreso y verificar la primera generación y la cancelación en el TECNO LH7n.
+
+## 11. Fase 2 — GGUF fijado y preparación local con consentimiento (2026-11-12 UTC)
+
+Esta sección sustituye, para el working tree descrito, los pendientes de la
+sección 10.6 sobre ausencia de GGUF fijado, falta de descarga desde la app y
+falta de UI de preparación. No sustituye la validación en hardware ni un run de
+CI: esos siguen abiertos.
+
+### 11.1 Estado y alcance
+
+- Rama local: `main`.
+- HEAD base: `20a3fcefe0ac4c31ea128646737e8b16aac9661f` (merge del PR #29).
+- Los cambios de esta fase están en el working tree local y **todavía no tienen
+  commit ni push**: la credencial HTTPS de GitHub no está disponible en este
+  entorno (`could not read Username for 'https://github.com'`).
+- No se ejecutó un build Android completo ni un run de CI para estos cambios.
+- No se observó inferencia en hardware.
+
+### 11.2 Modelo fijado y verificado
+
+- Repositorio: `unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF`.
+- Revisión inmutable:
+  `3cb4d15544a2a5e07439592b9a0965b6445fbd34`.
+- Archivo: `DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf`.
+- Tamaño: `1117321312` bytes.
+- SHA-256:
+  `f3bdf9cf31dee4b57ae4e455a1cb0d01b5c2c1b50d72d3112141c195506c2840`.
+- Licencia: Apache-2.0; publicador: `unsloth`.
+
+La descarga independiente completa terminó en `/tmp/aura-model.gguf` y
+`sha256sum` devolvió exactamente el digest anterior con el tamaño exacto. El pin
+está en `lib/llm/aura_llm_model_source.dart`; no hay descarga ni carga sin ese
+digest.
+
+### 11.3 Flujo implementado
+
+- `AuraLlmModelManager` reanuda `.partial` con `Range`, reinicia si el servidor
+  ignora el rango, respeta cancelación, valida espacio libre antes de abrir la
+  conexión, limita el tamaño, verifica SHA-256 por bloques y solo renombra de
+  forma atómica después de que el digest coincide.
+- `AuraLlmSetupController` exige consentimiento explícito, persiste
+  `aura.llm.consent.v1` y `aura.llm.prefetch.v1`, expone estados de descarga,
+  verificación y carga, y conserva el prefijo al pausar.
+- `LocalLlmPlanner.prefetchModel()` devuelve el resultado real del runtime;
+  `unloadModel()` permite borrar o reemplazar el archivo. El path de órdenes del
+  agente usa `resolveInstalledModel()`, que **no descarga**.
+- `AuraStoragePlugin` expone `StatFs.availableBytes` por el canal
+  `com.ciberdefensa.aura/storage`; falla cerrado si Android no responde.
+- La UI incluye consentimiento, tamaño, SHA-256 corto, progreso/velocidad,
+  pausa/reanudación, borrado con confirmación, precarga al iniciar, banner de
+  preparación y anillo de capacidades del avatar.
+- `main.dart` crea el planner, lo enlaza a `AgentController.instance` y expone
+  el controlador mediante `AuraLlmSetupScope`.
+
+### 11.4 Evidencia local ejecutada
+
+- `flutter test`: **280 pruebas pasan, 1 omitida** (línea base previa: 246
+  pasan, 1 omitida). Las nuevas cubren reanudación, cancelación, espacio,
+  tamaño, digest, canal de almacenamiento, consentimiento, estados, UI y
+  `unloadModel`.
+- `flutter analyze --no-pub`: sin errores ni warnings. Solo quedan avisos
+  informativos de deprecaciones del Flutter master local (`material.dart`,
+  `activeColor`), que no son el SDK de CI.
+- Verificación independiente del GGUF: tamaño y SHA-256 exactos, ver 11.2.
+- No se modificó `pubspec.lock`; se revirtió el cambio producido por
+  `pub get` local.
+
+### 11.5 Lo que sigue abierto
+
+- Ejecutar CI sobre el commit real y confirmar `dart format`, `flutter analyze`,
+  `flutter test`, JVM y build Android.
+- Probar la descarga real desde la app, la reanudación tras matar el proceso y
+  el borrado en un dispositivo.
+- Cargar el GGUF y observar primer token, cancelación y consumo de memoria en el
+  TECNO LH7n.
+- Confirmar que el runtime nativo acepta el archivo verificado y que la UI
+  refleja "IA local lista" solo después de esa carga.
+
+### 11.6 Dictamen de esta sección
+
+El pin y el flujo fail-closed están implementados y cubiertos por pruebas
+locales; la integridad del GGUF fue verificada de forma independiente. Aura
+**sigue sin estar lista para release**: falta CI sobre estos cambios, push,
+validación Android y observación de inferencia real en hardware.

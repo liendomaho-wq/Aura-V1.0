@@ -1,12 +1,17 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'agent/agent_controller.dart';
 import 'infrastructure/security/aura_dynamic_whitelist.dart';
+import 'llm/aura_llm_setup_controller.dart';
+import 'llm/local_llm_planner.dart';
 import 'providers/aura_state_provider.dart';
 import 'screens/splash_screen.dart';
 import 'theme/aura_tokens.dart';
+import 'widgets/aura_llm_setup_scope.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,12 +27,19 @@ Future<void> main() async {
       level: 1000,
     );
   }
+  final planner = LocalLlmPlanner();
+  AgentController.instance.bindLocalLlmPlanner(planner);
+  final llmSetup = AuraLlmSetupController(
+    warmUp: planner.prefetchModel,
+    unload: planner.unloadModel,
+  );
   runApp(
     MultiProvider(
       providers: [ChangeNotifierProvider(create: (_) => AuraStateProvider())],
-      child: const AuraApp(),
+      child: AuraLlmSetupScope(controller: llmSetup, child: const AuraApp()),
     ),
   );
+  unawaited(llmSetup.initialize());
 }
 
 class AuraApp extends StatelessWidget {

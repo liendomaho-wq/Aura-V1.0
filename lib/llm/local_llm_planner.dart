@@ -72,7 +72,7 @@ class LocalLlmPlanner {
   }) : _runtime = runtime ?? AuraLlmRuntime(),
        _resolveModelPath =
            resolveModelPath ??
-           (modelManager ?? AuraLlmModelManager()).resolveVerifiedModel;
+           (modelManager ?? AuraLlmModelManager()).resolveInstalledModel;
 
   final AuraLlmRuntime _runtime;
   final Future<String?> Function() _resolveModelPath;
@@ -136,9 +136,9 @@ class LocalLlmPlanner {
     if (!capabilities.loaded) {
       final String? modelPath;
       try {
-        // A first-time download must not block an operator order for minutes
-        // while the agent is marked busy. [prefetchModel] is the path allowed
-        // to wait; here the budget is short and failure is diagnosable.
+        // The order path never downloads. Only an already installed and
+        // SHA-256-verified file may be loaded here; preparing the model is an
+        // explicit, consent-based action handled outside the agent.
         modelPath = await _resolveModelPath().timeout(modelResolveTimeout);
       } on TimeoutException {
         return const LocalLlmPlanResult(
@@ -189,18 +189,32 @@ class LocalLlmPlanner {
 
   /// Warms the runtime and loads the verified GGUF outside the order path.
   ///
-  /// App start (or a settings action) should call this so a first-time model
-  /// download never happens while an operator order waits. It never throws:
-  /// [plan] re-validates every precondition and fails closed on its own.
-  Future<void> prefetchModel() async {
+  /// App start (or the setup flow) calls this after the explicit model
+  /// preparation. It never downloads and never throws: it returns `true` only
+  /// when the native runtime confirms the model is loaded.
+  Future<bool> prefetchModel() async {
     try {
       final capabilities = await _runtime.capabilities();
-      if (!capabilities.available || capabilities.loaded) return;
+      if (!capabilities.available) return false;
+      if (capabilities.loaded) return true;
       final modelPath = await _resolveModelPath();
-      if (modelPath == null || !modelPath.startsWith('/')) return;
+      if (modelPath == null || !modelPath.startsWith('/')) return false;
       await _ensureModelLoaded(modelPath);
+      return true;
     } on Object {
-      // Best effort: a missing or unreachable model is reported by plan().
+      // A missing runtime or model is reported by plan() as a typed status.
+      return false;
+    }
+  }
+
+  /// Releases the native model so it can be deleted or replaced.
+  Future<void> unloadModel() async {
+    try {
+      await _runtime.unloadModel();
+    } on Object {
+      // The runtime may be absent; the caller only needs the attempt.
+    } finally {
+      _loadFuture = null;
     }
   }
 

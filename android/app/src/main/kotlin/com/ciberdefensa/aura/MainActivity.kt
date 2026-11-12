@@ -328,6 +328,7 @@ class MainActivity: FlutterFragmentActivity() {
         // plugin stays fail-closed: if libaura_llm.so or its worker cannot
         // start, capabilities report unavailable and no generation runs.
         AuraLlmPlugin.install(flutterEngine)
+        AuraStoragePlugin.install(flutterEngine, applicationContext)
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,

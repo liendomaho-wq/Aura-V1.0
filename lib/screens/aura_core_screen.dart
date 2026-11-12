@@ -12,10 +12,14 @@ import '../explanation/aura_verdict_explanation.dart';
 import '../infrastructure/agent/aura_intent_parser.dart';
 import '../models/aura_model_integrity_report.dart';
 import '../network_auditor.dart';
+import '../llm/aura_llm_setup_controller.dart';
 import '../providers/aura_state_provider.dart';
 import '../services/aura_local_telemetry.dart';
 import '../theme/aura_tokens.dart';
 import '../widgets/aura_avatar.dart';
+import '../widgets/aura_capability_ring.dart';
+import '../widgets/aura_llm_setup_scope.dart';
+import '../widgets/aura_llm_setup_sheet.dart';
 
 const Color _terminalGreen = Color(0xFF00FF00);
 const Color _terminalYellow = Color(0xFFFFFF00);
@@ -736,6 +740,18 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
     final compactLayout = MediaQuery.sizeOf(context).height < 700;
     final vpnActive = state.isVpnActive;
     final quickActionsEnabled = !_isRunning && _isAuthenticated;
+    final llmSetup = AuraLlmSetupScope.maybeOf(context);
+    final AuraCapabilityState modelCapability;
+    switch (llmSetup?.status) {
+      case AuraLlmSetupStatus.ready:
+        modelCapability = AuraCapabilityState.ready;
+      case AuraLlmSetupStatus.downloading:
+      case AuraLlmSetupStatus.verifying:
+      case AuraLlmSetupStatus.loading:
+        modelCapability = AuraCapabilityState.preparing;
+      default:
+        modelCapability = AuraCapabilityState.unavailable;
+    }
 
     OutlinedButton quickAction(String label, VoidCallback? onPressed) =>
         OutlinedButton(
@@ -1016,22 +1032,30 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                               ),
                               child: Row(
                                 children: [
-                                  AuraAvatar(
-                                    size: compactLayout ? 88 : 138,
-                                    mode: _isListening
-                                        ? AuraAvatarMode.listening
-                                        : _isRunning
-                                        ? AuraAvatarMode.analyzing
-                                        : switch (state.securityLevel) {
-                                            AuraSecurityLevel.critical =>
-                                              AuraAvatarMode.alert,
-                                            AuraSecurityLevel.warning =>
-                                              AuraAvatarMode.warning,
-                                            AuraSecurityLevel.safe =>
-                                              state.isVpnActive
-                                                  ? AuraAvatarMode.protecting
-                                                  : AuraAvatarMode.available,
-                                          },
+                                  AuraCapabilityRing(
+                                    size: (compactLayout ? 88 : 138) + 18,
+                                    model: modelCapability,
+                                    classifier: AuraCapabilityState.ready,
+                                    defense: vpnActive
+                                        ? AuraCapabilityState.ready
+                                        : AuraCapabilityState.unavailable,
+                                    child: AuraAvatar(
+                                      size: compactLayout ? 88 : 138,
+                                      mode: _isListening
+                                          ? AuraAvatarMode.listening
+                                          : _isRunning
+                                          ? AuraAvatarMode.analyzing
+                                          : switch (state.securityLevel) {
+                                              AuraSecurityLevel.critical =>
+                                                AuraAvatarMode.alert,
+                                              AuraSecurityLevel.warning =>
+                                                AuraAvatarMode.warning,
+                                              AuraSecurityLevel.safe =>
+                                                state.isVpnActive
+                                                    ? AuraAvatarMode.protecting
+                                                    : AuraAvatarMode.available,
+                                            },
+                                    ),
                                   ),
                                   const SizedBox(width: 16),
                                   Expanded(
@@ -1088,6 +1112,51 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                                             fontSize: 10,
                                           ),
                                         ),
+                                        const SizedBox(height: 2),
+                                        Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: TextButton.icon(
+                                            key: const ValueKey<String>(
+                                              'aura-ai-status',
+                                            ),
+                                            onPressed: llmSetup == null
+                                                ? null
+                                                : () => showAuraLlmSetupSheet(
+                                                    context,
+                                                    llmSetup,
+                                                  ),
+                                            style: TextButton.styleFrom(
+                                              foregroundColor:
+                                                  modelCapability ==
+                                                      AuraCapabilityState.ready
+                                                  ? AuraTokens.success
+                                                  : AuraTokens.accent,
+                                              padding: EdgeInsets.zero,
+                                              minimumSize: const Size(0, 24),
+                                              tapTargetSize:
+                                                  MaterialTapTargetSize
+                                                      .shrinkWrap,
+                                              alignment: Alignment.centerLeft,
+                                            ),
+                                            icon: Icon(
+                                              modelCapability ==
+                                                      AuraCapabilityState.ready
+                                                  ? Icons.verified_rounded
+                                                  : Icons.memory_rounded,
+                                              size: 12,
+                                            ),
+                                            label: Text(
+                                              llmSetup?.statusLabel ??
+                                                  'Aura Básica · IA local no configurada',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -1139,8 +1208,23 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                                   featureTile(
                                     icon: Icons.auto_awesome_rounded,
                                     title: 'Aura AI',
-                                    subtitle: 'Asistente',
-                                    onTap: () => _dispatch('ayuda'),
+                                    subtitle: switch (llmSetup?.status) {
+                                      AuraLlmSetupStatus.ready => 'Local lista',
+                                      AuraLlmSetupStatus.downloading =>
+                                        'Descargando',
+                                      AuraLlmSetupStatus.verifying =>
+                                        'Verificando',
+                                      AuraLlmSetupStatus.loading => 'Cargando',
+                                      AuraLlmSetupStatus.paused => 'En pausa',
+                                      AuraLlmSetupStatus.failed => 'Revisar',
+                                      _ => 'Preparar IA',
+                                    },
+                                    onTap: llmSetup == null
+                                        ? () => _dispatch('ayuda')
+                                        : () => showAuraLlmSetupSheet(
+                                            context,
+                                            llmSetup,
+                                          ),
                                     color: AuraTokens.accentViolet,
                                   ),
                                   const SizedBox(width: 8),
@@ -1241,11 +1325,15 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                               final events = AgentController.instance.history;
                               final explanationCount =
                                   state.explanationHistory.length;
+                              final showLlmBanner =
+                                  llmSetup != null &&
+                                  _showsLlmSetupBanner(llmSetup.status);
                               final leadingCardCount =
                                   (_showCoverageAudit || explanationCount > 0
                                       ? 1
                                       : 0) +
-                                  (!_telemetryEndpointConfigured ? 1 : 0);
+                                  (!_telemetryEndpointConfigured ? 1 : 0) +
+                                  (showLlmBanner ? 1 : 0);
                               _scrollToLatest(events.length + leadingCardCount);
                               return ListView(
                                 key: const ValueKey<String>('aura-event-list'),
@@ -1257,6 +1345,14 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                                   18,
                                 ),
                                 children: [
+                                  if (showLlmBanner)
+                                    _AuraLlmSetupBanner(
+                                      controller: llmSetup,
+                                      onPrepare: () => showAuraLlmSetupSheet(
+                                        context,
+                                        llmSetup,
+                                      ),
+                                    ),
                                   if (_showCoverageAudit)
                                     _CoverageAuditCard(
                                       isVpnActive: state.isVpnActive,
@@ -1336,6 +1432,116 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                   onVoice: _captureVoice,
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+bool _showsLlmSetupBanner(AuraLlmSetupStatus status) =>
+    status == AuraLlmSetupStatus.notInstalled ||
+    status == AuraLlmSetupStatus.paused ||
+    status == AuraLlmSetupStatus.failed;
+
+class _AuraLlmSetupBanner extends StatelessWidget {
+  const _AuraLlmSetupBanner({
+    required this.controller,
+    required this.onPrepare,
+  });
+
+  final AuraLlmSetupController controller;
+  final VoidCallback onPrepare;
+
+  @override
+  Widget build(BuildContext context) {
+    final paused = controller.status == AuraLlmSetupStatus.paused;
+    final failed = controller.status == AuraLlmSetupStatus.failed;
+    return Container(
+      key: const ValueKey<String>('aura-llm-setup-banner'),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AuraTokens.accentViolet.withValues(alpha: 0.35),
+        ),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xF2141F3D), Color(0xE90B1730)],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                failed
+                    ? Icons.error_outline_rounded
+                    : Icons.auto_awesome_rounded,
+                color: failed ? AuraTokens.danger : AuraTokens.accentViolet,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  failed
+                      ? 'La preparación de Aura IA requiere atención'
+                      : 'Aura Básica activa · prepará la IA local',
+                  style: const TextStyle(
+                    color: AuraTokens.textPrimary,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            failed
+                ? controller.errorMessage ??
+                      'Revisá el estado del modelo local.'
+                : paused
+                ? 'La descarga quedó en pausa y se puede reanudar sin perder '
+                      'el progreso verificado.'
+                : '${controller.source.identityLabel} · '
+                      '${controller.source.sizeLabel}. La inferencia local es '
+                      'opcional y el archivo se verifica antes de cargarse.',
+            style: const TextStyle(
+              color: AuraTokens.textMuted,
+              fontSize: 10.5,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              key: const ValueKey<String>('aura-llm-banner-action'),
+              onPressed: onPrepare,
+              icon: Icon(
+                paused ? Icons.play_arrow_rounded : Icons.download_rounded,
+                size: 16,
+              ),
+              label: Text(
+                paused
+                    ? 'REANUDAR'
+                    : failed
+                    ? 'REVISAR'
+                    : 'PREPARAR IA',
+              ),
+              style: TextButton.styleFrom(
+                foregroundColor: AuraTokens.accent,
+                textStyle: const TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                ),
+              ),
             ),
           ),
         ],
