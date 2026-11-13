@@ -48,6 +48,47 @@ class _AuditOnlyLlmRuntime extends AuraLlmRuntime {
   Future<void> dispose() => _events.close();
 }
 
+class _AnswerOnlyLlmRuntime extends AuraLlmRuntime {
+  final StreamController<AuraLlmEvent> _events =
+      StreamController<AuraLlmEvent>.broadcast(sync: true);
+
+  @override
+  Stream<AuraLlmEvent> get events => _events.stream;
+
+  @override
+  Future<AuraLlmCapabilities> capabilities() async => const AuraLlmCapabilities(
+    available: true,
+    loaded: true,
+    backend: 'llama.cpp',
+    abi: 'arm64-v8a',
+    maxContextTokens: 8192,
+  );
+
+  @override
+  Future<String> startGeneration({
+    required String prompt,
+    int maxTokens = 512,
+    double temperature = 0.2,
+  }) async {
+    const operationId = 'op-answer';
+    _events.add(
+      const AuraLlmEvent(
+        operationId: operationId,
+        type: 'token',
+        text:
+            '{"answer":"No puedo verificar el tráfico sin un evento '
+            'observable. Revisá el estado del túnel."}',
+      ),
+    );
+    _events.add(
+      const AuraLlmEvent(operationId: operationId, type: 'completed'),
+    );
+    return operationId;
+  }
+
+  Future<void> dispose() => _events.close();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -388,6 +429,64 @@ void main() {
         events.any((event) => event.data?['tool'] == 'audit_device'),
         isTrue,
       );
+      expect(controller.isRunning, isFalse);
+    },
+  );
+
+  test(
+    'una pregunta desconocida muestra la respuesta local sin ejecutar tools',
+    () async {
+      const securityChannel = MethodChannel('com.ciberdefensa.aura/security');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      FlutterSecureStorage.setMockInitialValues(<String, String>{});
+      messenger.setMockMethodCallHandler(securityChannel, (call) async {
+        if (call.method != 'checkHostileEnvironment') return null;
+        return <String, dynamic>{
+          'isEmulator': false,
+          'isRooted': false,
+          'rootConfidence': 0.0,
+          'isInstrumented': false,
+          'isScreenOverlayDetected': false,
+          'isHostile': false,
+          'indicators': <String>[],
+          'environmentCheckErrors': <String>[],
+          'untrustedAccessibilityServicePackages': <String>[],
+          'timestamp': '2026-01-01T00:00:00Z',
+        };
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(securityChannel, null),
+      );
+
+      final runtime = _AnswerOnlyLlmRuntime();
+      final controller = AgentController.instance;
+      controller.bindLocalLlmPlanner(
+        LocalLlmPlanner(
+          runtime: runtime,
+          resolveModelPath: () async => '/data/model.gguf',
+        ),
+      );
+      addTearDown(() {
+        controller.bindLocalLlmPlanner(null);
+        runtime.dispose();
+      });
+
+      final start = controller.history.length;
+      await controller.run('qwertyuiop zxcvbnm');
+
+      final events = controller.history.skip(start).toList();
+      final answer = events.where(
+        (event) => event.data?['answer_is_unverified'] == true,
+      );
+      expect(answer, hasLength(1));
+      expect(answer.single.kind, AgentEventKind.success);
+      expect(answer.single.message, contains('No puedo verificar'));
+      expect(
+        events.any((event) => event.kind == AgentEventKind.action),
+        isFalse,
+      );
+      expect(events.any((event) => event.data?['tool'] != null), isFalse);
       expect(controller.isRunning, isFalse);
     },
   );

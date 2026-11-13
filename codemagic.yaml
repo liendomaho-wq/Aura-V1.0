@@ -1,4 +1,94 @@
 workflows:
+  android-debug:
+    name: Aura Android Debug APK (installable test build)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    cache:
+      cache_paths:
+        - ~/.pub-cache
+        - ~/.gradle/caches
+    environment:
+      vars:
+        AURA_ALLOW_DEBUG_SIGNING: "true"
+      flutter: 3.47.9
+      java: 17
+    scripts:
+      - name: Resolve Flutter dependencies and record toolchain
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          flutter --version
+          flutter pub get
+      - name: Install declared Android NDK
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          bash tool/install_android_ndk.sh
+      - name: Check Dart formatting
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          dart format --set-exit-if-changed .
+      - name: Analyze Flutter and Dart code
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          flutter analyze --no-pub
+      - name: Run unit and widget tests
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          flutter test --no-pub --reporter expanded
+      - name: Build installable debug APK
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          flutter build apk --debug
+      - name: Verify debug APK identity and packaged native runtimes
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          test -s build/app/outputs/flutter-apk/app-debug.apk
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:?Android SDK not found}}"
+          READELF="$(find "$SDK_ROOT/ndk/28.2.13676358/toolchains/llvm/prebuilt" -type f -name llvm-readelf | head -n 1)"
+          test -x "$READELF"
+          python3 tool/verify_apk_jni.py build/app/outputs/flutter-apk/app-debug.apk --readelf "$READELF"
+          python3 - <<'PYTHON'
+          import hashlib
+          from pathlib import Path
+          import zipfile
+
+          apk = Path("build/app/outputs/flutter-apk/app-debug.apk")
+          targets = {"armeabi-v7a": (1, 40), "arm64-v8a": (2, 183),
+                     "x86": (1, 3), "x86_64": (2, 62)}
+          with zipfile.ZipFile(apk) as archive:
+              for library in ("libhev-socks5-tunnel.so", "libaura_llm.so"):
+                  for abi, (elf_class, machine) in targets.items():
+                      member = f"lib/{abi}/{library}"
+                      data = archive.read(member)
+                      if (len(data) < 20 or data[:4] != b"\x7fELF"
+                              or data[4] != elf_class or data[5] != 1
+                              or int.from_bytes(data[18:20], "little") != machine):
+                          raise SystemExit(f"Invalid or mismatched packaged ELF: {member}")
+              model_path = "assets/model/aura_brain_model.json"
+              for relative in (model_path, model_path + ".sha256", model_path + ".sig"):
+                  if archive.read("assets/flutter_assets/" + relative) != Path(relative).read_bytes():
+                      raise SystemExit(f"Packaged model asset differs from source: {relative}")
+          digest = hashlib.sha256()
+          with apk.open("rb") as handle:
+              for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                  digest.update(chunk)
+          (apk.parent / "SHA256SUMS").write_text(
+              f"{digest.hexdigest()}  {apk.name}\n", encoding="ascii")
+          print(f"Verified all declared ABIs and packaged model assets: {apk}")
+          print(f"SHA-256: {digest.hexdigest()}")
+          PYTHON
+          git rev-parse HEAD > build/app/outputs/flutter-apk/SOURCE_COMMIT.txt
+    artifacts:
+      - build/app/outputs/flutter-apk/app-debug.apk
+      - build/app/outputs/flutter-apk/SHA256SUMS
+      - build/app/outputs/flutter-apk/SOURCE_COMMIT.txt
+
   android-build:
     name: Aura Android Release Pipeline
     max_build_duration: 90

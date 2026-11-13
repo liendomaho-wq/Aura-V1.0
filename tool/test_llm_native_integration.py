@@ -123,6 +123,13 @@ class AuraLlmNativeIntegrationTest(unittest.TestCase):
         self.assertIn('"freeBytes" ->', kotlin)
         self.assertIn("StatFs(context.filesDir.absolutePath)", kotlin)
         self.assertIn("availableBytes", kotlin)
+        self.assertIn("invokeMapMethod<Object?, Object?>(", dart)
+        self.assertIn("'memoryInfo'", dart)
+        self.assertIn('"memoryInfo" ->', kotlin)
+        self.assertIn("ActivityManager.MemoryInfo()", kotlin)
+        for key in ("total_bytes", "available_bytes", "threshold_bytes", "low_memory"):
+            self.assertIn(key, dart)
+            self.assertIn(key, kotlin)
 
     def test_gradle_pins_and_verifies_the_llama_source(self):
         gradle = read(APP_GRADLE)
@@ -234,6 +241,9 @@ class AuraLlmDartWiringTest(unittest.TestCase):
         # Hostile output is bounded before decoding.
         self.assertIn("maxCaptureChars", planner)
         self.assertIn("LlmToolProposal.maxOutputBytes", planner)
+        self.assertIn("LlmConversationReply.parse(candidate)", planner)
+        self.assertIn("AuraLlmContextPolicy.choose(", planner)
+        self.assertIn("AuraLlmContextPolicy.fallbackLevels(", planner)
 
     def test_controller_maps_only_read_only_tools(self):
         controller = read(DART_CONTROLLER)
@@ -286,7 +296,7 @@ class AuraLlmDartWiringTest(unittest.TestCase):
         self.assertIn("request.headers['Range'] = 'bytes=$startAt-'", manager)
         self.assertIn("_freeSpaceProvider", manager)
         self.assertIn("AuraLlmInstallError.insufficientStorage", manager)
-        self.assertIn(".resolveInstalledModel;", planner)
+        self.assertIn("resolveInstalledModel", planner)
         self.assertNotIn(".resolveVerifiedModel;", planner)
 
     def test_setup_requires_consent_and_persists_the_choice(self):

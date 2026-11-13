@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import 'agent/agent_controller.dart';
 import 'infrastructure/security/aura_dynamic_whitelist.dart';
+import 'llm/aura_llm_model_source.dart';
 import 'llm/aura_llm_setup_controller.dart';
 import 'llm/local_llm_planner.dart';
 import 'providers/aura_state_provider.dart';
@@ -27,9 +28,14 @@ Future<void> main() async {
       level: 1000,
     );
   }
-  final planner = LocalLlmPlanner();
+  final modelSource = AuraLlmModelSource.fromEnvironment();
+  final planner = LocalLlmPlanner(
+    contextTokens: modelSource.runtimeContextTokens,
+    modelSizeBytes: modelSource.sizeBytes,
+  );
   AgentController.instance.bindLocalLlmPlanner(planner);
   final llmSetup = AuraLlmSetupController(
+    source: modelSource,
     warmUp: planner.prefetchModel,
     unload: planner.unloadModel,
   );

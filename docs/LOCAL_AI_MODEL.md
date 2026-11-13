@@ -80,11 +80,16 @@ de inferencia ni de descarga a través de la app.
   espacio libre, SHA-256, caché de verificación y borrado.
 - `lib/llm/aura_llm_setup_controller.dart` — consentimiento, estados y
   preferencias.
-- `lib/llm/local_llm_planner.dart` — precalentamiento y descarga de runtime;
-  el agente nunca descarga.
-- `lib/infrastructure/storage/aura_storage.dart` — espacio libre (Dart).
+- `lib/llm/local_llm_planner.dart` — precalentamiento, carga, contexto
+  adaptativo y generación; el agente nunca descarga.
+- `lib/llm/aura_llm_context_policy.dart` — selección pura del contexto y
+  fallback por memoria, sin efectos secundarios.
+- `lib/agent/llm_tool_proposal.dart` — esquema estricto de propuestas de
+  herramienta y de respuestas conversacionales.
+- `lib/infrastructure/storage/aura_storage.dart` — espacio libre y memoria
+  (Dart).
 - `android/app/src/main/kotlin/com/ciberdefensa/aura/AuraStoragePlugin.kt` —
-  `StatFs` sobre el volumen privado de la app.
+  `StatFs` y `ActivityManager.MemoryInfo`.
 - `lib/widgets/aura_llm_setup_sheet.dart` — consentimiento, progreso, pausa,
   borrado y precarga.
 - `lib/widgets/aura_capability_ring.dart` y `aura_llm_setup_scope.dart` — UI
@@ -92,7 +97,35 @@ de inferencia ni de descarga a través de la app.
 - `lib/main.dart` — crea el planner, lo enlaza al `AgentController` y expone el
   controlador al árbol de widgets.
 
-## 4. Override de compilación
+## 4. Contexto adaptativo y respuesta conversacional
+
+La carga del GGUF no reserva 64K por defecto. `LocalLlmPlanner` consulta
+`ActivityManager.MemoryInfo` y `AuraLlmContextPolicy` elige el mayor nivel que
+cabe en el presupuesto conservador: **8K como base**, niveles de 64K, 32K, 16K,
+8K, 4K y 2K, y un máximo configurable de 64K. La política descuenta el peso del
+modelo, 384 MiB de overhead y deja un margen de seguridad sobre la memoria
+disponible. `lowMemory` reduce la elección a 4K.
+
+Si el runtime no puede cargar el contexto elegido, el planner reintenta con
+niveles menores (hasta tres intentos por mitades). `effectiveContextTokens`
+solo refleja el contexto que el runtime aceptó realmente; no se anuncia 64K ni
+ningún nivel no confirmado. En un perfil de 8 GB con 3 GB disponibles, la
+prueba local selecciona 16K, no 64K.
+
+Cuando el NLU determinista no reconoce una orden, el planner puede devolver:
+
+- `{"tool":"NOMBRE","arguments":{...}}` para una de las tres herramientas de
+  solo lectura ya permitidas (`analyze_domain`, `audit_device`, `scan_apps`); o
+- `{"answer":"texto breve"}` para una respuesta conversacional de un solo turno.
+
+`LlmConversationReply` limita la respuesta a 4096 caracteres y rechaza claves
+extra, tipos incorrectos, texto vacío, caracteres de control y salida mayor de
+8192 bytes. La respuesta se muestra como salida local no verificada y **nunca
+ejecuta herramientas ni sustituye un veredicto de seguridad**. No hay memoria
+conversacional persistente ni historial largo: cada orden se evalúa con el
+prompt acotado actual.
+
+## 5. Override de compilación
 
 El build usa el pin integrado por defecto. Para un build propio se pueden
 sobrescribir URL y SHA-256; ambos son obligatorios y el SHA-256 debe tener 64
@@ -108,7 +141,7 @@ flutter build apk --debug \
 Sin URL y SHA-256 válidos, la app queda en **Aura Básica** y no descarga ni
 carga ningún GGUF.
 
-## 5. Pruebas
+## 6. Pruebas
 
 - `test/aura_llm_model_installer_test.dart` — reanudación con `Range`,
   reinicio cuando el servidor ignora el rango, cancelación con prefijo
@@ -118,23 +151,33 @@ carga ningún GGUF.
   persistencia, estados, warm-up, fallos mapeados, pausa, borrado y prefetch.
 - `test/aura_llm_setup_ui_test.dart` — hoja, consentimiento, descarga,
   confirmación de borrado, build sin pin, scope y anillo de capacidades.
-- `test/aura_storage_test.dart` — canal de espacio libre.
+- `test/aura_storage_test.dart` — canal de espacio libre y memoria, incluido
+  fallo cerrado ante datos inválidos.
 - `test/aura_llm_model_source_test.dart` — pin completo y formateo.
+- `test/aura_llm_context_policy_test.dart` — niveles, presupuesto de memoria,
+  `lowMemory` y fallback.
 - `test/local_llm_planner_test.dart` — `prefetchModel` devuelve estado real,
-  `unloadModel` libera el runtime y el path de órdenes no descarga.
+  `unloadModel` libera el runtime, el path de órdenes no descarga, la respuesta
+  conversacional se valida y el contexto baja de 16K a 8K si la carga falla.
+- `test/agent_controller_test.dart` — una pregunta desconocida muestra la
+  respuesta local sin ejecutar tools.
 
-Suites locales: **282 pruebas pasan, 1 omitida**. `flutter analyze` en el
-Flutter master local solo reporta avisos informativos de deprecaciones de
-`material.dart`/`activeColor`; CI stable sigue siendo la referencia.
+Suites locales con Flutter `3.47.9`: **294 pruebas pasan, 1 omitida**;
+`flutter analyze --no-pub` no reporta errores ni warnings; `dart format` deja
+0 archivos cambiados. CI sigue siendo la referencia para Android/Kotlin y para
+la suite Python completa.
 
-## 6. Límites y pendientes
+## 7. Límites y pendientes
 
-- No hay inferencia observada en un dispositivo físico (TECNO LH7n u otro):
-  falta cargar el GGUF, generar el primer token y cancelar una generación real.
-- No se ejecutó un build Android completo en este entorno ni un run de CI para
-  este cambio. El plugin `AuraStoragePlugin` compila en la misma estructura que
-  `AuraLlmPlugin`, pero su comportamiento en dispositivo no fue observado.
-- La descarga a través de la app no se probó de extremo a extremo; el hash se
+- No hay inferencia observada en un dispositivo físico (Redmi Note 15 Pro+
+  5G u otro): falta cargar el GGUF, generar el primer token, cancelar una
+  generación y medir memoria real para 8K, 16K, 32K y 64K.
+- Los cambios Kotlin de `memoryInfo` y el build Android no se ejecutaron en
+  este entorno sin SDK. CI debe confirmarlos; el comportamiento en dispositivo
+  no fue observado.
+- La respuesta conversacional es de un solo turno y no tiene memoria
+  persistente. No se probó calidad, alucinación ni latencia real del modelo.
+- No se probó la descarga desde la app de extremo a extremo; el hash se
   verificó con una descarga independiente del mismo pin.
 - El runtime nativo no es bit-reproducible entre builds; los hashes de `.so`
   identifican artefactos, no garantizan reproducibilidad byte a byte.

@@ -14,7 +14,7 @@ class AuraLlmModelSource {
     required this.sizeBytes,
     required this.publisher,
     required this.revision,
-    this.runtimeContextTokens = 2048,
+    this.runtimeContextTokens = 8192,
   });
 
   static const String installedFileName = 'aura-local.gguf';

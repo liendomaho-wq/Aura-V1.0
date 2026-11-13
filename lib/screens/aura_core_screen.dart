@@ -788,7 +788,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
         : state.securityLevel == AuraSecurityLevel.warning
         ? 'Hay señales que no cierran. Puedo explicártelas.'
         : modelCapability == AuraCapabilityState.ready
-        ? 'IA local activa. Puedo pensar, explicar y actuar contigo.'
+        ? 'Modelo local listo. Puedo responder y proponer lecturas; vos confirmás cada acción.'
         : 'Presencia activa. Prepará la IA para razonar en tu dispositivo.';
 
     final shieldMetric = !_shieldStatusKnown

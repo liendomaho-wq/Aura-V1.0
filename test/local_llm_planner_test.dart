@@ -4,6 +4,7 @@ import 'package:aura_mobile_defens/agent/agent_execution_guard.dart';
 import 'package:aura_mobile_defens/agent/aura_intent_parser.dart';
 import 'package:aura_mobile_defens/agent/agent_controller.dart';
 import 'package:aura_mobile_defens/agent/llm_tool_proposal.dart';
+import 'package:aura_mobile_defens/infrastructure/storage/aura_storage.dart';
 import 'package:aura_mobile_defens/llm/aura_llm_runtime.dart';
 import 'package:aura_mobile_defens/llm/local_llm_planner.dart';
 import 'package:flutter/services.dart';
@@ -29,6 +30,7 @@ class _FakeLlmRuntime extends AuraLlmRuntime {
   String? startError;
   String? response;
   String? responseError;
+  Set<int> failingContextTokens = <int>{};
   bool autoRespond = true;
 
   @override
@@ -52,6 +54,9 @@ class _FakeLlmRuntime extends AuraLlmRuntime {
     loadCalls++;
     lastContextTokens = contextTokens;
     lastThreads = threads;
+    if (failingContextTokens.contains(contextTokens)) {
+      throw PlatformException(code: 'llm_context_failed');
+    }
     loaded = true;
   }
 
@@ -165,6 +170,40 @@ void main() {
       expect(runtime.loadCalls, 0);
     });
 
+    test('accepts a bounded conversational answer without a tool', () async {
+      final runtime = _FakeLlmRuntime(loaded: true)
+        ..response =
+            '```json\n{"answer":"No puedo verificar el tráfico sin un '
+            'evento observable. Revisá el estado del túnel."}\n```';
+      addTearDown(runtime.dispose);
+
+      final result = await _planner(runtime).plan('¿estoy protegido?');
+
+      expect(result.status, LocalLlmPlanStatus.answer);
+      expect(result.hasAnswer, isTrue);
+      expect(result.answer, contains('No puedo verificar'));
+      expect(result.proposal, isNull);
+      expect(runtime.startCalls, 1);
+    });
+
+    test('rejects malformed or unbounded conversational answers', () async {
+      for (final output in <String>[
+        '{"answer":"ok","tool":"scan_apps"}',
+        '{"answer":""}',
+        '{"answer":123}',
+        '{"answer":"a\\u0000b"}',
+        '{"answer":"${List<String>.filled(5000, 'A').join()}"}',
+      ]) {
+        final runtime = _FakeLlmRuntime(loaded: true)..response = output;
+        addTearDown(runtime.dispose);
+
+        final result = await _planner(runtime).plan('contame algo');
+
+        expect(result.status, LocalLlmPlanStatus.noProposal, reason: output);
+        expect(result.answer, isNull, reason: output);
+      }
+    });
+
     test('rejects side-effecting and unknown tools as no proposal', () async {
       for (final output in <String>[
         '{"tool":"block_domain","arguments":{"domain":"example.org"}}',
@@ -197,9 +236,56 @@ void main() {
       expect(first.status, LocalLlmPlanStatus.proposal);
       expect(second.status, LocalLlmPlanStatus.proposal);
       expect(runtime.loadCalls, 1);
-      expect(runtime.lastContextTokens, 2048);
+      expect(runtime.lastContextTokens, 8192);
       expect(runtime.lastThreads, 2);
       expect(runtime.startCalls, 2);
+    });
+
+    test('selects an adaptive context from available memory', () async {
+      final runtime = _FakeLlmRuntime()
+        ..response = '{"tool":"audit_device","arguments":{}}';
+      addTearDown(runtime.dispose);
+      final planner = LocalLlmPlanner(
+        runtime: runtime,
+        resolveModelPath: () async => _verifiedPath,
+        modelSizeBytes: 1117321312,
+        memoryInfoProvider: () async => const AuraMemoryInfo(
+          totalBytes: 8 * 1024 * 1024 * 1024,
+          availableBytes: 3 * 1024 * 1024 * 1024,
+          thresholdBytes: 256 * 1024 * 1024,
+          lowMemory: false,
+        ),
+      );
+
+      final result = await planner.plan('audita el dispositivo');
+
+      expect(result.status, LocalLlmPlanStatus.proposal);
+      expect(runtime.lastContextTokens, 16384);
+      expect(planner.effectiveContextTokens, 16384);
+    });
+
+    test('retries lower contexts when the native allocation fails', () async {
+      final runtime = _FakeLlmRuntime()
+        ..response = '{"tool":"audit_device","arguments":{}}'
+        ..failingContextTokens = <int>{16384};
+      addTearDown(runtime.dispose);
+      final planner = LocalLlmPlanner(
+        runtime: runtime,
+        resolveModelPath: () async => _verifiedPath,
+        memoryInfoProvider: () async => const AuraMemoryInfo(
+          totalBytes: 8 * 1024 * 1024 * 1024,
+          availableBytes: 3 * 1024 * 1024 * 1024,
+          thresholdBytes: 256 * 1024 * 1024,
+          lowMemory: false,
+        ),
+      );
+
+      final result = await planner.plan('audita el dispositivo');
+
+      expect(result.status, LocalLlmPlanStatus.proposal);
+      expect(runtime.loadCalls, 2);
+      expect(runtime.lastContextTokens, 8192);
+      expect(planner.effectiveContextTokens, 8192);
     });
 
     test('never starts generation without a verified model path', () async {

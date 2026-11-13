@@ -1152,3 +1152,79 @@ Evidencia local: `flutter test` → **282 pasan, 1 omitida**; `flutter analyze`
 sin errores ni warnings (solo infos de deprecaciones del master local); formato
 limpio en los archivos tocados. No se validó visualmente en un dispositivo
 físico ni se ejecutó CI para este rediseño.
+
+## 13. Fase 4 — respuesta local, contexto adaptativo y build debug (2026-11-13 UTC)
+
+Esta fase se ejecutó en la rama `fix/final-engineering-completion`, derivada de
+`ae7dc63`. **Todavía no se hizo push ni merge a `main`**, por lo que ninguna de
+estas correcciones tiene aún un build de CI propio.
+
+### 13.1 Cambios implementados
+
+- `LlmConversationReply` (`lib/agent/llm_tool_proposal.dart`) acepta únicamente
+  `{"answer":"..."}`, con máximo 4096 caracteres, sin claves extra, caracteres
+  de control ni salida mayor de 8192 bytes. La propuesta de herramienta se
+  intenta primero; la respuesta es el fallback.
+- `LocalLlmPlanner` devuelve `LocalLlmPlanStatus.answer` y un texto acotado
+  cuando la orden no corresponde a una herramienta. El prompt pide español,
+  prohíbe afirmar acciones ejecutadas y mantiene las tres herramientas de solo
+  lectura.
+- `AgentController` muestra la respuesta como `local_llm` no verificada y **no
+  ejecuta ninguna herramienta**. La conversación es de un solo turno: no hay
+  historial persistente ni memoria entre consultas.
+- `AuraMemoryInfo` y `AuraStorage.memoryInfo()` exponen `total_bytes`,
+  `available_bytes`, `threshold_bytes` y `low_memory` desde
+  `ActivityManager.MemoryInfo` en `AuraStoragePlugin.kt`.
+- `AuraLlmContextPolicy` selecciona contexto de 8K como base, con niveles hasta
+  64K, presupuesto conservador de memoria, límite por `lowMemory` y fallback por
+  mitades. `LocalLlmPlanner` reintenta hasta tres contextos menores y solo
+  publica `effectiveContextTokens` cuando el runtime aceptó la carga.
+- `main.dart` pasa al planner el tamaño real del GGUF configurado y la base de
+  contexto; `AuraLlmModelSource.runtimeContextTokens` queda en 8192.
+- `codemagic.yaml` añade el workflow manual `android-debug` para construir un
+  APK instalable de prueba, ejecutar formato/análisis/tests, verificar las 4
+  ABI, los JNI, los assets del modelo y publicar `SHA256SUMS` y
+  `SOURCE_COMMIT.txt`. No se ejecutó en Codemagic.
+- El copy de `aura_core_screen.dart` deja de prometer “pensar, explicar y
+  actuar” sin matices: ahora dice que el modelo responde y propone lecturas, y
+  que cada acción requiere confirmación.
+
+### 13.2 Evidencia local ejecutada
+
+- `dart format --set-exit-if-changed .`: **84 archivos, 0 cambiados**.
+- `flutter analyze --no-pub`: **No issues found!**
+- `flutter test --no-pub`: **294 pasan, 1 omitida** (línea base de 282/1; +12
+  pruebas nuevas de contexto, memoria, respuesta y controlador).
+- `python3 tool/test_llm_native_integration.py`: **28 tests OK**, ampliado para
+  verificar el contrato `memoryInfo`, `LlmConversationReply.parse` y la política
+  de contexto.
+- `tool/test_release_signing_policy.py`: 13 OK; `test_verify_packaged_model.py`:
+  6 OK; `test_ci_run.py`: 7 OK; `test_install_android_ndk.py`: 6 OK;
+  `test_vpn_config_template.py`: PASS; `test_gradle_wrapper_policy.py`: 1 OK.
+- APK debug del commit `ae7dc63` (run `43374933380`, artifact
+  `14014158629`): 193.660.826 bytes, SHA-256
+  `8979a858c8a2f172951d267a24f2b93cf8a4a46677a251cefee60f6ea41ca60d`; las 4
+  ABI y los ELF se verificaron con `readelf`. **Este APK es anterior a los
+  cambios de esta fase y no debe presentarse como entrega final.**
+
+### 13.3 Pendiente antes de la entrega
+
+- Push de la rama, merge a `main`, CI final y descarga del APK del commit final.
+- Ejecución manual del workflow CodeMagic `android-debug` y, por separado,
+  `Release signing integrity`/`Aura Model Dataset...`; no hay token de
+  Codemagic en el entorno local.
+- Build Android/Kotlin de `memoryInfo` y del workflow nuevo: no existe SDK
+  Android local.
+- Prueba en el Redmi Note 15 Pro+ 5G: descarga, carga del GGUF, primer token,
+  cancelación, latencia, RSS/PSS y estabilidad de 8K/16K/32K/64K.
+- Inferencia real y calidad de respuesta: no observadas. La respuesta local es
+  de un solo turno y no tiene memoria persistente.
+- Firma de producción: ausente; el APK debug no es distribuible como release.
+
+### 13.4 Dictamen de esta fase
+
+Los cambios de Dart están implementados, formateados, analizados y cubiertos
+por **294 pruebas locales**. La compilación Android del nuevo código, el APK
+final, la ejecución en dispositivo y la inferencia real **siguen sin
+verificarse**. El estado honesto es **implementado y validado localmente en
+Dart; build Android y entrega pendientes**, no “IA local lista para release”.

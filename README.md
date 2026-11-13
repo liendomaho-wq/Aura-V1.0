@@ -73,6 +73,22 @@ Las reglas DNS/IP/SNI son políticas concretas; las señales de root, emulación
 instrumentación y riesgo de apps son heurísticas; el bosque de dominios es ML.
 Ninguno convierte al parser conversacional en un LLM.
 
+### IA local opcional
+
+El planner GGUF (DeepSeek-R1-Distill-Qwen-1.5B Q4_K_M, pin y SHA-256 en
+`lib/llm/aura_llm_model_source.dart`) solo recibe órdenes que el NLU determinista
+no reconoce. Puede devolver una propuesta para una de las tres herramientas de
+solo lectura o una respuesta conversacional acotada de un solo turno; **nunca
+ejecuta herramientas ni sustituye un veredicto de seguridad**. El modelo no se
+empaqueta en la APK: se descarga con consentimiento explícito, se verifica por
+SHA-256 y se carga solo si el runtime lo confirma.
+
+El contexto se elige según memoria disponible: base 8K, niveles hasta 64K y
+fallback a 4K/2K. `effectiveContextTokens` solo refleja el valor aceptado por el
+runtime; 64K no se anuncia como operativo sin prueba física. Detalles, límites y
+pruebas en [modelo de IA local](docs/LOCAL_AI_MODEL.md) y
+[política de contexto](docs/AI_CONTEXT_AND_MEMORY_64K.md).
+
 ### Modelo activo
 
 - Asset: `assets/model/aura_brain_model.json`, versión **3.0.0**, 500 árboles.
@@ -214,6 +230,10 @@ del proveedor, nunca en chat, Git ni logs. Consultar la
   Kotlin/C/JNI; publica APK y metadatos de SHA/digest solo si el build termina.
 - Ambos tienen `workflow_dispatch`, PRs hacia `main`/`principal` y push en las ramas
   configuradas; validan el SHA head, no un commit de merge sintético.
+- `codemagic.yaml`, workflow manual **`android-debug`**: Flutter `3.47.9`, JDK
+  17, tests, `flutter build apk --debug`, verificación de las 4 ABI/JNI/assets y
+  `SHA256SUMS`/`SOURCE_COMMIT.txt` como artefactos. Es el build instalable de
+  prueba; no es un release firmado.
 - `codemagic.yaml`, workflow **`android-build`**: JDK 17, Flutter stable, runner
   `mac_mini_m2`. Los patrones `main`/`principal` tienen `source: false` para PRs a
   esas ramas. Por defecto genera un artefacto **DEBUG de prueba, no distribuible**

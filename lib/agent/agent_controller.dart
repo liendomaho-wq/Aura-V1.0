@@ -682,6 +682,23 @@ class AgentController {
       if (intent.kind == AuraIntentKind.unknown) {
         final plan = await _planWithLocalModel(text, cancellationToken);
         cancellationToken.throwIfCancelled();
+        final answer = plan.answer;
+        if (plan.hasAnswer && answer != null) {
+          _emit(
+            AgentEvent(
+              kind: AgentEventKind.success,
+              message: answer,
+              data: <String, dynamic>{
+                'source': 'local_llm',
+                'local_llm_status': plan.status.name,
+                'answer_is_unverified': true,
+                'operation_id': operationId,
+              },
+            ),
+          );
+          await _speakResponse(answer);
+          return;
+        }
         final proposal = plan.proposal;
         final plannedIntent = proposal == null
             ? null

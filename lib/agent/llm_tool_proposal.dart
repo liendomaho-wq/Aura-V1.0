@@ -169,6 +169,48 @@ class _StrictJsonStructureScanner {
   }
 }
 
+/// Bounded natural-language output from the local model.
+///
+/// This is display text only: it never authorizes or executes a tool.
+class LlmConversationReply {
+  const LlmConversationReply._(this.text);
+
+  final String text;
+
+  static const int maxAnswerChars = 4096;
+
+  static LlmConversationReply? parse(String output) {
+    if (output.length > LlmToolProposal.maxOutputBytes ||
+        utf8.encode(output).length > LlmToolProposal.maxOutputBytes) {
+      return null;
+    }
+    if (!_StrictJsonStructureScanner.accepts(output)) return null;
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(output);
+    } on FormatException {
+      return null;
+    }
+    if (decoded is! Map<String, dynamic> ||
+        decoded.length != 1 ||
+        !decoded.containsKey('answer')) {
+      return null;
+    }
+    final answer = decoded['answer'];
+    if (answer is! String) return null;
+    final text = answer.trim();
+    if (text.isEmpty || text.length > maxAnswerChars) return null;
+    if (text.runes.any(
+      (rune) =>
+          rune == 0 ||
+          (rune < 0x20 && rune != 0x09 && rune != 0x0a && rune != 0x0d),
+    )) {
+      return null;
+    }
+    return LlmConversationReply._(text);
+  }
+}
+
 /// A suggestion from untrusted model output, not an authorization or execution.
 /// This initial boundary accepts only a small read-only subset of Aura tools.
 class LlmToolProposal {

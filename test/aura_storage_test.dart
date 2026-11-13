@@ -37,4 +37,55 @@ void main() {
 
     expect(await AuraStorage().freeBytes(), isNull);
   });
+
+  test('memoryInfo returns the Android memory snapshot', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          expect(call.method, 'memoryInfo');
+          return <String, Object>{
+            'total_bytes': 8 * 1024 * 1024 * 1024,
+            'available_bytes': 3 * 1024 * 1024 * 1024,
+            'threshold_bytes': 256 * 1024 * 1024,
+            'low_memory': false,
+          };
+        });
+
+    final info = await AuraStorage().memoryInfo();
+
+    expect(info?.totalBytes, 8 * 1024 * 1024 * 1024);
+    expect(info?.availableBytes, 3 * 1024 * 1024 * 1024);
+    expect(info?.thresholdBytes, 256 * 1024 * 1024);
+    expect(info?.lowMemory, isFalse);
+  });
+
+  test('memoryInfo fails closed on malformed or unavailable data', () async {
+    for (final response in <Object?>[
+      null,
+      <String, Object>{'total_bytes': -1},
+      <String, Object>{
+        'total_bytes': 1024,
+        'available_bytes': 2048,
+        'threshold_bytes': 128,
+        'low_memory': false,
+      },
+      <String, Object>{
+        'total_bytes': 2048,
+        'available_bytes': 1024,
+        'threshold_bytes': 128,
+        'low_memory': 'no',
+      },
+    ]) {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async => response);
+
+      expect(await AuraStorage().memoryInfo(), isNull, reason: '$response');
+    }
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          throw PlatformException(code: 'memory_unavailable');
+        });
+
+    expect(await AuraStorage().memoryInfo(), isNull);
+  });
 }
