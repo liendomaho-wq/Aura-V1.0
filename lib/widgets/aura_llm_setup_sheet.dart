@@ -593,7 +593,7 @@ class _ReadyControls extends StatelessWidget {
           value: controller.prefetchOnStartup,
           onChanged: controller.setPrefetchOnStartup,
           contentPadding: EdgeInsets.zero,
-          activeColor: AuraTokens.accent,
+          activeThumbColor: AuraTokens.accent,
           title: const Text(
             'Cargar Aura IA al iniciar',
             style: TextStyle(color: AuraTokens.textPrimary, fontSize: 12),
