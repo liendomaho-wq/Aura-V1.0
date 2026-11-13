@@ -164,17 +164,18 @@ carga ningún GGUF.
 
 Suites locales con Flutter `3.47.9`: **294 pruebas pasan, 1 omitida**;
 `flutter analyze --no-pub` no reporta errores ni warnings; `dart format` deja
-0 archivos cambiados. CI sigue siendo la referencia para Android/Kotlin y para
-la suite Python completa.
+0 archivos cambiados. El commit `a6ff02e` pasó CI: Flutter Quality, Android
+Debug Build (incluida la migración real de Keystore en emulador Android 16),
+Release signing integrity y dataset/training. El APK debug de ese commit fue
+descargado y validado en estructura, JNI y assets; ver `AURA_FINAL_AUDIT.md`.
 
 ## 7. Límites y pendientes
 
 - No hay inferencia observada en un dispositivo físico (Redmi Note 15 Pro+
   5G u otro): falta cargar el GGUF, generar el primer token, cancelar una
   generación y medir memoria real para 8K, 16K, 32K y 64K.
-- Los cambios Kotlin de `memoryInfo` y el build Android no se ejecutaron en
-  este entorno sin SDK. CI debe confirmarlos; el comportamiento en dispositivo
-  no fue observado.
+- Los cambios Kotlin de `memoryInfo` compilaron en CI, pero su comportamiento
+  en el Redmi y la selección real de contexto no se observaron en hardware.
 - La respuesta conversacional es de un solo turno y no tiene memoria
   persistente. No se probó calidad, alucinación ni latencia real del modelo.
 - No se probó la descarga desde la app de extremo a extremo; el hash se

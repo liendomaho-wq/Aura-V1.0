@@ -1239,7 +1239,81 @@ y reduce el tamaño y la superficie del artefacto.
 ### 13.5 Dictamen de esta fase
 
 Los cambios de Dart están implementados, formateados, analizados y cubiertos
-por **294 pruebas locales**. La compilación Android del nuevo código, el APK
-final, la ejecución en dispositivo y la inferencia real **siguen sin
-verificarse**. El estado honesto es **implementado y validado localmente en
-Dart; build Android y entrega pendientes**, no “IA local lista para release”.
+por **294 pruebas locales**. La compilación Android, el APK final y CI se
+cerraron en la sección 14; la ejecución en dispositivo y la inferencia real
+siguen pendientes. El estado honesto es **implementado y validado hasta CI**,
+no “IA local lista para release”.
+
+## 14. Cierre verificable — commit `a6ff02e` (2026-11-13 UTC)
+
+Esta sección cierra los pendientes de CI y artefacto de la fase 4. `main` y
+`origin/main` apuntan a:
+
+```text
+a6ff02eabe66ba9b77051d76dae1c1a85c093497
+fix(android): drop unsupported 32-bit x86 ABI
+```
+
+### 14.1 CI del commit final
+
+Cuatro workflows terminaron en **success** sobre el SHA completo:
+
+| Workflow | Run | Resultado |
+| --- | ---: | --- |
+| Aura Flutter Quality | [43398897135](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43398897135) | success |
+| Aura Android Debug Build | [43398899937](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43398899937) | success |
+| Release signing integrity | [43398897375](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43398897375) | success |
+| Aura Model Dataset, Training and Benchmark | [43398897049](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43398897049) | success |
+
+El job Android ejecutó tests JVM VPN/SOCKS5, compilación de APKs aislados de
+migración, build debug con NDK, verificación JNI de las tres ABI y la
+**migración real v9→v10 de Keystore en un emulador Android 16**. No sustituye
+una prueba de la app ni del GGUF en hardware.
+
+`Release signing integrity` validó la política estricta y una firma release
+efímera; **no** es una firma de producción ni publica un release. El pipeline de
+dataset entrenó, evaluó, benchmarkeó y ejecutó golden tests, pero no promociona
+automáticamente el modelo activo.
+
+### 14.2 APK debug final
+
+- Run: `43398899937`; artifact ID `14024602823`.
+- Nombre: `aura-debug-a6ff02eabe66ba9b77051d76dae1c1a85c093497`.
+- `SOURCE_COMMIT.txt`: `a6ff02eabe66ba9b77051d76dae1c1a85c093497`.
+- APK: **186.102.478 bytes**.
+- SHA-256: `c73b4d77032a2d4e32232488091c71dad2ea2af55a132f73c62c53f56c97c532`.
+- ABIs empaquetadas: `armeabi-v7a`, `arm64-v8a`, `x86_64`; **sin x86 de 32
+  bits**, porque Flutter `3.47.9` no publica ese motor.
+- `tool/verify_apk_jni.py`: las tres ABI exportan `JNI_OnLoad`, las funciones
+  HEV y todas las entradas de `AuraLlmBridge`.
+- `libhev-socks5-tunnel.so`, `libaura_llm.so`, `libdartjni.so` y `libflutter.so`
+  están presentes en las tres ABI; los ELF tienen clase y máquina correctas.
+- Los assets `aura_brain_model.json`, `.sha256` y `.sig` coinciden byte a byte
+  con el checkout.
+- El APK está firmado con la clave debug de CI. Es un artefacto de instalación
+  y prueba, **no un release distribuible**.
+
+### 14.3 Lo que queda fuera de este cierre
+
+- Instalación y arranque en el Redmi Note 15 Pro+ 5G; permisos, biometría,
+  servicios VPN y estabilidad del proceso.
+- Descarga real del GGUF desde la app, reanudación tras matar el proceso,
+  verificación, carga y primer token.
+- Medición de RSS/PSS, latencia, temperatura, OOM y estabilidad con 8K, 16K,
+  32K y 64K. No se declara 64K operativo.
+- Calidad y seguridad de las respuestas conversacionales; son de un solo turno,
+  sin memoria persistente y no sustituyen verificaciones deterministas.
+- Keystore/secretos de producción y publicación de un release firmado.
+- Workflow CodeMagic `android-debug`: está declarado y validado
+  sintácticamente, pero no se ejecutó por falta de acceso/token de Codemagic.
+
+### 14.4 Dictamen final
+
+- **Código y CI:** verificados para `a6ff02e`; Flutter Quality, Android Debug,
+  migración Android 16, signing guard y dataset terminaron en success.
+- **APK debug:** generado, descargado y validado estructuralmente; listo para
+  instalación manual en ARM64, no probado aún en el dispositivo.
+- **IA local:** implementada y cubierta por tests; inferencia real **no
+  observada**. La conversación es acotada y de un solo turno.
+- **Release:** **no listo**. Faltan firma de producción, pruebas físicas y
+  validación de la IA en hardware.
