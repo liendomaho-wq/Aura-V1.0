@@ -42,7 +42,7 @@ class InstallAndroidNdkTest(unittest.TestCase):
         result = self.run_script()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((self.sdk / "arguments").read_text().splitlines(),
-                         [f"--sdk_root={self.sdk}", f"ndk;{self.version}"])
+                         [f"--sdk_root={self.sdk.resolve()}", f"ndk;{self.version}"])
 
     def test_existing_ndk_does_not_require_sdkmanager(self):
         executable = self.sdk / "ndk" / self.version / "ndk-build"
