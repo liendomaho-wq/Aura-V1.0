@@ -815,7 +815,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
             : null,
       ),
       AuraIntentSpec(
-        label: vpnActive ? 'Desconectar escudo' : 'Activar escudo',
+        label: 'Escudo',
         icon: Icons.wifi_rounded,
         color: vpnActive ? AuraTokens.success : AuraTokens.accentViolet,
         onTap: quickActionsEnabled && !_isShieldBusy && _shieldStatusKnown
