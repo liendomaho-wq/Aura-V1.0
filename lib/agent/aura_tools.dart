@@ -659,6 +659,27 @@ abstract class AuraTools {
     }
   }
 
+  static Future<String?> _lastShieldFailure(MethodChannel shieldChannel) async {
+    try {
+      final reason = await shieldChannel
+          .invokeMethod<String>('getLastShieldFailure')
+          .timeout(const Duration(seconds: 2));
+      final trimmed = reason?.trim();
+      if (trimmed == null ||
+          trimmed.isEmpty ||
+          trimmed.contains('/') ||
+          trimmed.contains('\\') ||
+          trimmed.contains('://')) {
+        return null;
+      }
+      return trimmed.length <= 200
+          ? trimmed
+          : '${trimmed.substring(0, 197)}...';
+    } on Object {
+      return null;
+    }
+  }
+
   static Future<ToolResult> _toggleDefenses(
     Map<String, dynamic> arguments,
   ) async {
@@ -681,6 +702,9 @@ abstract class AuraTools {
             activate ? 'startShield' : 'stopShield',
           ) ??
           false;
+      final failureDetail = !confirmed && activate
+          ? await _lastShieldFailure(shieldChannel)
+          : null;
       if (!activate && confirmed) {
         // Android's stopService return value only means that it accepted the
         // request. The service's native worker may not have stopped yet.
@@ -700,12 +724,15 @@ abstract class AuraTools {
         summary: confirmed
             ? 'DEFENSA ACTIVADA — túnel en marcha'
             : activate
-            ? 'No se confirmó el inicio del escudo VPN. Comprueba su estado antes de reintentar.'
+            ? 'No se confirmó el inicio del escudo VPN.'
+                  '${failureDetail == null ? '' : ' Motivo: $failureDetail'}. '
+                  'Comprueba su estado antes de reintentar.'
             : 'Android no confirmó la solicitud de detener el escudo VPN.',
         data: <String, dynamic>{
           'ok': confirmed,
           if (confirmed) 'vpn_active': true,
           if (!confirmed) 'security_level': 'warning',
+          if (failureDetail != null) 'failure_reason': failureDetail,
         },
       );
     } on PlatformException catch (error) {

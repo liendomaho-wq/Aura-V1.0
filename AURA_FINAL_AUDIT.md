@@ -1384,3 +1384,40 @@ descarga, borrado y cancelación siguen pendientes en hardware real.
 - **APK de esta rama:** pendiente de CI; no existe artefacto nuevo verificado.
 - **Dispositivo, VPN real, Keystore físico, release firmado y CodeMagic:** sin
   cambios: siguen pendientes y bloquean cualquier declaración de 100%.
+
+## 16. Actualización 2026-11-13 — arranque VPN y diagnóstico de fallos
+
+El dispositivo del usuario reportó el mensaje genérico «No se confirmó el inicio
+del escudo VPN». La auditoría del flujo encontró dos rutas que podían convertir
+un fallo recuperable en un `false` opaco:
+
+- `MainActivity.startVpnService()` arrancaba también `AuraNotificationService`
+  como un segundo servicio en primer plano `specialUse`. Si Android/OEM
+  rechazaba ese segundo FGS, el `catch` detenía el servicio VPN aunque el
+  primero hubiera sido aceptado. Ahora el arranque VPN solicita únicamente su
+  propio servicio; el servicio de alertas se inicia bajo demanda.
+- `AuraVpnService` no capturaba un rechazo de `startForeground`; ahora usa el
+  tipo explícito `FOREGROUND_SERVICE_TYPE_SPECIAL_USE` en Android 14+ y
+  convierte el rechazo en un broadcast de fallo correlacionado.
+- Tras el diálogo de consentimiento se vuelve a comprobar
+  `VpnService.prepare(this)`. Un `RESULT_OK` de OEM que no registre el permiso
+  ya no termina en un `establish()` nulo sin explicación.
+- El motivo del fallo se conserva en `getLastShieldFailure` y `AuraTools` lo
+  muestra de forma saneada (sin rutas locales) en el resultado del agente.
+
+Evidencia local de esta rama:
+
+| Comprobación | Resultado |
+| --- | --- |
+| `flutter analyze --no-pub` | Sin issues |
+| `flutter test --no-pub` | **314 passed, 1 skipped** (benchmark que requiere dispositivo) |
+| `python3 tool/test_vpn_config_template.py` | Todos los guards PASS |
+| `python3 tool/test_tun_packet_filter.py` | **7 passed** |
+| `python3 tool/test_lwip_fragment_policy.py` | **5 passed** |
+| `python3 tool/test_mapped_dns.py` | **6 passed** |
+| `git diff --check` y `dart format` | Limpios |
+
+Esto elimina una causa plausible y hace visible cualquier fallo restante, pero
+no certifica la VPN en hardware: sin dispositivo ni logcat no se puede
+confirmar el diálogo de consentimiento, la interfaz TUN, el listener SOCKS5
+autenticado ni el forwarding real. La compilación Android debe validarse en CI.

@@ -188,9 +188,28 @@ class AuraVpnService : VpnService() {
         startId: Int,
     ): Int {
         val requestId = intent?.getStringExtra(EXTRA_START_REQUEST_ID)
-        ensureNotificationChannel()
-        val notification = createNotification()
-        startForeground(NOTIFICATION_ID, notification)
+        try {
+            ensureNotificationChannel()
+            val notification = createNotification()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (exception: Exception) {
+            Log.e("AuraVPN", "Android rechazó el servicio VPN en primer plano.", exception)
+            reportState(
+                false,
+                "Android rechazó el servicio VPN en primer plano.",
+                requestId = requestId,
+            )
+            stopSelf()
+            return Service.START_NOT_STICKY
+        }
         if (!verifyIntegrityOrStop()) {
             if (requestId != null) {
                 reportState(false, "La comprobación de integridad falló.", requestId = requestId)
