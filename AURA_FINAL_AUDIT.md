@@ -1246,13 +1246,20 @@ no “IA local lista para release”.
 
 ## 14. Cierre verificable — commit `a6ff02e` (2026-11-13 UTC)
 
-Esta sección cierra los pendientes de CI y artefacto de la fase 4. `main` y
-`origin/main` apuntan a:
+Esta sección cierra los pendientes de CI y artefacto de la fase 4. El commit
+de código verificado es:
 
 ```text
 a6ff02eabe66ba9b77051d76dae1c1a85c093497
 fix(android): drop unsupported 32-bit x86 ABI
 ```
+
+Después se añadió únicamente documentación. El APK final se reconstruyó sobre
+`4c612d3dc07978f9ba30faff5c8a2bc0292ecd58`; ese commit no cambia código de la
+app. Su CI volvió a pasar: Flutter Quality
+[43404901563](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43404901563)
+y Android Debug Build
+[43404901634](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43404901634).
 
 ### 14.1 CI del commit final
 
@@ -1277,11 +1284,11 @@ automáticamente el modelo activo.
 
 ### 14.2 APK debug final
 
-- Run: `43398899937`; artifact ID `14024602823`.
-- Nombre: `aura-debug-a6ff02eabe66ba9b77051d76dae1c1a85c093497`.
-- `SOURCE_COMMIT.txt`: `a6ff02eabe66ba9b77051d76dae1c1a85c093497`.
+- Run: `43404901634`; artifact ID `14026454992`.
+- Nombre: `aura-debug-4c612d3dc07978f9ba30faff5c8a2bc0292ecd58`.
+- `SOURCE_COMMIT.txt`: `4c612d3dc07978f9ba30faff5c8a2bc0292ecd58`.
 - APK: **186.102.478 bytes**.
-- SHA-256: `c73b4d77032a2d4e32232488091c71dad2ea2af55a132f73c62c53f56c97c532`.
+- SHA-256: `29efb57f89d94c52053482f69df1f4732fe6b50c9864e4c74247fcd528994a3d`.
 - ABIs empaquetadas: `armeabi-v7a`, `arm64-v8a`, `x86_64`; **sin x86 de 32
   bits**, porque Flutter `3.47.9` no publica ese motor.
 - `tool/verify_apk_jni.py`: las tres ABI exportan `JNI_OnLoad`, las funciones
@@ -1310,9 +1317,11 @@ automáticamente el modelo activo.
 ### 14.4 Dictamen final
 
 - **Código y CI:** verificados para `a6ff02e`; Flutter Quality, Android Debug,
-  migración Android 16, signing guard y dataset terminaron en success.
-- **APK debug:** generado, descargado y validado estructuralmente; listo para
-  instalación manual en ARM64, no probado aún en el dispositivo.
+  migración Android 16, signing guard y dataset terminaron en success. El
+  commit documental `4c612d3` también pasó Quality y Android Debug.
+- **APK debug:** generado sobre `4c612d3`, descargado y validado
+  estructuralmente; listo para instalación manual en ARM64, no probado aún en
+  el dispositivo.
 - **IA local:** implementada y cubierta por tests; inferencia real **no
   observada**. La conversación es acotada y de un solo turno.
 - **Release:** **no listo**. Faltan firma de producción, pruebas físicas y
