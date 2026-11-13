@@ -112,6 +112,7 @@ class LocalLlmPlanner {
 
   Future<void>? _loadFuture;
   int? _effectiveContextTokens;
+  bool _unloading = false;
 
   int? get effectiveContextTokens => _effectiveContextTokens;
 
@@ -236,17 +237,48 @@ class LocalLlmPlanner {
 
   /// Releases the native model so it can be deleted or replaced.
   Future<void> unloadModel() async {
+    _unloading = true;
     try {
-      await _runtime.unloadModel();
-    } on Object {
-      // The runtime may be absent; the caller only needs the attempt.
+      // A load in flight can otherwise complete after the native unload and
+      // leave a deleted or replaced model mapped. Wait for it to settle first.
+      final pending = _loadFuture;
+      if (pending != null) {
+        try {
+          await pending;
+        } on Object {
+          // A failed load still has to finish before the unload can proceed.
+        }
+      }
+      try {
+        await _runtime.unloadModel();
+      } on Object catch (error) {
+        // An absent runtime is benign for teardown. A busy runtime is not:
+        // deleting the GGUF under an active generation must fail closed.
+        if (!_isBenignUnloadFailure(error)) rethrow;
+      }
     } finally {
       _loadFuture = null;
       _effectiveContextTokens = null;
+      _unloading = false;
     }
   }
 
+  bool _isBenignUnloadFailure(Object error) {
+    if (error is MissingPluginException) return true;
+    if (error is PlatformException) {
+      return error.code == 'llm_library_missing' ||
+          error.code == 'llm_worker_unavailable' ||
+          error.code == 'llm_not_loaded';
+    }
+    return false;
+  }
+
   Future<void> _ensureModelLoaded(String modelPath) {
+    if (_unloading) {
+      return Future<void>.error(
+        StateError('The local model is being unloaded.'),
+      );
+    }
     final pending = _loadFuture;
     if (pending != null) return pending;
     final future = _loadWithContextFallback(modelPath)

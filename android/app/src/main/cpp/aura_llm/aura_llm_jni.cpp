@@ -16,6 +16,7 @@
 
 #include <llama.h>
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <cstddef>
@@ -232,6 +233,26 @@ void run_generation(JNIEnv *env, const GenerationJob &job) {
         return;
     }
 
+    // Horizontal batching: n_batch only bounds one llama_decode call, not the
+    // whole prompt. Split long prompts into chunks instead of allowing
+    // llama_decode to abort when the system prompt exceeds n_batch tokens.
+    const int32_t batch_capacity = static_cast<int32_t>(llama_n_batch(ctx));
+    if (batch_capacity <= 0) {
+        emit_event(env, job.operation_id, AuraLlmEventType::kError, "batch_capacity_invalid");
+        return;
+    }
+
+    // Every generation is independent. Without clearing the KV cache the
+    // next prompt would append after the previous output, eventually consuming
+    // the context and leaking one query's text into the next. The worker is
+    // serialized, so clearing here cannot race another generation.
+    llama_memory_t memory = llama_get_memory(ctx);
+    if (memory == nullptr) {
+        emit_event(env, job.operation_id, AuraLlmEventType::kError, "memory_unavailable");
+        return;
+    }
+    llama_memory_clear(memory, true);
+
     // Sampler chain: temperature when requested, greedy otherwise.
     auto sampler_params = llama_sampler_chain_default_params();
     sampler_params.no_perf = true;
@@ -251,17 +272,17 @@ void run_generation(JNIEnv *env, const GenerationJob &job) {
     bool cancelled = false;
     bool failed = false;
     std::string failure;
-    llama_token next_token = 0;  // Must outlive the batch that references it.
-    llama_token *next_tokens = prompt_tokens.data();
-    int32_t next_count = static_cast<int32_t>(prompt_tokens.size());
     int32_t produced = 0;
 
-    while (true) {
+    const auto prompt_total = static_cast<int32_t>(prompt_tokens.size());
+    int32_t prompt_offset = 0;
+    while (prompt_offset < prompt_total) {
         if (job.cancel->load(std::memory_order_relaxed)) {
             cancelled = true;
             break;
         }
-        llama_batch batch = llama_batch_get_one(next_tokens, next_count);
+        const int32_t chunk = std::min(batch_capacity, prompt_total - prompt_offset);
+        llama_batch batch = llama_batch_get_one(prompt_tokens.data() + prompt_offset, chunk);
         if (llama_decode(ctx, batch) != 0) {
             if (job.cancel->load(std::memory_order_relaxed)) {
                 cancelled = true;
@@ -269,6 +290,15 @@ void run_generation(JNIEnv *env, const GenerationJob &job) {
                 failed = true;
                 failure = "decode_failed";
             }
+            break;
+        }
+        prompt_offset += chunk;
+    }
+
+    llama_token next_token = 0;  // Must outlive the batch that references it.
+    while (!cancelled && !failed) {
+        if (job.cancel->load(std::memory_order_relaxed)) {
+            cancelled = true;
             break;
         }
 
@@ -293,9 +323,18 @@ void run_generation(JNIEnv *env, const GenerationJob &job) {
         if (produced >= job.max_tokens) {
             break;
         }
+
         next_token = token;
-        next_tokens = &next_token;
-        next_count = 1;
+        llama_batch batch = llama_batch_get_one(&next_token, 1);
+        if (llama_decode(ctx, batch) != 0) {
+            if (job.cancel->load(std::memory_order_relaxed)) {
+                cancelled = true;
+            } else {
+                failed = true;
+                failure = "decode_failed";
+            }
+            break;
+        }
     }
     g_active_cancel = nullptr;
 

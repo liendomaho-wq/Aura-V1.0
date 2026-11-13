@@ -307,13 +307,75 @@ void main() {
     expect(controller.errorCode, isNull);
   });
 
-  test('deleting the model unloads the runtime and resets the UI', () async {
+  test('cancelling does not start a second concurrent install', () async {
+    final started = Completer<void>();
+    final gate = Completer<void>();
+    final provisioner = _FakeProvisioner(
+      partialBytes: 300,
+      onInstall: (onProgress, cancellation) async {
+        started.complete();
+        await gate.future;
+        if (cancellation?.isCancelled ?? false) {
+          return const AuraLlmInstallResult.failure(
+            AuraLlmInstallError.cancelled,
+          );
+        }
+        return const AuraLlmInstallResult.success('/fake/model.gguf');
+      },
+    );
+    final controller = await build(provisioner: provisioner);
+
+    final first = controller.startDownload(consent: true);
+    await started.future;
+    controller.cancelDownload();
+    await controller.startDownload(consent: true);
+
+    expect(provisioner.installCalls, 1);
+    gate.complete();
+    await first;
+    expect(controller.status, AuraLlmSetupStatus.paused);
+  });
+
+  test('deleting waits for a cancelled install to release the file', () async {
+    final started = Completer<void>();
+    final gate = Completer<void>();
+    final provisioner = _FakeProvisioner(
+      partialBytes: 300,
+      onInstall: (onProgress, cancellation) async {
+        started.complete();
+        await gate.future;
+        return const AuraLlmInstallResult.failure(
+          AuraLlmInstallError.cancelled,
+        );
+      },
+    );
+    final controller = await build(provisioner: provisioner);
+
+    final download = controller.startDownload(consent: true);
+    await started.future;
+    controller.cancelDownload();
+    final deletion = controller.deleteModel();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provisioner.deleteCalls, 0);
+    gate.complete();
+    await deletion;
+    await download;
+
+    expect(provisioner.deleteCalls, 1);
+    expect(controller.status, AuraLlmSetupStatus.notInstalled);
+    expect(controller.receivedBytes, 0);
+  });
+
+  test('deleting the model unloads the runtime before deleting it', () async {
     var unloads = 0;
     final provisioner = _FakeProvisioner(installed: true);
     final controller = await build(
       provisioner: provisioner,
       warmUp: () async => true,
       unload: () async {
+        expect(provisioner.installed, isTrue);
+        expect(provisioner.deleteCalls, 0);
         unloads++;
       },
     );
@@ -326,6 +388,24 @@ void main() {
     expect(controller.status, AuraLlmSetupStatus.notInstalled);
     expect(controller.receivedBytes, 0);
     expect(controller.runtimeReady, isFalse);
+  });
+
+  test('does not delete the model when the runtime cannot unload', () async {
+    final provisioner = _FakeProvisioner(installed: true);
+    final controller = await build(
+      provisioner: provisioner,
+      warmUp: () async => true,
+      unload: () async => throw StateError('llm_busy'),
+    );
+    expect(controller.isReady, isTrue);
+
+    await controller.deleteModel();
+
+    expect(provisioner.deleteCalls, 0);
+    expect(provisioner.installed, isTrue);
+    expect(controller.status, AuraLlmSetupStatus.failed);
+    expect(controller.errorCode, 'llm_unload_failed');
+    expect(controller.errorMessage, contains('operación en curso'));
   });
 
   test('enabling prefetch loads an already verified model', () async {

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import 'agent/agent_controller.dart';
 import 'infrastructure/security/aura_dynamic_whitelist.dart';
+import 'llm/aura_llm_model_manager.dart';
 import 'llm/aura_llm_model_source.dart';
 import 'llm/aura_llm_setup_controller.dart';
 import 'llm/local_llm_planner.dart';
@@ -29,13 +30,19 @@ Future<void> main() async {
     );
   }
   final modelSource = AuraLlmModelSource.fromEnvironment();
+  // One manager instance shares the verified-file cache between setup and the
+  // order path. Otherwise startup and the first order could each hash the
+  // 1.1 GB GGUF independently, doubling I/O and risking a resolve timeout.
+  final modelManager = AuraLlmModelManager(source: modelSource);
   final planner = LocalLlmPlanner(
+    modelManager: modelManager,
     contextTokens: modelSource.runtimeContextTokens,
     modelSizeBytes: modelSource.sizeBytes,
   );
   AgentController.instance.bindLocalLlmPlanner(planner);
   final llmSetup = AuraLlmSetupController(
     source: modelSource,
+    manager: modelManager,
     warmUp: planner.prefetchModel,
     unload: planner.unloadModel,
   );
