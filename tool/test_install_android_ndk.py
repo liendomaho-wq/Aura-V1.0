@@ -41,8 +41,14 @@ class InstallAndroidNdkTest(unittest.TestCase):
         manager.chmod(0o755)
         result = self.run_script()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((self.sdk / "arguments").read_text().splitlines(),
-                         [f"--sdk_root={self.sdk.resolve()}", f"ndk;{self.version}"])
+        arguments = (self.sdk / "arguments").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(arguments), 2)
+        self.assertTrue(arguments[0].startswith("--sdk_root="))
+        actual_sdk_root = arguments[0].split("=", 1)[1]
+        # macOS may expose the same temporary directory through /var or
+        # /private/var. Compare filesystem identity, not symlink spelling.
+        self.assertTrue(os.path.samefile(actual_sdk_root, self.sdk))
+        self.assertEqual(arguments[1], f"ndk;{self.version}")
 
     def test_existing_ndk_does_not_require_sdkmanager(self):
         executable = self.sdk / "ndk" / self.version / "ndk-build"
