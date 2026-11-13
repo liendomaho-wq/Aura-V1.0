@@ -38,6 +38,7 @@ kotlin_socks5_test = KOTLIN_SOCKS5_TEST.read_text(encoding="utf-8")
 native_jni = NATIVE_JNI.read_text(encoding="utf-8")
 manifest = Path("android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
 CONSOLE_SOURCE = Path("lib/screens/aura_core_screen.dart").read_text(encoding="utf-8")
+SIGNAL_HEADER_SOURCE = Path("lib/widgets/aura_signal_header.dart").read_text(encoding="utf-8")
 
 # A failed or unavailable native authentication result must never unlock the console.
 auth_match = re.search(
@@ -120,6 +121,11 @@ if any(
         "invokeMapMethod<String, dynamic>('getShieldStatus')",
         "status['status_verified'] != true",
         "Timer.periodic(const Duration(seconds: 5)",
+        "AuraSignalHeader(",
+    )
+) or any(
+    required not in SIGNAL_HEADER_SOURCE
+    for required in (
         "'DEFENSA: SIN FLUJO'",
         "'DEFENSA: ?'",
     )

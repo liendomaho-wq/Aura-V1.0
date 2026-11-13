@@ -16,7 +16,7 @@ workflows:
         # applicationId real definido en android/app/build.gradle: com.ciberdefensa.aura
         AURA_BUILD_FORMAT: "apk"
         AURA_REQUIRE_RELEASE_SIGNING: "false"
-      flutter: stable
+      flutter: 3.47.9
       java: 17
     triggering:
       events:

@@ -170,7 +170,7 @@ inventar resultados. Políticas: [privacidad](docs/PRIVACY.md) y
 
 | Herramienta/plataforma | Contrato del proyecto |
 |---|---|
-| Dart / Flutter | Dart `>=3.12.0 <4.0.0`, Flutter `>=3.44.0`; los workflows seleccionan stable. |
+| Dart / Flutter | Dart `>=3.12.0 <4.0.0`, Flutter `>=3.44.0`; CI y Codemagic fijan `3.47.9` para conservar Gradle 8.14.3. |
 | Java / Gradle / AGP | JDK 17 / Wrapper 8.14.3 / AGP 8.13.0. |
 | Kotlin | 2.2.20, JVM target 17. |
 | Android | minSdk 24, compileSdk 36, targetSdk 36 (Android 16). |
