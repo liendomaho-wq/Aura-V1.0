@@ -57,7 +57,9 @@ de inferencia ni de descarga a través de la app.
 2. Si hay un modelo instalado, `AuraLlmModelManager.verifyInstalled()` calcula
    el SHA-256 con progreso. Si no coincide, el archivo se borra.
 3. La descarga solo empieza desde la hoja de preparación, con consentimiento
-   marcado. `installModel()`:
+   marcado. Solo puede existir una descarga en vuelo: cancelar no autoriza a
+   iniciar otra hasta que el instalador anterior termine de desmontarse.
+   `installModel()`:
    - valida URL HTTPS, SHA-256 de 64 hex y tamaño máximo;
    - comprueba espacio libre antes de abrir la conexión;
    - reanuda un `.partial` con `Range`; si el servidor ignora el rango,
@@ -69,7 +71,9 @@ de inferencia ni de descarga a través de la app.
    - permite pausar y conserva el prefijo para reanudar.
 4. Si la verificación es correcta, el controlador pide al planner cargar el
    modelo (`prefetchModel`). Un fallo del runtime deja el estado en
-   "Modelo verificado" y no simula inferencia.
+   "Modelo verificado" y no simula inferencia. Antes de borrar, el controlador
+   descarga el runtime y espera cualquier carga o descarga en vuelo; si el
+   runtime está ocupado, el archivo no se elimina.
 5. El path de órdenes del agente usa `resolveInstalledModel()`, que **nunca
    descarga**: solo devuelve un archivo ya verificado.
 
@@ -94,8 +98,13 @@ de inferencia ni de descarga a través de la app.
   borrado y precarga.
 - `lib/widgets/aura_capability_ring.dart` y `aura_llm_setup_scope.dart` — UI
   reactiva del estado del modelo.
-- `lib/main.dart` — crea el planner, lo enlaza al `AgentController` y expone el
+- `lib/main.dart` — crea un único `AuraLlmModelManager`, lo comparte entre
+  planner y setup, enlaza el planner al `AgentController` y expone el
   controlador al árbol de widgets.
+- `android/app/src/main/cpp/aura_llm/aura_llm_jni.cpp` — divide prompts largos
+  en fragmentos de `n_batch` y limpia la KV cache antes de cada generación.
+- `tool/test_llm_native_integration.py` — guardas estáticas del contrato JNI,
+  chunking y limpieza de memoria.
 
 ## 4. Contexto adaptativo y respuesta conversacional
 
@@ -148,7 +157,8 @@ carga ningún GGUF.
   conservado, espacio insuficiente, tamaño incorrecto, resolución sin red,
   verificación con progreso y borrado.
 - `test/aura_llm_setup_controller_test.dart` — consentimiento obligatorio,
-  persistencia, estados, warm-up, fallos mapeados, pausa, borrado y prefetch.
+  persistencia, estados, warm-up, fallos mapeados, pausa, borrado, una sola
+  descarga concurrente, espera ante descarga en vuelo y fallo de unload.
 - `test/aura_llm_setup_ui_test.dart` — hoja, consentimiento, descarga,
   confirmación de borrado, build sin pin, scope y anillo de capacidades.
 - `test/aura_storage_test.dart` — canal de espacio libre y memoria, incluido
@@ -157,17 +167,22 @@ carga ningún GGUF.
 - `test/aura_llm_context_policy_test.dart` — niveles, presupuesto de memoria,
   `lowMemory` y fallback.
 - `test/local_llm_planner_test.dart` — `prefetchModel` devuelve estado real,
-  `unloadModel` libera el runtime, el path de órdenes no descarga, la respuesta
-  conversacional se valida y el contexto baja de 16K a 8K si la carga falla.
+  `unloadModel` espera cargas en vuelo y falla cerrado con runtime ocupado, el
+  path de órdenes no descarga, la respuesta conversacional se valida y el
+  contexto baja de 16K a 8K si la carga falla.
+- `tool/test_llm_native_integration.py` — guardas de `n_batch`, chunking del
+  prompt y `llama_memory_clear` antes de cada generación (`29/29`).
 - `test/agent_controller_test.dart` — una pregunta desconocida muestra la
   respuesta local sin ejecutar tools.
 
-Suites locales con Flutter `3.47.9`: **294 pruebas pasan, 1 omitida**;
-`flutter analyze --no-pub` no reporta errores ni warnings; `dart format` deja
-0 archivos cambiados. El commit `a6ff02e` pasó CI: Flutter Quality, Android
-Debug Build (incluida la migración real de Keystore en emulador Android 16),
-Release signing integrity y dataset/training. El APK debug de ese commit fue
-descargado y validado en estructura, JNI y assets; ver `AURA_FINAL_AUDIT.md`.
+Suites locales actuales con Flutter `3.47.9`: **312 pruebas pasan, 1 omitida**
+(benchmark que exige dispositivo); `flutter analyze --no-pub` no reporta issues
+y `dart format` no cambia archivos. El commit `a6ff02e` pasó CI: Flutter
+Quality, Android Debug Build (incluida la migración real de Keystore en
+emulador Android 16), Release signing integrity y dataset/training. Su APK
+debug fue descargado y validado en estructura, JNI y assets; ver
+`AURA_FINAL_AUDIT.md`. Las pruebas nuevas de esta rama no sustituyen esa
+evidencia ni una compilación Android/ejecución física.
 
 ## 7. Límites y pendientes
 

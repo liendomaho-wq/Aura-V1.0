@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -76,6 +78,8 @@ class AuraLlmSetupController extends ChangeNotifier {
   bool _initialized = false;
   bool _initializing = false;
   bool _disposed = false;
+  bool _deleting = false;
+  Completer<void>? _downloadCompletion;
   AuraLlmCancellation? _cancellation;
   DateTime? _lastProgressAt;
   int _lastProgressBytes = 0;
@@ -143,6 +147,9 @@ class AuraLlmSetupController extends ChangeNotifier {
     'llm_runtime_unavailable' =>
       'El modelo está verificado, pero el runtime llama.cpp no está '
           'disponible en este dispositivo.',
+    'llm_unload_failed' =>
+      'No se pudo liberar el modelo porque hay una operación en curso. '
+          'Cancelala y volvé a intentar el borrado.',
     'setup_initialization_failed' =>
       'No se pudo comprobar el estado del modelo local.',
     _ =>
@@ -150,9 +157,9 @@ class AuraLlmSetupController extends ChangeNotifier {
   };
 
   Future<void> initialize({bool force = false}) async {
-    if (_disposed || _initializing) return;
+    if (_disposed || _initializing || _deleting) return;
     if (_initialized && !force) return;
-    if (_status == AuraLlmSetupStatus.downloading) return;
+    if (_downloadCompletion != null) return;
     _initializing = true;
     try {
       final prefs = await _preferences();
@@ -203,7 +210,7 @@ class AuraLlmSetupController extends ChangeNotifier {
   Future<void> refresh() => initialize(force: true);
 
   Future<void> startDownload({required bool consent}) async {
-    if (_disposed || _status == AuraLlmSetupStatus.downloading) return;
+    if (_disposed || _deleting || _downloadCompletion != null) return;
     if (!_manager.isConfigured) {
       _errorCode = 'llm_model_not_configured';
       _setStatus(AuraLlmSetupStatus.notConfigured);
@@ -214,6 +221,18 @@ class AuraLlmSetupController extends ChangeNotifier {
       _notify();
       return;
     }
+    final completion = _downloadCompletion = Completer<void>();
+    try {
+      await _runDownload();
+    } finally {
+      if (identical(_downloadCompletion, completion)) {
+        _downloadCompletion = null;
+        completion.complete();
+      }
+    }
+  }
+
+  Future<void> _runDownload() async {
     try {
       final prefs = await _preferences();
       await prefs.setBool(_consentKey, true);
@@ -289,26 +308,42 @@ class AuraLlmSetupController extends ChangeNotifier {
   }
 
   Future<void> deleteModel() async {
-    if (_disposed) return;
-    _cancellation?.cancel();
-    await _manager.deleteInstalled();
+    if (_disposed || _deleting) return;
+    _deleting = true;
     try {
-      await _unload?.call();
-    } on Object {
-      // The runtime may not exist on this build; deletion still succeeds.
+      _cancellation?.cancel();
+      // A cancelled install still owns the partial file until it unwinds.
+      // Wait for it before unloading or unlinking anything.
+      final download = _downloadCompletion;
+      if (download != null) await download.future;
+      // Release the native runtime/mapped file before unlinking the GGUF. If
+      // the runtime is unavailable the deletion still proceeds, but never
+      // while the model is known to be loaded.
+      try {
+        await _unload?.call();
+      } on Object {
+        if (_disposed) return;
+        _errorCode = 'llm_unload_failed';
+        _setStatus(AuraLlmSetupStatus.failed);
+        return;
+      }
+      await _manager.deleteInstalled();
+      if (_disposed) return;
+      _runtimeReady = false;
+      _receivedBytes = 0;
+      _totalBytes = null;
+      _bytesPerSecond = 0;
+      _errorCode = null;
+      final snapshot = await _manager.inspect();
+      _receivedBytes = snapshot.partialBytes ?? 0;
+      _setStatus(
+        snapshot.hasPartialDownload
+            ? AuraLlmSetupStatus.paused
+            : AuraLlmSetupStatus.notInstalled,
+      );
+    } finally {
+      _deleting = false;
     }
-    _runtimeReady = false;
-    _receivedBytes = 0;
-    _totalBytes = null;
-    _bytesPerSecond = 0;
-    _errorCode = null;
-    final snapshot = await _manager.inspect();
-    _receivedBytes = snapshot.partialBytes ?? 0;
-    _setStatus(
-      snapshot.hasPartialDownload
-          ? AuraLlmSetupStatus.paused
-          : AuraLlmSetupStatus.notInstalled,
-    );
   }
 
   Future<void> _warmUpModel() async {

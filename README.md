@@ -95,7 +95,10 @@ no reconoce. Puede devolver una propuesta para una de las tres herramientas de
 solo lectura o una respuesta conversacional acotada de un solo turno; **nunca
 ejecuta herramientas ni sustituye un veredicto de seguridad**. El modelo no se
 empaqueta en la APK: se descarga con consentimiento explícito, se verifica por
-SHA-256 y se carga solo si el runtime lo confirma.
+SHA-256 y se carga solo si el runtime lo confirma. Se admite una sola descarga
+en vuelo, cada generación limpia su KV cache y el borrado espera a que el
+runtime libere el modelo. Estas garantías están cubiertas por tests locales,
+no por inferencia real en hardware.
 
 El contexto se elige según memoria disponible: base 8K, niveles hasta 64K y
 fallback a 4K/2K. `effectiveContextTokens` solo refleja el valor aceptado por el

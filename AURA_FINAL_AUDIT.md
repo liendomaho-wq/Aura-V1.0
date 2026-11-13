@@ -1326,3 +1326,61 @@ automáticamente el modelo activo.
   observada**. La conversación es acotada y de un solo turno.
 - **Release:** **no listo**. Faltan firma de producción, pruebas físicas y
   validación de la IA en hardware.
+
+## 15. Actualización 2026-11-13 — PR #31/#32 y endurecimiento de IA local
+
+`main` avanzó a `d76a9087dfa5a5126a35cc45f6d4cac19cd0cafe` tras fusionar
+[PR #32](https://github.com/liendomaho-wq/Aura-V1.0/pull/32), que reemplaza la
+comparación textual del SDK por identidad de filesystem. [PR #31](https://github.com/liendomaho-wq/Aura-V1.0/pull/31)
+ya había fusionado el mismo guard en `105fbe3bee9b8ec47d11fdeb5f846dcf1cbddc62`.
+Ambas PR tenían sus checks en **success** antes del merge.
+
+Sobre esa base se preparó la rama `fix/final-local-ai-hardening` con estos
+defectos corregidos:
+
+- `aura_llm_jni.cpp` usaba `n_batch=256` para todo el prompt. La revisión fijada
+  de llama.cpp exige `n_tokens_all <= cparams.n_batch` por llamada a
+  `llama_decode`; un prompt mayor podía abortar la generación. Ahora el prompt
+  se divide en fragmentos de `llama_n_batch(ctx)` y se valida ese límite.
+- La KV cache no se limpiaba entre generaciones. Cada consulta se añadía a la
+  anterior y podía agotar el contexto o filtrar texto previo. Ahora
+  `llama_memory_clear(memory, true)` se ejecuta antes de decodificar el prompt.
+- `AuraLlmSetupController` permitía iniciar otra descarga después de cancelar
+  mientras la anterior aún se estaba desmontando. También podía borrar el GGUF
+  durante una descarga activa. Ahora hay una única descarga en vuelo y el
+  borrado espera a que termine.
+- El borrado descarga el runtime antes de eliminar el archivo, pero antes se
+  tragaba cualquier error de unload. Ahora un runtime ocupado
+  (`llm_busy`) impide el borrado y muestra `llm_unload_failed`; solo se
+  considera benigna la ausencia real del runtime.
+- `LocalLlmPlanner` no esperaba una carga en vuelo antes de descargar el modelo.
+  Ahora `unloadModel()` espera la carga pendiente y bloquea nuevas cargas
+  mientras se descarga. Un plan concurrente falla cerrado con
+  `llm_model_load_failed` en vez de recargar un archivo en borrado.
+- `main.dart` comparte un solo `AuraLlmModelManager` entre setup y planner para
+  no calcular dos veces el SHA-256 del GGUF de 1.1 GB.
+
+Evidencia local de esta rama, sin afirmar compilación Android ni ejecución en
+dispositivo:
+
+| Comprobación | Resultado |
+| --- | --- |
+| `flutter analyze --no-pub` | Sin issues |
+| `flutter test --no-pub` | **312 passed, 1 skipped** (benchmark que requiere dispositivo) |
+| `python3 tool/test_llm_native_integration.py` | **29/29 passed** |
+| `python3 -m unittest discover -s tool -p 'test_*.py'` | **135 passed**, 3 módulos no importables localmente por faltar `numpy`/`scikit-learn` |
+| `python3 -m pytest tool/test_adversarial.py tool/test_adversarial_split_builder.py` | **10 passed** |
+| `dart format` y `git diff --check` | Sin cambios de formato ni whitespace |
+
+La rama no genera un APK nuevo por sí sola. El APK histórico de `b9ed296`
+sigue siendo evidencia de instalación estructural, no de este estado. La
+compilación JNI/Android de esta rama debe verificarse en CI, y la inferencia,
+descarga, borrado y cancelación siguen pendientes en hardware real.
+
+### 15.1 Dictamen actualizado
+
+- **PR #31/#32:** fusionadas con CI verde.
+- **Endurecimiento IA local:** implementado y cubierto por pruebas locales.
+- **APK de esta rama:** pendiente de CI; no existe artefacto nuevo verificado.
+- **Dispositivo, VPN real, Keystore físico, release firmado y CodeMagic:** sin
+  cambios: siguen pendientes y bloquean cualquier declaración de 100%.

@@ -28,9 +28,12 @@ class _FakeLlmRuntime extends AuraLlmRuntime {
   String? lastPrompt;
   String operationId = 'op-test';
   String? startError;
+  Object? unloadError;
   String? response;
   String? responseError;
   Set<int> failingContextTokens = <int>{};
+  Completer<void>? loadGate;
+  Completer<void>? loadStarted;
   bool autoRespond = true;
 
   @override
@@ -54,6 +57,9 @@ class _FakeLlmRuntime extends AuraLlmRuntime {
     loadCalls++;
     lastContextTokens = contextTokens;
     lastThreads = threads;
+    loadStarted?.complete();
+    final gate = loadGate;
+    if (gate != null) await gate.future;
     if (failingContextTokens.contains(contextTokens)) {
       throw PlatformException(code: 'llm_context_failed');
     }
@@ -63,6 +69,8 @@ class _FakeLlmRuntime extends AuraLlmRuntime {
   @override
   Future<void> unloadModel() async {
     unloadCalls++;
+    final error = unloadError;
+    if (error != null) throw error;
     loaded = false;
   }
 
@@ -351,6 +359,75 @@ void main() {
       expect(runtime.loadCalls, 0);
       expect(runtime.startCalls, 0);
     });
+
+    test('unloading waits for an in-flight load before releasing it', () async {
+      final runtime = _FakeLlmRuntime();
+      final planner = _planner(runtime);
+      final gate = runtime.loadGate = Completer<void>();
+      final started = runtime.loadStarted = Completer<void>();
+
+      final load = planner.prefetchModel();
+      await started.future;
+      expect(runtime.loadCalls, 1);
+      final unloading = planner.unloadModel();
+      await Future<void>.delayed(Duration.zero);
+      expect(runtime.unloadCalls, 0);
+
+      gate.complete();
+      await unloading;
+
+      expect(runtime.unloadCalls, 1);
+      expect(runtime.loaded, isFalse);
+      runtime.loadGate = null;
+      runtime.loadStarted = null;
+      expect(await planner.prefetchModel(), isTrue);
+      expect(runtime.loadCalls, 2);
+      await load;
+      await runtime.dispose();
+    });
+
+    test('a plan fails closed while the model is unloading', () async {
+      final runtime = _FakeLlmRuntime();
+      final planner = _planner(runtime);
+      final gate = runtime.loadGate = Completer<void>();
+      final started = runtime.loadStarted = Completer<void>();
+
+      final load = planner.prefetchModel();
+      await started.future;
+      final unloading = planner.unloadModel();
+      await Future<void>.delayed(Duration.zero);
+
+      final result = await planner.plan('analiza ejemplo.com');
+
+      expect(result.status, LocalLlmPlanStatus.failed);
+      expect(result.errorCode, 'llm_model_load_failed');
+      gate.complete();
+      await unloading;
+      await load;
+      await runtime.dispose();
+    });
+
+    test(
+      'unloading a busy runtime fails closed instead of faking release',
+      () async {
+        final runtime = _FakeLlmRuntime(loaded: true)
+          ..unloadError = PlatformException(code: 'llm_busy');
+        final planner = _planner(runtime);
+
+        await expectLater(
+          planner.unloadModel(),
+          throwsA(isA<PlatformException>()),
+        );
+
+        expect(runtime.unloadCalls, 1);
+        expect(runtime.loaded, isTrue);
+        runtime.unloadError = null;
+        await planner.unloadModel();
+        expect(runtime.unloadCalls, 2);
+        expect(runtime.loaded, isFalse);
+        await runtime.dispose();
+      },
+    );
 
     test('unloading releases the runtime and forces a fresh load', () async {
       final runtime = _FakeLlmRuntime();

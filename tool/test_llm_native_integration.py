@@ -169,6 +169,23 @@ class AuraLlmNativeIntegrationTest(unittest.TestCase):
         self.assertIn('emit_event(env, job.operation_id, AuraLlmEventType::kError, failure)', jni)
         self.assertIn('emit_event(env, job.operation_id, AuraLlmEventType::kCompleted, generated)', jni)
 
+    def test_native_prompt_is_chunked_and_kv_cache_is_reset(self):
+        jni = read(JNI_SOURCE)
+        # n_batch bounds only one llama_decode call; the prompt must be
+        # chunked so the fixed local system prompt cannot exceed it.
+        self.assertIn("const int32_t batch_capacity = static_cast<int32_t>(llama_n_batch(ctx));", jni)
+        self.assertIn("const int32_t chunk = std::min(batch_capacity, prompt_total - prompt_offset);", jni)
+        self.assertIn("llama_batch_get_one(prompt_tokens.data() + prompt_offset, chunk)", jni)
+        # Each generation starts with a clear KV cache so repeated prompts do
+        # not append to or leak a previous query's text.
+        self.assertIn("llama_memory_t memory = llama_get_memory(ctx);", jni)
+        self.assertIn("llama_memory_clear(memory, true);", jni)
+        generation = jni.split("void run_generation", 1)[1]
+        self.assertLess(
+            generation.index("llama_memory_clear(memory, true);"),
+            generation.index("llama_sampler_sample(sampler, ctx, -1);"),
+        )
+
     def test_packaged_runtime_is_verified_per_abi(self):
         verifier = read(VERIFY_APK)
         self.assertIn('"libaura_llm.so"', verifier)
