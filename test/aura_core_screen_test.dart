@@ -123,9 +123,9 @@ void main() {
     await _pumpAuraFrames(tester);
     expect(state.telemetryEvents.single['requested_domain'], 'example.com');
 
-    // The console jumps to the newest event. The local telemetry panel is the
-    // first child of a lazy ListView, so bring it back into the viewport
-    // instead of assuming that an off-screen widget remains mounted.
+    // The local telemetry panel sits below the findings and console content.
+    // Scroll the lazy ListView until it is built instead of assuming that an
+    // off-screen widget remains mounted.
     final eventList = find.byKey(const ValueKey<String>('aura-event-list'));
     final telemetryPanel = find.byKey(
       const ValueKey<String>('local-telemetry-panel'),
@@ -134,7 +134,7 @@ void main() {
     await tester.dragUntilVisible(
       telemetryPanel,
       eventList,
-      const Offset(0, 240),
+      const Offset(0, -240),
     );
     await tester.ensureVisible(telemetryPanel);
     await tester.pump();

@@ -20,6 +20,7 @@ publicación, monetización o cambios de distribución.
 | Agente local | Parser de intenciones por reglas, herramientas permitidas, confirmaciones, plazos y postcondiciones. | **No es un LLM** ni un agente generativo de propósito general. Un timeout Dart no cancela necesariamente un trabajo nativo. |
 | Clasificador ML | Bosque local de dominios, modelo activo **3.0.0**, seis características. | No inspecciona páginas ni archivos; una clasificación no garantiza seguridad. |
 | Auditoría Android | Inventario visible, permisos concedidos, servicios habilitados, firma, provenance y estados AppOps accesibles. | Visibilidad y APIs de una app normal; no puede aislar, desinstalar ni vigilar arbitrariamente otras apps. |
+| Centro de Hallazgos | Evidencia local de postura, apps y red con severidad, confianza, estado, alcance y límites. | Solo lectura: requiere auditoría/escaneo, no corrige ni desinstala, y no certifica ausencia de amenazas. |
 | VPN opcional | VpnService → TUN → HEV; rutas IPv4/IPv6, SOCKS5 autenticado y filtros DNS/SNI selectivos. | Arranque local no demuestra tráfico extremo a extremo ni ausencia de fugas. ECH, DoH personalizado y QUIC no se descifran. |
 | Privacidad | Telemetría opt-in, HMAC de dominios y almacenamiento protegido. | Seudonimización, no anonimización absoluta; un servidor puede observar la IP de conexión. |
 
@@ -51,6 +52,7 @@ Rutas principales:
   carga, integridad, contrato de características e inferencia.
 - `lib/providers/aura_state_provider.dart`, `lib/network_auditor.dart` y
   `lib/services/aura_local_telemetry.dart`: estado, eventos y consentimiento.
+- `lib/security/`: entropía y contrato/motor local de hallazgos verificables.
 - `lib/secure_vault.dart`, `lib/crypto/aura_crypto_layer.dart`,
   `lib/secure_memory.dart`: persistencia, formatos criptográficos y buffers.
 - `android/app/src/main/kotlin/com/ciberdefensa/aura/`: puente, VPN, escáner,
@@ -72,6 +74,18 @@ no debe convertirse en éxito ni reintentarse automáticamente como si fuera ino
 Las reglas DNS/IP/SNI son políticas concretas; las señales de root, emulación,
 instrumentación y riesgo de apps son heurísticas; el bosque de dominios es ML.
 Ninguno convierte al parser conversacional en un LLM.
+
+### Centro de Hallazgos Verificables
+
+`lib/security/aura_finding.dart` y `lib/security/aura_findings_engine.dart`
+convierten la auditoría de postura, el escaneo de apps y las alertas de red en
+hallazgos deterministas de solo lectura. Cada hallazgo conserva `id`, motor,
+versión, severidad, confianza, estado, fecha, evidencia, alcance, límites y una
+recomendación de revisión manual. La UI `findings-center` permite expandir la
+evidencia; nunca deduce que una app sea malware por sí sola, no eleva la
+severidad con el modelo y no ejecuta desinstalaciones, bloqueos ni cambios de
+configuración. Una fuente no analizada o incompleta se muestra como cobertura
+pendiente, no como dispositivo limpio.
 
 ### IA local opcional
 

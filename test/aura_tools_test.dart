@@ -41,6 +41,9 @@ void main() {
     expect(result.data['user_action_required'], isTrue);
     expect(result.data['security_level'], 'warning');
     expect(result.data['is_rooted'], isFalse);
+    expect(result.data['is_debugger_connected'], isFalse);
+    expect(result.data['screen_overlay_detected'], isFalse);
+    expect(result.data['root_indicators'], isA<List<String>>());
     expect(result.data['check_errors'], <String>[
       'overlay_app_ops_unavailable',
     ]);

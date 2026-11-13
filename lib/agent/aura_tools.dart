@@ -158,6 +158,11 @@ abstract class AuraTools {
     }
   }
 
+  static List<String> _stringList(Object? value) {
+    if (value is! List) return const <String>[];
+    return value.whereType<String>().toList(growable: false);
+  }
+
   static Future<ToolResult> _executeTrusted(
     ToolStep step, {
     void Function(String message)? onProgress,
@@ -229,10 +234,20 @@ abstract class AuraTools {
                   ? 'warning'
                   : 'safe',
               'is_emulator': report['isEmulator'],
+              'emulator_confidence': report['emulatorConfidence'],
+              'emulator_indicators': _stringList(report['emulatorIndicators']),
               'is_rooted': report['isRooted'],
               'root_confidence': report['rootConfidence'],
+              'root_indicators': _stringList(report['rootIndicators']),
               'is_instrumented': report['isInstrumented'],
+              'instrumentation_indicators': _stringList(
+                report['instrumentationIndicators'],
+              ),
+              'is_debugger_connected': report['isDebuggerConnected'] == true,
               'screen_overlay_detected': report['isScreenOverlayDetected'],
+              'screen_overlay_indicators': _stringList(
+                report['screenOverlayIndicators'],
+              ),
               'is_hostile': hostile,
               'indicators': indicators,
               'check_errors': errors,

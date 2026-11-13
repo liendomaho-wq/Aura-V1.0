@@ -139,6 +139,44 @@ void main() {
     );
   });
 
+  test('audit_device records the latest posture for findings', () async {
+    const securityChannel = MethodChannel('com.ciberdefensa.aura/security');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    FlutterSecureStorage.setMockInitialValues(<String, String>{});
+    messenger.setMockMethodCallHandler(securityChannel, (call) async {
+      if (call.method != 'checkHostileEnvironment') return null;
+      return <String, dynamic>{
+        'isEmulator': false,
+        'isRooted': true,
+        'rootConfidence': 90,
+        'isInstrumented': false,
+        'isScreenOverlayDetected': false,
+        'isDebuggerConnected': false,
+        'isHostile': true,
+        'indicators': <String>['su_binary:/system/bin/su'],
+        'environmentCheckErrors': <String>[],
+        'untrustedAccessibilityServicePackages': <String>[],
+        'timestamp': 123,
+      };
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(securityChannel, null),
+    );
+
+    final state = AuraStateProvider();
+    addTearDown(state.dispose);
+    final controller = AgentController.instance;
+    controller.bindSecurityState(state);
+    await controller.run('audita dispositivo');
+
+    expect(state.latestDeviceAudit, isNotNull);
+    expect(
+      state.findingsReport.findings.map((finding) => finding.id),
+      contains('device-root-indicators'),
+    );
+  });
+
   test('rejects oversized instructions before parsing or execution', () async {
     final controller = AgentController.instance;
     final previousLength = controller.history.length;

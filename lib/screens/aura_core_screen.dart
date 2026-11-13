@@ -13,6 +13,7 @@ import '../infrastructure/agent/aura_intent_parser.dart';
 import '../models/aura_model_integrity_report.dart';
 import '../network_auditor.dart';
 import '../llm/aura_llm_setup_controller.dart';
+import '../security/aura_finding.dart';
 import '../providers/aura_state_provider.dart';
 import '../services/aura_local_telemetry.dart';
 import '../theme/aura_tokens.dart';
@@ -472,6 +473,21 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
     }
   }
 
+  Future<void> _runFindingsScan() async {
+    if (!_isAuthenticated || _isRunning) return;
+    setState(() => _isRunning = true);
+    try {
+      final controller = AgentController.instance;
+      await AuraIntentParser.executeCommand('audita dispositivo');
+      if (!mounted) return;
+      await AuraIntentParser.executeCommand('escanea aplicaciones');
+      if (!mounted) return;
+      _scrollToLatest(controller.history.length, force: true);
+    } finally {
+      if (mounted) setState(() => _isRunning = false);
+    }
+  }
+
   Future<void> _captureVoice() async {
     if (_isListening || _isRunning) return;
     setState(() => _isListening = true);
@@ -739,6 +755,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AuraStateProvider>();
+    final findingsReport = state.findingsReport;
     final compactLayout = MediaQuery.sizeOf(context).height < 720;
     final vpnActive = state.isVpnActive;
     final quickActionsEnabled = !_isRunning && _isAuthenticated;
@@ -918,6 +935,12 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                       SizedBox(height: compactLayout ? 12 : 18),
                       AuraIntentConstellation(intents: intents),
                       SizedBox(height: compactLayout ? 10 : 18),
+                      _FindingsCenter(
+                        report: findingsReport,
+                        scanning: _isRunning,
+                        onScan: quickActionsEnabled ? _runFindingsScan : null,
+                      ),
+                      SizedBox(height: compactLayout ? 10 : 18),
                       if (showLlmBanner)
                         _AuraLlmSetupBanner(
                           controller: llmSetup,
@@ -1011,6 +1034,373 @@ bool _showsLlmSetupBanner(AuraLlmSetupStatus status) =>
     status == AuraLlmSetupStatus.notInstalled ||
     status == AuraLlmSetupStatus.paused ||
     status == AuraLlmSetupStatus.failed;
+
+class _FindingsCenter extends StatefulWidget {
+  const _FindingsCenter({
+    required this.report,
+    required this.scanning,
+    required this.onScan,
+  });
+
+  final AuraFindingsReport report;
+  final bool scanning;
+  final VoidCallback? onScan;
+
+  @override
+  State<_FindingsCenter> createState() => _FindingsCenterState();
+}
+
+class _FindingsCenterState extends State<_FindingsCenter> {
+  bool _showAll = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final report = widget.report;
+    final findings = report.findings;
+    final visibleFindings = _showAll ? findings : findings.take(3).toList();
+    final hasHigh = findings.any(
+      (finding) =>
+          finding.severity == AuraFindingSeverity.high ||
+          finding.severity == AuraFindingSeverity.critical,
+    );
+    final hasMedium = findings.any(
+      (finding) => finding.severity == AuraFindingSeverity.medium,
+    );
+    final accent = !report.hasScanned
+        ? AuraTokens.textMuted
+        : hasHigh
+        ? AuraTokens.danger
+        : hasMedium
+        ? AuraTokens.warning
+        : findings.isNotEmpty
+        ? AuraTokens.accentViolet
+        : AuraTokens.success;
+    final badge = !report.hasScanned
+        ? 'ANÁLISIS PENDIENTE'
+        : findings.isEmpty
+        ? 'SIN HALLAZGOS'
+        : findings.length == 1
+        ? '1 HALLAZGO'
+        : '${findings.length} HALLAZGOS';
+    final actionLabel = widget.scanning
+        ? 'ANALIZANDO…'
+        : report.hasScanned
+        ? 'ACTUALIZAR'
+        : 'ANALIZAR';
+
+    return Container(
+      key: const ValueKey<String>('findings-center'),
+      margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.only(left: 14, top: 2, bottom: 2, right: 4),
+      decoration: BoxDecoration(
+        border: Border(
+          left: BorderSide(color: accent.withValues(alpha: 0.6), width: 1.4),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'CENTRO DE HALLAZGOS',
+                        style: TextStyle(
+                          color: _terminalCyan,
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        'Solo lectura · evidencia local',
+                        style: TextStyle(
+                          color: AuraTokens.textMuted,
+                          fontFamily: 'monospace',
+                          fontSize: 9.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              TextButton(
+                key: const ValueKey<String>('findings-refresh'),
+                onPressed: widget.scanning ? null : widget.onScan,
+                style: TextButton.styleFrom(
+                  foregroundColor: accent,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  actionLabel,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            badge,
+            style: TextStyle(
+              color: accent,
+              fontFamily: 'monospace',
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'Postura: ${report.deviceCoverage.label} · '
+            'Apps: ${report.appCoverage.label} · '
+            'Red: ${report.networkAlertCount} '
+            '${report.networkAlertCount == 1 ? 'alerta' : 'alertas'}',
+            style: const TextStyle(
+              color: AuraTokens.textMuted,
+              fontFamily: 'monospace',
+              fontSize: 10,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 6),
+          if (!report.hasScanned)
+            const Text(
+              'Sin análisis en esta sesión. Ejecuta la auditoría local para generar evidencia; Aura no modificará apps ni configuración.',
+              style: TextStyle(
+                color: AuraTokens.textPrimary,
+                fontSize: 11,
+                height: 1.4,
+              ),
+            )
+          else if (findings.isEmpty)
+            const Text(
+              'No se observaron señales en las fuentes revisadas. Esto no certifica que el dispositivo esté libre de amenazas.',
+              style: TextStyle(
+                color: AuraTokens.textPrimary,
+                fontSize: 11,
+                height: 1.4,
+              ),
+            )
+          else
+            for (final finding in visibleFindings)
+              _FindingTile(finding: finding),
+          if (findings.length > 3)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: const ValueKey<String>('findings-show-all'),
+                onPressed: () => setState(() => _showAll = !_showAll),
+                style: TextButton.styleFrom(
+                  foregroundColor: AuraTokens.accent,
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(0, 30),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  _showAll ? 'VER MENOS' : 'VER TODOS (${findings.length})',
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FindingTile extends StatelessWidget {
+  const _FindingTile({required this.finding});
+
+  final AuraFinding finding;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (finding.severity) {
+      AuraFindingSeverity.critical ||
+      AuraFindingSeverity.high => AuraTokens.danger,
+      AuraFindingSeverity.medium => AuraTokens.warning,
+      AuraFindingSeverity.low => AuraTokens.accentViolet,
+      AuraFindingSeverity.info => AuraTokens.accent,
+    };
+    return Theme(
+      data: Theme.of(context).copyWith(
+        dividerColor: Colors.transparent,
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+      ),
+      child: ExpansionTile(
+        key: ValueKey<String>('finding-${finding.id}'),
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(
+          left: 2,
+          right: 2,
+          bottom: AuraTokens.s2,
+        ),
+        iconColor: color,
+        collapsedIconColor: color,
+        title: Text(
+          finding.title,
+          style: const TextStyle(
+            color: AuraTokens.textPrimary,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            height: 1.3,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _FindingPill(
+                label: 'RIESGO ${finding.severity.label.toUpperCase()}',
+                color: color,
+              ),
+              Text(
+                'confianza ${finding.confidence.label}',
+                style: const TextStyle(
+                  color: AuraTokens.textMuted,
+                  fontFamily: 'monospace',
+                  fontSize: 9.5,
+                ),
+              ),
+              Text(
+                finding.subject,
+                style: const TextStyle(
+                  color: AuraTokens.textMuted,
+                  fontFamily: 'monospace',
+                  fontSize: 9.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              finding.summary,
+              style: const TextStyle(
+                color: AuraTokens.textPrimary,
+                fontSize: 11,
+                height: 1.4,
+              ),
+            ),
+          ),
+          const SizedBox(height: AuraTokens.s2),
+          const _FindingSectionLabel('EVIDENCIA'),
+          for (final evidence in finding.evidence)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                '• $evidence',
+                style: const TextStyle(
+                  color: _terminalGreen,
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          const SizedBox(height: AuraTokens.s2),
+          const _FindingSectionLabel('LÍMITES'),
+          for (final limitation in finding.limitations)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                '• $limitation',
+                style: const TextStyle(
+                  color: AuraTokens.warning,
+                  fontSize: 10,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          const SizedBox(height: AuraTokens.s2),
+          const _FindingSectionLabel('QUÉ PUEDES REVISAR'),
+          Text(
+            finding.recommendedAction,
+            style: const TextStyle(
+              color: AuraTokens.textPrimary,
+              fontSize: 11,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: AuraTokens.s2),
+          const Text(
+            'Solo lectura · no se modificó ninguna app',
+            style: TextStyle(
+              color: AuraTokens.textMuted,
+              fontFamily: 'monospace',
+              fontSize: 9,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FindingPill extends StatelessWidget {
+  const _FindingPill({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+    decoration: BoxDecoration(
+      border: Border.all(color: color.withValues(alpha: 0.6)),
+      borderRadius: BorderRadius.circular(3),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(
+        color: color,
+        fontFamily: 'monospace',
+        fontSize: 8.5,
+        fontWeight: FontWeight.bold,
+        letterSpacing: 0.3,
+      ),
+    ),
+  );
+}
+
+class _FindingSectionLabel extends StatelessWidget {
+  const _FindingSectionLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    text,
+    style: const TextStyle(
+      color: AuraTokens.accent,
+      fontFamily: 'monospace',
+      fontSize: 9,
+      fontWeight: FontWeight.bold,
+      letterSpacing: 0.5,
+    ),
+  );
+}
 
 class _AuraLlmSetupBanner extends StatelessWidget {
   const _AuraLlmSetupBanner({

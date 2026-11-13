@@ -827,8 +827,11 @@ class AgentController {
           ),
         ),
       );
-      if (intent.kind == AuraIntentKind.scanApps && result.data['ok'] == true) {
+      if (intent.kind == AuraIntentKind.scanApps) {
         _securityState?.recordAppScanResult(result.data);
+      }
+      if (intent.kind == AuraIntentKind.auditDevice) {
+        _securityState?.recordDeviceAuditResult(result.data);
       }
       var auditLogStatus = 'persisted';
       if (intent.kind == AuraIntentKind.cryptographicPurge &&

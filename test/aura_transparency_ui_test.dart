@@ -128,11 +128,9 @@ void main() {
     final threatCard = find.byKey(
       const ValueKey<String>('verdict-explanation-card-verdict-1'),
     );
-    // Aura intentionally scrolls the event list to the newest event after
-    // every provider update. The explanation card is the first lazy ListView
-    // child, so it may not exist in the widget tree until the list is scrolled
-    // back to the top. Drag the specific event list until that card is built.
-    await tester.dragUntilVisible(threatCard, eventList, const Offset(0, 300));
+    // The explanation card can sit below the viewport and may not be built by
+    // the lazy ListView yet. Scroll the event list forward until it appears.
+    await tester.dragUntilVisible(threatCard, eventList, const Offset(0, -300));
     await tester.pump();
     expect(threatCard, findsOneWidget);
     // Evidence belongs to the expanded content, not to the collapsed subtitle.

@@ -4,6 +4,8 @@ import 'dart:collection';
 import 'package:flutter/foundation.dart';
 
 import '../explanation/aura_verdict_explanation.dart';
+import '../security/aura_finding.dart';
+import '../security/aura_findings_engine.dart';
 import '../services/aura_threat_correlator.dart';
 
 enum AuraSecurityLevel { safe, warning, critical }
@@ -20,6 +22,7 @@ class AuraStateProvider extends ChangeNotifier {
   final List<AuraVerdictExplanation> _explanationHistory = [];
   final AuraCriticalAlert? _onCriticalAlert;
   final AuraThreatCorrelator _threatCorrelator;
+  final AuraFindingsEngine _findingsEngine;
   String _liveConsoleLogs = 'SISTEMA AURA: Núcleo defensivo activo e íntegro.';
   bool _isVpnActive = false;
   bool _isScanning = false;
@@ -37,12 +40,16 @@ class AuraStateProvider extends ChangeNotifier {
   int _blockedEvents = 0;
   int _dgaAlertEvents = 0;
   String? _lastNetworkAction;
+  Map<String, dynamic>? _latestDeviceAudit;
+  Map<String, dynamic>? _latestAppScan;
 
   AuraStateProvider({
     AuraCriticalAlert? onCriticalAlert,
     AuraThreatCorrelator? threatCorrelator,
+    AuraFindingsEngine? findingsEngine,
   }) : _onCriticalAlert = onCriticalAlert,
-       _threatCorrelator = threatCorrelator ?? AuraThreatCorrelator();
+       _threatCorrelator = threatCorrelator ?? AuraThreatCorrelator(),
+       _findingsEngine = findingsEngine ?? AuraFindingsEngine();
 
   bool get isVpnActive => _isVpnActive;
   bool get isScanning => _isScanning;
@@ -72,6 +79,13 @@ class AuraStateProvider extends ChangeNotifier {
       UnmodifiableListView(_explanationHistory);
   List<AuraThreatAlert> get threatAlerts => _threatCorrelator.alerts;
   String get correlatedThreatReport => _threatCorrelator.buildReport();
+  Map<String, dynamic>? get latestDeviceAudit => _latestDeviceAudit;
+  Map<String, dynamic>? get latestAppScan => _latestAppScan;
+  AuraFindingsReport get findingsReport => _findingsEngine.evaluate(
+    deviceAudit: _latestDeviceAudit,
+    appScan: _latestAppScan,
+    threatAlerts: _threatCorrelator.alerts,
+  );
   UnmodifiableListView<String> get observedPublicDnsResolvers =>
       UnmodifiableListView(
         _telemetryEvents
@@ -155,8 +169,15 @@ class AuraStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void recordDeviceAuditResult(Map<String, dynamic> result) {
+    _latestDeviceAudit = Map<String, dynamic>.unmodifiable(result);
+    notifyListeners();
+  }
+
   void recordAppScanResult(Map<String, dynamic> result) {
-    if (_threatCorrelator.recordAppScanResult(result)) notifyListeners();
+    _latestAppScan = Map<String, dynamic>.unmodifiable(result);
+    _threatCorrelator.recordAppScanResult(result);
+    notifyListeners();
   }
 
   void addExplanation(AuraVerdictExplanation explanation) {
@@ -222,6 +243,8 @@ class AuraStateProvider extends ChangeNotifier {
     _dgaAlertEvents = 0;
     _tunnelBytesProcessed = 0;
     _activeDecisionThreshold = null;
+    _latestDeviceAudit = null;
+    _latestAppScan = null;
     _liveConsoleLogs = '';
     notifyListeners();
   }
