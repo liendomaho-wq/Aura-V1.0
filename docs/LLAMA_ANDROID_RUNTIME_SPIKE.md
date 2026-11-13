@@ -1,6 +1,6 @@
 # Aura — llama.cpp Android runtime build spike
 
-**Status:** isolated multi-ABI build validation only. This workflow does not integrate an LLM into Aura and does not change the APK build.
+**Status:** historical isolated native build validation. The integrated runtime now lives in `lib/llm/` and `android/app/src/main/cpp/`; the APK packages the three Flutter-supported ABIs.
 
 ## Why this spike exists
 
@@ -17,9 +17,9 @@ Aura currently has no GGUF inference runtime connected to its Flutter agent. Bef
 
 The upstream Android guide documents the NDK cross-compilation path and cautions against enabling host-native CPU flags during cross-compilation: [llama.cpp Android build guide](https://github.com/ggml-org/llama.cpp/blob/806b3c2bed44490233f1e8ffa403519370965fe7/docs/android.md).
 
-## Why all four ABIs are built
+## Why the isolated spike still builds x86
 
-Aura's current Gradle configuration packages four ABIs. Building only ARM64 would leave the other supported APK variants without the runtime. This matrix validates that the pinned engine can be cross-compiled for every ABI Aura currently declares before any packaging or JNI integration is attempted. ARM64 remains the primary target for the Redmi Note 15 Pro+ 5G.
+The spike validates that the pinned native engine can be cross-compiled for the four upstream Android ABIs. The app itself packages only `armeabi-v7a`, `arm64-v8a` and `x86_64`: Flutter 3.47.9 publishes no 32-bit x86 engine, so an x86 slice with only Aura's native libraries would install but could not start. ARM64 remains the primary target for the Redmi Note 15 Pro+ 5G.
 
 ## What the workflow proves
 

@@ -35,7 +35,7 @@ DART_PROPOSAL = ROOT / "lib/agent/llm_tool_proposal.dart"
 
 PINNED_COMMIT = "806b3c2bed44490233f1e8ffa403519370965fe7"
 PINNED_SHA256 = "1c073db9bf1dfbaf7dfdfa27c0a1720147d593c6d704acf81a3c4470e6e95d37"
-ABIS = ("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+ABIS = ("armeabi-v7a", "arm64-v8a", "x86_64")
 KOTLIN_BRIDGE_NATIVE_PATTERN = re.compile(r"external fun (native[A-Za-z0-9]+)\(")
 
 
@@ -142,7 +142,7 @@ class AuraLlmNativeIntegrationTest(unittest.TestCase):
 
     def test_gradle_builds_every_declared_abi_and_wires_prebuild(self):
         gradle = read(APP_GRADLE)
-        self.assertIn('def auraLlmAbis = ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]', gradle)
+        self.assertIn('def auraLlmAbis = ["armeabi-v7a", "arm64-v8a", "x86_64"]', gradle)
         for abi in ABIS:
             self.assertIn(f'"{abi}"', gradle)
         self.assertRegex(gradle, r'dependsOn\("buildAuraLlmRuntime"\)')

@@ -191,7 +191,7 @@ inventar resultados. Políticas: [privacidad](docs/PRIVACY.md) y
 | Kotlin | 2.2.20, JVM target 17. |
 | Android | minSdk 24, compileSdk 36, targetSdk 36 (Android 16). |
 | NDK | `28.2.13676358`, `ndk-build`; alineación de páginas de 16 KiB configurada. |
-| ABIs declaradas | `armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64`. |
+| ABIs declaradas | `armeabi-v7a`, `arm64-v8a`, `x86_64`. Flutter 3.47.9 no publica motor para x86 de 32 bits. |
 
 Son requisitos/configuración, **no una certificación de todos los teléfonos**.
 La referencia física es Redmi Note 15 Pro Plus 5G, 8 GB, Android 16. Compatibilidad
@@ -231,7 +231,7 @@ del proveedor, nunca en chat, Git ni logs. Consultar la
 - Ambos tienen `workflow_dispatch`, PRs hacia `main`/`principal` y push en las ramas
   configuradas; validan el SHA head, no un commit de merge sintético.
 - `codemagic.yaml`, workflow manual **`android-debug`**: Flutter `3.47.9`, JDK
-  17, tests, `flutter build apk --debug`, verificación de las 4 ABI/JNI/assets y
+  17, tests, `flutter build apk --debug`, verificación de las 3 ABI/JNI/assets y
   `SHA256SUMS`/`SOURCE_COMMIT.txt` como artefactos. Es el build instalable de
   prueba; no es un release firmado.
 - `codemagic.yaml`, workflow **`android-build`**: JDK 17, Flutter stable, runner

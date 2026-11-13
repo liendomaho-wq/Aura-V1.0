@@ -79,7 +79,7 @@ android {
         )
 
         ndk {
-            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+            abiFilters "armeabi-v7a", "arm64-v8a", "x86_64"
         }
     }
 
@@ -251,7 +251,7 @@ android.sourceSets.main.jniLibs.srcDir(hevJniLibsDir)
 // a missing runtime.
 // ---------------------------------------------------------------------------
 
-def auraLlmAbis = ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
+def auraLlmAbis = ["armeabi-v7a", "arm64-v8a", "x86_64"]
 def llamaCppCommit = "806b3c2bed44490233f1e8ffa403519370965fe7"
 def llamaCppSha256 = "1c073db9bf1dfbaf7dfdfa27c0a1720147d593c6d704acf81a3c4470e6e95d37"
 def llamaCppTarball = layout.buildDirectory.file(

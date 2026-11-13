@@ -1182,8 +1182,8 @@ estas correcciones tiene aún un build de CI propio.
 - `main.dart` pasa al planner el tamaño real del GGUF configurado y la base de
   contexto; `AuraLlmModelSource.runtimeContextTokens` queda en 8192.
 - `codemagic.yaml` añade el workflow manual `android-debug` para construir un
-  APK instalable de prueba, ejecutar formato/análisis/tests, verificar las 4
-  ABI, los JNI, los assets del modelo y publicar `SHA256SUMS` y
+  APK instalable de prueba, ejecutar formato/análisis/tests, verificar las 3
+  ABI de Flutter, los JNI, los assets del modelo y publicar `SHA256SUMS` y
   `SOURCE_COMMIT.txt`. No se ejecutó en Codemagic.
 - El copy de `aura_core_screen.dart` deja de prometer “pensar, explicar y
   actuar” sin matices: ahora dice que el modelo responde y propone lecturas, y
@@ -1221,7 +1221,22 @@ estas correcciones tiene aún un build de CI propio.
   de un solo turno y no tiene memoria persistente.
 - Firma de producción: ausente; el APK debug no es distribuible como release.
 
-### 13.4 Dictamen de esta fase
+### 13.4 Hallazgo de empaquetado x86
+
+La inspección del APK de `86af1be` encontró `libaura_llm.so`,
+`libhev-socks5-tunnel.so` y `libdartjni.so` bajo `lib/x86/`, pero **no**
+`lib/x86/libflutter.so`. Flutter `3.47.9` solo ofrece motores
+`android-arm`, `android-arm64` y `android-x64`; el ABI x86 de 32 bits quedó
+obsoleto en el proyecto. Un dispositivo x86 habría instalado la APK y fallado
+al cargar Flutter.
+
+Se corrigió la configuración para empaquetar solo `armeabi-v7a`, `arm64-v8a` y
+`x86_64`, y se alinearon Gradle, `tool/verify_apk_jni.py`, GitHub Actions y
+Codemagic. El workflow nativo aislado puede seguir compilando x86 como prueba
+del motor, pero la APK ya no lo declara. Esto no afecta al Redmi ARM64 objetivo
+y reduce el tamaño y la superficie del artefacto.
+
+### 13.5 Dictamen de esta fase
 
 Los cambios de Dart están implementados, formateados, analizados y cubiertos
 por **294 pruebas locales**. La compilación Android del nuevo código, el APK

@@ -7,7 +7,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-ABIS = ("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+ABIS = ("armeabi-v7a", "arm64-v8a", "x86_64")
 
 # libhev-socks5-tunnel.so keeps the tunnel, DNS rule and model-decrypt entry
 # points. libaura_llm.so is the pinned llama.cpp bridge; every AuraLlmBridge
