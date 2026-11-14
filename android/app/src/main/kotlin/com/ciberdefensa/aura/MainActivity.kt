@@ -388,6 +388,7 @@ class MainActivity: FlutterFragmentActivity() {
         // start, capabilities report unavailable and no generation runs.
         AuraLlmPlugin.install(flutterEngine)
         AuraStoragePlugin.install(flutterEngine, applicationContext)
+        AuraVaultKeystore.install(flutterEngine, applicationContext)
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,

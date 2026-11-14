@@ -8,6 +8,8 @@ workflows:
         - ~/.pub-cache
         - ~/.gradle/caches
     environment:
+      groups:
+        - aura_debug_keystore # Create this group in CodeMagic. It may be empty until the fixed debug keystore exists.
       vars:
         AURA_ALLOW_DEBUG_SIGNING: "true"
       flutter: 3.47.9

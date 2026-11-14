@@ -49,6 +49,7 @@ struct _ThreadData
 };
 
 static atomic_int is_running;
+static atomic_int aura_join_in_progress;
 static int thread_joinable;
 static JavaVM *java_vm;
 static jclass tproxy_class;
@@ -736,6 +737,95 @@ exit:
     return result;
 }
 
+#define AURA_JOIN_TIMEOUT_MS 3000
+
+typedef struct _AuraJoinWait
+{
+    pthread_t target;
+    int result;
+    int finished;
+    int caller_gone;
+    pthread_mutex_t lock;
+    pthread_cond_t cond;
+} AuraJoinWait;
+
+static void *
+aura_join_helper (void *data)
+{
+    AuraJoinWait *wait = data;
+    int res = pthread_join (wait->target, NULL);
+    int caller_gone;
+
+    pthread_mutex_lock (&wait->lock);
+    wait->result = res;
+    wait->finished = 1;
+    pthread_cond_signal (&wait->cond);
+    caller_gone = wait->caller_gone;
+    pthread_mutex_unlock (&wait->lock);
+
+    if (caller_gone) {
+        pthread_mutex_lock (&mutex);
+        if (res == 0) {
+            thread_joinable = 0;
+            atomic_store_explicit (&is_running, 0, memory_order_release);
+        }
+        atomic_store_explicit (&aura_join_in_progress, 0, memory_order_release);
+        pthread_mutex_unlock (&mutex);
+        pthread_cond_destroy (&wait->cond);
+        pthread_mutex_destroy (&wait->lock);
+        free (wait);
+    }
+    return NULL;
+}
+
+static int
+aura_join_worker_with_timeout (pthread_t target)
+{
+    AuraJoinWait *wait;
+    pthread_t helper;
+    struct timespec deadline;
+    int res;
+    int finished;
+
+    wait = calloc (1, sizeof (AuraJoinWait));
+    if (!wait)
+        return ENOMEM;
+    wait->target = target;
+    pthread_mutex_init (&wait->lock, NULL);
+    pthread_cond_init (&wait->cond, NULL);
+    res = pthread_create (&helper, NULL, aura_join_helper, wait);
+    if (res != 0) {
+        pthread_cond_destroy (&wait->cond);
+        pthread_mutex_destroy (&wait->lock);
+        free (wait);
+        return res;
+    }
+
+    clock_gettime (CLOCK_REALTIME, &deadline);
+    deadline.tv_sec += AURA_JOIN_TIMEOUT_MS / 1000;
+    pthread_mutex_lock (&wait->lock);
+    while (!wait->finished) {
+        res = pthread_cond_timedwait (&wait->cond, &wait->lock, &deadline);
+        if (res == ETIMEDOUT)
+            break;
+    }
+    finished = wait->finished;
+    if (finished) {
+        res = wait->result;
+        pthread_mutex_unlock (&wait->lock);
+        pthread_join (helper, NULL);
+        pthread_cond_destroy (&wait->cond);
+        pthread_mutex_destroy (&wait->lock);
+        free (wait);
+        return res;
+    }
+
+    wait->caller_gone = 1;
+    pthread_mutex_unlock (&wait->lock);
+    pthread_detach (helper);
+    return ETIMEDOUT;
+}
+
 static jboolean
 native_stop_service (JNIEnv *env, jobject thiz)
 {
@@ -746,15 +836,23 @@ native_stop_service (JNIEnv *env, jobject thiz)
     if (!thread_joinable)
         goto exit;
 
-    if (atomic_load_explicit (&is_running, memory_order_acquire))
-        hev_socks5_tunnel_quit ();
-    res = pthread_join (work_thread, NULL);
+    res = atomic_load_explicit (&aura_join_in_progress, memory_order_acquire)
+              ? ETIMEDOUT
+              : 0;
     if (res != 0)
         goto exit;
 
-    /* Keep the thread joinable after a failed join so a later stop/start can
-     * reconcile it instead of falsely reporting a completed shutdown. */
+    if (atomic_load_explicit (&is_running, memory_order_acquire))
+        hev_socks5_tunnel_quit ();
+    atomic_store_explicit (&aura_join_in_progress, 1, memory_order_release);
+    res = aura_join_worker_with_timeout (work_thread);
+    if (res != 0)
+        goto exit;
+
+    /* Keep the thread joinable after a failed or timed-out join so a later
+     * stop/start can reconcile it instead of falsely reporting shutdown. */
     thread_joinable = 0;
+    atomic_store_explicit (&aura_join_in_progress, 0, memory_order_release);
     atomic_store_explicit (&is_running, 0, memory_order_release);
 exit:
     pthread_mutex_unlock (&mutex);

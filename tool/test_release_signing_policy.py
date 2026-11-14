@@ -170,6 +170,43 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
         self.assertIn("NO PROBADO", release)
         self.assertIn("DEBUG de prueba", release)
 
+    def test_debug_keystore_warns_and_does_not_publish_passwords(self):
+        script = (ROOT / "tool/install_fixed_debug_keystore.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("::warning title=Keystore de prueba fijo ausente::", script)
+        published = re.search(
+            r"GITHUB_ENV:-.*?>> \"\$GITHUB_ENV\"",
+            script,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(published)
+        self.assertNotIn("PASSWORD", published.group(0))
+        self.assertNotIn("AURA_DEBUG_STORE_PASSWORD", published.group(0))
+        codemagic_published = re.search(
+            r"CM_ENV:-.*?>> \"\$CM_ENV\"",
+            script,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(codemagic_published)
+        self.assertNotIn("PASSWORD", codemagic_published.group(0))
+        debug_workflow = self.codemagic_workflow.split("android-build:", 1)[0]
+        self.assertIn("aura_debug_keystore", debug_workflow)
+        self.assertIn("AURA_DEBUG_STORE_PASSWORD: ${{ secrets.AURA_DEBUG_STORE_PASSWORD }}", self.android_workflow)
+
+    def test_backup_and_device_transfer_exclude_app_data(self):
+        manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(
+            encoding="utf-8"
+        )
+        rules = (
+            ROOT / "android/app/src/main/res/xml/data_extraction_rules.xml"
+        ).read_text(encoding="utf-8")
+        self.assertIn('android:allowBackup="false"', manifest)
+        self.assertIn('android:dataExtractionRules="@xml/data_extraction_rules"', manifest)
+        self.assertIn("<cloud-backup>", rules)
+        self.assertIn("<device-transfer>", rules)
+        self.assertGreaterEqual(rules.count('<exclude domain="sharedpref"'), 2)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

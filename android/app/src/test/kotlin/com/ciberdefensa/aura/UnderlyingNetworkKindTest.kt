@@ -151,6 +151,18 @@ class UnderlyingNetworkKindTest {
     }
 
     @Test
+    fun tunnelWithoutUnderlayDoesNotFallBackToTheDefaultNetwork() {
+        val wifi = physical(wifi = true, validated = true)
+        assertEquals(null, factsForLabel(tunnelUp = true, applied = null, fallback = wifi))
+        assertEquals(wifi, factsForLabel(tunnelUp = false, applied = null, fallback = wifi))
+        val cellular = physical(cellular = true, validated = true)
+        assertEquals(
+            cellular,
+            factsForLabel(tunnelUp = true, applied = cellular, fallback = wifi),
+        )
+    }
+
+    @Test
     fun noTransportIsDisconnected() {
         assertEquals(
             UnderlyingNetworkKind.NONE,

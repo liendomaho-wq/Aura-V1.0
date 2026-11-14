@@ -995,14 +995,16 @@ release_tunnel = re.search(
 if (
     not on_destroy
     or "lifecycleGate.beginClosing()" not in on_destroy.group(1)
-    or "releaseTunnel()" not in on_destroy.group(1)
+    or "scheduleTunnelRelease {" not in on_destroy.group(1)
+    or "releaseTunnel()" not in text
+    or "aura-vpn-stop" not in text
     or not release_tunnel
     or any(part not in release_tunnel.group(1) for part in (
         "lifecycleGate.close",
         "stopNativeWorkerUnchecked()",
     ))
 ):
-    sys.exit("FAIL: VPN destruction must close the lifecycle gate and reconcile native worker state")
+    sys.exit("FAIL: VPN destruction must close the lifecycle gate and reconcile native worker state off the main thread")
 if '"status_verified" to lastShutdownConfirmed' not in text:
     sys.exit("FAIL: an unconfirmed native teardown must not be reported as verified")
 if 'lifecycleGate.runIfOpen { stopNativeWorkerUnchecked() }' not in text:
@@ -1035,21 +1037,27 @@ native_stop = re.search(
 )
 if not native_start or not native_stop:
     sys.exit("FAIL: could not inspect native VPN start/stop lifecycle")
-for lifecycle_name, lifecycle_body in (
-    ("start", native_start.group(1)),
-    ("stop", native_stop.group(1)),
-):
-    join_guard = re.search(
-        r"res = pthread_join \(work_thread, NULL\);\s*"
-        r"if \(res != 0\)\s*goto exit;\s*"
-        r"(?:/\*.*?\*/\s*)?thread_joinable = 0;",
-        lifecycle_body,
-        re.DOTALL,
-    )
-    if not join_guard:
-        sys.exit(
-            f"FAIL: native {lifecycle_name} must preserve joinable state after pthread_join failure"
-        )
+join_guard = re.search(
+    r"res = pthread_join \(work_thread, NULL\);\s*"
+    r"if \(res != 0\)\s*goto exit;\s*"
+    r"(?:/\*.*?\*/\s*)?thread_joinable = 0;",
+    native_start.group(1),
+    re.DOTALL,
+)
+if not join_guard:
+    sys.exit("FAIL: native start must preserve joinable state after pthread_join failure")
+stop_body = native_stop.group(1)
+if "aura_join_worker_with_timeout (work_thread)" not in stop_body:
+    sys.exit("FAIL: native stop must join the worker with a timeout")
+if "AURA_JOIN_TIMEOUT_MS" not in native_jni:
+    sys.exit("FAIL: native stop is missing the join timeout")
+if "pthread_join (wait->target, NULL)" not in native_jni:
+    sys.exit("FAIL: the timed join helper must still call pthread_join")
+timeout_at = stop_body.find("aura_join_worker_with_timeout (work_thread)")
+clear_at = stop_body.find("thread_joinable = 0")
+failure_at = stop_body.find("if (res != 0)\n        goto exit;", timeout_at)
+if timeout_at < 0 or clear_at < timeout_at or failure_at < 0 or failure_at > clear_at:
+    sys.exit("FAIL: a failed or timed-out native stop must keep the worker joinable")
 print("PASS: native VPN start/stop retains recoverable state when pthread_join fails.")
 
 # Verify that the native TUN packet path invokes encrypted-DNS classification
@@ -1190,6 +1198,15 @@ if "No se pudo restaurar una regla SNI tras cambiar de red." in text:
     sys.exit("FAIL: optional SNI hints must not abort a recovered tunnel")
 print("PASS: VPN start captures crashes, excludes Aura's own sockets and keeps SNI hints optional.")
 
+if "intent?.action == ACTION_STOP ||" in text:
+    sys.exit("FAIL: always-on or lockdown restart must not share the silent user-stop path")
+if "SystemVpnRestart.decide" not in text or "START_BECAUSE_LOCKDOWN" not in text:
+    sys.exit("FAIL: lockdown must start the shield instead of calling performUserStop")
+if "NOTIFY_AND_STAY_DOWN" not in text:
+    sys.exit("FAIL: always-on without lockdown must notify and stay down")
+ui_copy = Path("lib/screens/aura_core_screen.dart").read_text(encoding="utf-8")
+if "Túnel VPN" in ui_copy:
+    sys.exit("FAIL: user-facing copy must say Escudo, not Túnel VPN")
 if "const val ACTION_STOP" not in text or "performUserStop(" not in text:
     sys.exit("FAIL: VPN stop must be an explicit service action that tears the tunnel down")
 if "stopForeground(STOP_FOREGROUND_REMOVE)" not in text:

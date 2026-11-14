@@ -28,11 +28,11 @@ Los tests `tool/test_*.py` que leen el fuente **no cuentan como prueba de compor
 
 | Categoría | Filas |
 |---|---|
-| A | 8 |
-| B | 56 |
+| A | 7 |
+| B | 60 |
 | C | 17 |
 | D | 6 |
-| **Total** | **87** |
+| **Total** | **90** |
 
 ## Instantánea de Git y CI
 
@@ -52,7 +52,7 @@ Los tests `tool/test_*.py` que leen el fuente **no cuentan como prueba de compor
 | Flutter/Dart | B | App en `lib/` con consola, splash, agente y tests (`flutter test` local previo: 316 pasaron, 1 omitida). No cubre firewall por modos, memoria de conversación ni respuesta a incidentes. |
 | Kotlin y servicios | B | `AuraVpnService`, escáner, LLM, telemetría y `AuraUpdateWorker` existen. Desde `5089d35` `compileDebugKotlin` estaba roto por `underlyingNetworks` (API no pública). Este arreglo lo quita. Siguen faltando los servicios de las Partes 4 y 6. |
 | C++/JNI | B | `hev-jni.c` (puente en hilo propio), `aura_sni_firewall.c`, `libaura_llm`. `tool/test_jni_bridge.py` comprueba el fuente y omite el harness si falta `jni.h`. El dueño vio la VPN estable tras el arreglo de crash; no hay matriz JNI de fugas. |
-| Gradle | A | La política del wrapper y del NDK pasa, y además `eef52b0` compiló: [Aura Android Debug Build 43646707387](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43646707387) incluye `compileDebugKotlin`, el APK debug y las pruebas JVM. La A anterior, apoyada solo en tests de política mientras el build estaba rojo, no valía. |
+| Gradle | B | `eef52b0` compiló en [43646707387](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43646707387), pero `c0dadfe` volvió a cambiar Gradle y Kotlin y [43649867051](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43649867051) falló en `compileDebugKotlin`: `appliedUnderlyingFacts` era público y devolvía el tipo interno `PublicNetworkFacts`. Esa función pasa a `internal`. Esta fila vuelve a A solo cuando el Android Debug Build de este SHA termine en verde, incluido el job de Keystore. |
 | llama.cpp | B | Backend nombrado en `AuraLlmContract.kt` y empaquetado como `libaura_llm.so` (lo comprueba el script de CodeMagic). Sin generación observada en un teléfono. |
 | Motor de IA (clasificador) | A | Bosque 3.0.0 en `assets/model/aura_brain_model.json`, `lib/inference/aura_ai_inference.dart`, `test/aura_ai_inference_test.dart`. No inspecciona páginas. |
 | Agente | B | `lib/agent/agent_controller.dart`, parser por reglas, confirmación `CONFIRMO`, `test/agent_controller_test.dart`. No planifica tareas persistentes. |
@@ -66,7 +66,7 @@ Los tests `tool/test_*.py` que leen el fuente **no cuentan como prueba de compor
 | Permisos | B | Manifest y escáner (`AuraAppGenomeScanner.kt`, `test/aura_core_test.dart`). No guía la revocación ni la desinstalación oficial. |
 | Interfaz | B | Splash, consola, hallazgos, hoja del modelo y etiqueta de red. La Parte 7 está diferida. No hay pantalla de firewall. |
 | Navegación | B | Splash hacia una consola. No hay rutas separadas para reglas, historial o incidentes. |
-| CI de GitHub | B | Android Debug Build estuvo en rojo en [43636981696](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43636981696) (`5089d35`) y [43645598876](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43645598876) (`6318277`). En `eef52b0` volvió a verde: [43646707387](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43646707387) (APK debug, pruebas JVM y migración Keystore en emulador Android 16) y [Flutter Quality 43646707382](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43646707382). Sigue en B porque Flutter Quality no compila Kotlin y CodeMagic no se observó. |
+| CI de GitHub | B | Android Debug Build estuvo en rojo en [43636981696](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43636981696) (`5089d35`), [43645598876](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43645598876) (`6318277`) y [43649867051](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43649867051) (`c0dadfe`, `compileDebugKotlin`; el job de Keystore quedó skipped). El último verde completo es `eef52b0`: [43646707387](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43646707387). Sigue en B hasta que el SHA de esta corrección tenga ese workflow en verde, Keystore incluido. Flutter Quality no compila Kotlin y CodeMagic no se observó. |
 | CodeMagic | B | Dos workflows operativos en el YAML. El release de prueba puede firmar con debug. La migración Keystore no corre ahí. |
 | Pruebas | B | Suites Flutter, Python y JVM de la VPN. Falta el protocolo físico y casi toda la Parte 4 y 6. |
 | Documentación | B | README y `docs/` abundantes. Faltan los nombres que pide la Parte 8: `AURA_ARCHITECTURE.md`, `AURA_SECURITY.md`, `AURA_FIREWALL.md`, `AURA_VPN.md`, `AURA_AI.md`, `AURA_TESTING.md`. |
@@ -135,16 +135,19 @@ Los tests `tool/test_*.py` que leen el fuente **no cuentan como prueba de compor
 | Tema | Estado | Evidencia o hueco |
 |---|---|---|
 | Arranque de la VPN | B | Código de consentimiento, integridad y establecimiento con reintento IPv4. El dueño confirmó arranque y uso en el TECNO POVA 5 el 2026-11-14, sobre commits previos a la parada de `5089d35`. |
-| Parada manual y notificación Detener | B | `ACTION_STOP`, cierre de HEV, TUN, `stopForeground(STOP_FOREGROUND_REMOVE)`, `stopSelf()` y `userRequestedStop` en `AuraVpnService.kt`. En Android 14 hace falta el permiso de notificaciones y el tipo de servicio en primer plano. Sigue en B hasta verse en el POVA 5 (API 34). El APK de `5089d35` no existió. |
-| Cambio Wi‑Fi/datos | B | El túnel y la etiqueta usan `UnderlyingNetworkKind.choosePhysical` sobre las redes que entrega el `NetworkCallback` (`INTERNET` + `NOT_VPN`). No se usa `allNetworks` ni `getUnderlyingNetworks`. Con el túnel activo, la etiqueta es la red pasada a `setUnderlyingNetworks`. Sin prueba en API 34. |
+| Parada manual y notificación Detener | B | `ACTION_STOP`, cierre de HEV, TUN, `stopForeground(STOP_FOREGROUND_REMOVE)`, `stopSelf()` y `userRequestedStop` en `AuraVpnService.kt`. `releaseTunnel` y `pthread_join` van en el hilo `aura-vpn-stop`, con tope de 3 s (`AURA_JOIN_TIMEOUT_MS`); si el join falla o vence, `thread_joinable` sigue en 1. En Android 14 hace falta el permiso de notificaciones. Sigue en B hasta verse en el POVA 5 (API 34). |
+| Cambio Wi‑Fi/datos | B | El túnel y la etiqueta usan `UnderlyingNetworkKind.choosePhysical` sobre las redes que entrega el `NetworkCallback` (`INTERNET` + `NOT_VPN`). No se usa `allNetworks` ni `getUnderlyingNetworks`. Con el túnel activo, la etiqueta es la red pasada a `setUnderlyingNetworks`. Si el túnel está arriba y no hay red subyacente, la etiqueta es **Sin conexión**, no la red por defecto. El listener del servicio ya no vuelve a entrar en `publish`. Sin prueba en API 34. El APK de `c0dadfe` no se generó: [43649867051](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43649867051). |
+| Always-on y bloqueo de VPN | B | Si el usuario ya detuvo el Escudo, un rearranque con bloqueo (API 29+) lo inicia y lo explica. Always-on sin bloqueo avisa y lo deja apagado. Ninguno de los dos llama a `performUserStop` en silencio. `SystemVpnRestartTest` cubre la decisión. Falta verlo en el POVA 5. |
+| Copia de seguridad y transferencia | B | `android:dataExtractionRules` excluye todo el dominio en `cloud-backup` y en `device-transfer`. `allowBackup="false"` no basta en targetSdk 36. No hay una transferencia real de aparato a aparato. |
 | Tráfico TCP, UDP, DNS, IPv4, IPv6 y fugas | C | El protocolo está escrito en `docs/ANDROID_TRAFFIC_VALIDATION.md` y sigue pendiente en ambos teléfonos. |
 | Declarar cero fugas | D | Una VPN local no puede declararse libre de fugas sin medición en ese aparato y esa red. Además hay caminos de OEM (always-on, app excluida) que no son “cero” universal. |
 | Telemetría apagada por defecto | A | `lib/services/aura_local_telemetry.dart`, `docs/PRIVACY.md`, `test/aura_local_telemetry_test.dart`. Si alguien configura un endpoint remoto, eso ya no es el modo por defecto. |
 | No interceptar HTTPS ni instalar CA raíz | A | El túnel reenvía por SOCKS5 local. No hay instalación de certificado de usuario ni descifrado TLS en el código de la app. |
-| Migración SecureVault | B | Opciones en `lib/secure_vault.dart`. `SecureStorageMigrationTest` pasó en emulador Android 16, run [43631402912](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43631402912), SHA `e5cf2fe`. Ese job se saltó cuando Kotlin no compilaba. No cuenta como prueba del POVA 5 (API 34). |
+| Migración SecureVault | B | Opciones en `lib/secure_vault.dart`. `SecureStorageMigrationTest` pasó en emulador Android 16, run [43631402912](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43631402912), SHA `e5cf2fe`. Ese job se saltó cuando Kotlin no compilaba. No cuenta como prueba del POVA 5 (API 34). No se usa StrongBox ni `setUserAuthenticationRequired`: el Escudo y el HMAC corren en segundo plano, sin el usuario delante. Un valor de auditoría truncado o que no es una lista lanza `FormatException` y no se lee como historial vacío. `rotateModelMasterKey` sustituye la clave solo después de releerla; una clave ilegible no se rota. `purgeSensitiveData` llama a `deleteVaultKeystoreKeys`, que borra los alias `FlutterSecureStoragePluginKey`, `FlutterSecureStoragePluginKeyOAEP` y `_androidx_security_master_key_` con `KeyStore.deleteEntry`. El test JVM usa un almacén falso: el JVM no tiene AndroidKeyStore. flutter_secure_storage 10.3.1 cifra con AES-GCM; el sobre del modelo sigue en AES-256-CBC + HMAC. |
 | Sobre de modelo | B | AES-256-CBC + HMAC, autenticado antes de descifrar. No es el AES-GCM que pide la spec para todo secreto. |
 | Secretos fuera del repo | A | Firma por variables de entorno; `tool/test_release_signing_policy.py` y `tool/test_release_signing_runtime.py`. No hay un barrido forense de toda la historia de Git en esta auditoría. |
-| Firma de prueba estable | B | Sin un keystore fijo, cada runner puede crear otro `debug.keystore` y el APK nuevo no actualiza al anterior: hay que desinstalar y se borra SecureVault. `com.ciberdefensa.aura` no cambia. Si existen `AURA_DEBUG_KEYSTORE_BASE64` y las contraseñas, GitHub Actions y CodeMagic los usan; si no, sigue el comportamiento anterior. Pasos: `docs/FASE_2_PRUEBAS_POVA5.md`. |
+| Firma de prueba estable | B | El secreto **no está configurado**. Si faltan `AURA_DEBUG_KEYSTORE_BASE64` y `AURA_DEBUG_KEYSTORE_PATH`, el script emite `::warning::` y el certificado puede cambiar: hay que desinstalar y se borra SecureVault. Las contraseñas no se escriben en `GITHUB_ENV` ni en `CM_ENV`; cada paso de Gradle las recibe por `env`. CodeMagic `android-debug` exige el grupo `aura_debug_keystore` (hay que crearlo, aunque esté vacío). `com.ciberdefensa.aura` no cambia. Pasos: `docs/FASE_2_PRUEBAS_POVA5.md`. |
+| Escaneo de dependencias | B | `.github/dependabot.yml` revisa pub, Gradle y GitHub Actions cada semana. No hay un job que falle el APK por un aviso ya existente, y esta fila no cita un informe limpio. |
 
 ## Parte 6 — Acciones e incidentes
 

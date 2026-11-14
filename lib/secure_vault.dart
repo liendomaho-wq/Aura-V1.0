@@ -1,15 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AuraSecureVault {
   static const String _auditLogsKey = 'aura_audit_logs_v1';
   static const String _modelMasterKeyStorageKey = 'aura_model_master_key_v1';
   static const String _domainHashKeyStorageKey = 'aura_domain_hash_key_v1';
+  static const MethodChannel _keystoreChannel = MethodChannel(
+    'com.ciberdefensa.aura/vault_keystore',
+  );
   static const int maxAuditLogs = 500;
   // These options request backup-protected v9-to-v10 migration and disable
   // silent reset. They do not guarantee migration: Android instrumentation
@@ -211,11 +214,60 @@ class AuraSecureVault {
   Future<void> clearLogsSecurely() =>
       _enqueue(() => _storage.delete(key: _auditLogsKey));
 
+  /// Replaces the model key only after the new value is read back.
+  /// An unreadable stored key is left in place.
+  Future<void> rotateModelMasterKey() =>
+      _rotateKey(_modelMasterKeyStorageKey, validate: _isValidModelMasterKey);
+
+  /// Replaces the domain HMAC key only after the new value is read back.
+  Future<void> rotateDomainHashKey() =>
+      _rotateKey(_domainHashKeyStorageKey, validate: _isValidModelMasterKey);
+
+  Future<void> _rotateKey(
+    String storageKey, {
+    required bool Function(String? value) validate,
+  }) => _enqueue(() async {
+    final previous = await _storage.read(key: storageKey);
+    if (previous != null && !validate(previous)) {
+      throw StateError('SecureVault no rota una clave ilegible; se conserva.');
+    }
+    final random = math.Random.secure();
+    final keyBytes = Uint8List.fromList(
+      List<int>.generate(32, (_) => random.nextInt(256), growable: false),
+    );
+    try {
+      final generated = base64UrlEncode(keyBytes).replaceAll('=', '');
+      if (generated == previous) {
+        throw StateError('La clave nueva coincide con la anterior.');
+      }
+      await _storage.write(key: storageKey, value: generated);
+      final persisted = await _storage.read(key: storageKey);
+      if (persisted != generated || !validate(persisted)) {
+        throw StateError('No se pudo verificar la clave rotada.');
+      }
+    } finally {
+      keyBytes.fillRange(0, keyBytes.length, 0);
+    }
+  });
+
   Future<void> purgeSensitiveData() {
     return _enqueue(() async {
       await _storage.deleteAll();
       if ((await _storage.readAll()).isNotEmpty) {
         throw StateError('SecureVault conserva datos después de la purga.');
+      }
+      try {
+        final deleted = await _keystoreChannel.invokeMethod<bool>(
+          'deleteVaultKeystoreKeys',
+        );
+        if (deleted == false) {
+          throw StateError(
+            'SecureVault no pudo borrar la clave del Android Keystore.',
+          );
+        }
+      } on MissingPluginException {
+        // JVM and widget tests have no Android embedding. The device path
+        // is AuraVaultKeystore.deleteKnownKeys.
       }
     });
   }

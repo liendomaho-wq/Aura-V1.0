@@ -189,7 +189,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Aura se cerró o no pudo iniciar la VPN. Pulsa COPIAR y '
+                'Aura se cerró o no pudo iniciar el Escudo. Pulsa COPIAR y '
                 'envía este texto al soporte.',
                 style: TextStyle(color: _terminalYellow, fontSize: 12),
               ),
@@ -540,7 +540,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                 'sin inferencia'
           : latestExplanation.decisionThreshold.toStringAsFixed(2);
       _coverageAutotestStatus =
-          'Diagnóstico local completado. Túnel VPN: '
+          'Diagnóstico local completado. Escudo: '
           '${!_shieldStatusKnown
               ? 'estado no confirmado'
               : state.isVpnActive

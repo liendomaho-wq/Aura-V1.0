@@ -126,13 +126,22 @@ class AuraVpnService : VpnService() {
         }
 
         /**
-         * Capabilities of the network last passed to setUnderlyingNetworks,
-         * or null when the tunnel interface is not up.
+         * True while the TUN file descriptor is still open.
+         * Internal: the label logic lives in this module.
          */
-        @JvmStatic
-        fun appliedUnderlyingFacts(): PublicNetworkFacts? {
+        internal fun isTunnelInterfaceUp(): Boolean {
+            val service = activeService ?: return false
+            return service.vpnInterface?.fileDescriptor?.valid() == true
+        }
+
+        /**
+         * Capabilities of the network last passed to setUnderlyingNetworks,
+         * or null when the tunnel interface is not up or no underlay was stored.
+         * Internal so this public service does not expose the internal facts type.
+         */
+        internal fun appliedUnderlyingFacts(): PublicNetworkFacts? {
             val service = activeService ?: return null
-            if (service.vpnInterface?.fileDescriptor?.valid() != true) return null
+            if (!isTunnelInterfaceUp()) return null
             val network = service.underlyingNetwork ?: return null
             val capabilities = service.trackedNetworks[network] ?: return null
             return networkFacts(capabilities)
@@ -156,14 +165,10 @@ class AuraVpnService : VpnService() {
     @Volatile private var serviceShuttingDown = false
     @Volatile private var userRequestedStop = false
     private val tunnelReleased = AtomicBoolean(false)
-    private val onUnderlyingNetworkChanged: (Map<String, String>) -> Unit = {
-        // Ignore the initial reading taken before the TUN exists. A failed
-        // setUnderlyingNetworks() at that point would look like an underlay loss.
-        val tunnelInstalled = vpnInterface != null || tunnelStarted || startRequested.get()
-        if (!userRequestedStop && !serviceShuttingDown && tunnelInstalled) {
-            enqueueUnderlyingNetworkRefresh()
-        }
+    private val stopExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "aura-vpn-stop")
     }
+    private val stopScheduler = TunnelReleaseScheduler(stopExecutor) { releaseTunnel() }
     private val trackedNetworks = java.util.Collections.synchronizedMap(
         linkedMapOf<Network, NetworkCapabilities>(),
     )
@@ -213,7 +218,6 @@ class AuraVpnService : VpnService() {
         activeService = this
         AuraNetworkStream.setApplicationContext(applicationContext)
         registerUnderlyingNetworkCallback()
-        AuraUnderlyingNetwork.addListener(onUnderlyingNetworkChanged)
         AuraUnderlyingNetwork.ensureStarted(applicationContext)
         panicIsolationActive = getSharedPreferences(
             VPN_STATE_PREFERENCES,
@@ -249,11 +253,35 @@ class AuraVpnService : VpnService() {
             stopSelf()
             return Service.START_NOT_STICKY
         }
-        if (intent?.action == ACTION_STOP ||
-            (userRequestedStop && intent?.action != ACTION_START)
-        ) {
-            performUserStop("Túnel VPN detenido.")
+        if (intent?.action == ACTION_STOP) {
+            performUserStop("Escudo detenido.")
             return Service.START_NOT_STICKY
+        }
+        if (userRequestedStop && intent?.action != ACTION_START) {
+            when (systemRestartAfterUserStop()) {
+                SystemVpnRestart.Action.START_BECAUSE_LOCKDOWN -> {
+                    setUserStopped(false)
+                    AuraNotificationService.triggerPersistentAlert(
+                        this,
+                        "El bloqueo de Android exige el Escudo",
+                        "Android tiene el bloqueo de VPN activo. Sin el Escudo el teléfono se queda sin red. Se vuelve a iniciar; no se apaga en silencio.",
+                    )
+                }
+                SystemVpnRestart.Action.NOTIFY_AND_STAY_DOWN -> {
+                    AuraNotificationService.triggerPersistentAlert(
+                        this,
+                        "El Escudo sigue apagado",
+                        "Android quiere el Escudo siempre activo, pero lo habías detenido. Para dejarlo así, desactiva «VPN siempre activa» en los ajustes del sistema. No se ha cerrado la red en silencio.",
+                    )
+                    removeForegroundNotification()
+                    stopSelf()
+                    return Service.START_NOT_STICKY
+                }
+                SystemVpnRestart.Action.TEAR_DOWN -> {
+                    performUserStop("Escudo detenido.")
+                    return Service.START_NOT_STICKY
+                }
+            }
         }
         if (intent?.action == ACTION_START) {
             setUserStopped(false)
@@ -334,17 +362,18 @@ class AuraVpnService : VpnService() {
         serviceShuttingDown = true
         lifecycleGate.beginClosing()
         unregisterUnderlyingNetworkCallback()
-        AuraUnderlyingNetwork.removeListener(onUnderlyingNetworkChanged)
         feedRefresh.shutdownNow()
         integrityMonitor.shutdownNow()
         worker.shutdownNow()
-        // Serialize destruction with TUN establishment and native lifecycle
-        // calls; stale work cannot start or stop a later service's worker.
-        val shutdownConfirmed = releaseTunnel()
-        if (activeService === this) {
-            lastShutdownConfirmed = shutdownConfirmed
-            activeService = null
+        // releaseTunnel() joins the native worker. That join runs on
+        // aura-vpn-stop, not on this main-thread callback.
+        scheduleTunnelRelease { confirmed ->
+            if (activeService === this) {
+                lastShutdownConfirmed = confirmed
+                activeService = null
+            }
         }
+        stopExecutor.shutdown()
         removeForegroundNotification()
         notificationHandler.removeCallbacksAndMessages(null)
         underlyingNetwork = null
@@ -362,7 +391,7 @@ class AuraVpnService : VpnService() {
                 "Remedio: revise el consentimiento VPN y reactive la defensa."
         AuraNotificationService.triggerPersistentAlert(
             this,
-            "Túnel VPN revocado",
+            "Escudo revocado",
             message,
         )
         performUserStop(message, revoked = true)
@@ -381,14 +410,39 @@ class AuraVpnService : VpnService() {
         lifecycleGate.beginClosing()
         tunnelStarted = false
         startRequested.set(false)
-        val confirmed = releaseTunnel()
-        reportState(false, message, revoked = revoked)
-        removeForegroundNotification()
-        if (activeService === this) {
-            lastShutdownConfirmed = confirmed
-            activeService = null
+        scheduleTunnelRelease { confirmed ->
+            reportState(false, message, revoked = revoked)
+            removeForegroundNotification()
+            if (activeService === this) {
+                lastShutdownConfirmed = confirmed
+                activeService = null
+            }
+            stopSelf()
         }
-        stopSelf()
+    }
+
+    /**
+     * A previous user stop plus a system restart. Lockdown must bring the
+     * shield back, because leaving it down black-holes the phone. Always-on
+     * without lockdown stays down and says so. Neither path calls
+     * [performUserStop] just because the process was started again.
+     */
+    private fun systemRestartAfterUserStop(): SystemVpnRestart.Action {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return SystemVpnRestart.decide(alwaysOn = false, lockdown = false)
+        }
+        return SystemVpnRestart.decide(
+            alwaysOn = isAlwaysOn,
+            lockdown = isLockdownEnabled,
+        )
+    }
+
+    private fun scheduleTunnelRelease(after: (Boolean) -> Unit = {}) {
+        stopScheduler.schedule { confirmed ->
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                after(confirmed)
+            }
+        }
     }
 
     private fun setUserStopped(stopped: Boolean) {
@@ -546,7 +600,7 @@ class AuraVpnService : VpnService() {
             scheduleFeedRefresh()
             reportState(
                 true,
-                "Túnel VPN iniciado; las fuentes de reputación IP se están actualizando.",
+                "Escudo iniciado; las fuentes de reputación IP se están actualizando.",
                 requestId = requestId,
             )
             updateForegroundNotification()

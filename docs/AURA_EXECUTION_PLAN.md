@@ -27,7 +27,9 @@ No se adelanta la fase 3 ni la 5. El firewall sobre una VPN que no para, o una I
 
 `5089d35` y `6318277` no compilaban. La fase 2 empieza por dejar el build Android en verde, porque sin APK no hay prueba física de la parada. Ese arreglo de compilación (quitar `underlyingNetworks`) es previo a la fase 2 y no la abre: no añade firewall, IA ni acciones nuevas.
 
-Después del build, la fase 2 sigue siendo el ciclo de vida de la VPN y SecureVault. El bloqueo que queda es de producto y de prueba en el POVA 5 (API 34), no de “Gradle en abstracto”. Una política de wrapper verde no sustituye `compileDebugKotlin`.
+`c0dadfe` volvió a romper `compileDebugKotlin` ([43649867051](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43649867051)). Gradle queda en B hasta que el Android Debug Build de la corrección termine en verde, con el job de Keystore incluido. Una política de wrapper verde no sustituye esa compilación.
+
+Después de ese verde, la fase 2 sigue siendo el ciclo de vida de la VPN y SecureVault. El bloqueo que queda es de producto y de prueba en el POVA 5 (API 34).
 
 Poner el motor de ciberdefensa (fase 4) antes del firewall dejaría los hallazgos de red otra vez en contadores de sesión. El motor debe consolidarse cuando ya pueda guardar un evento de bloqueo real. Por eso el firewall va antes, y escribe en el motor de hallazgos que ya existe (`lib/security/`), sin crear un segundo almacén.
 
@@ -40,7 +42,9 @@ Hecho cuando:
 - El TECNO POVA 5 (8 GB, Android 14, API 34) confirma parada desde la consola y desde **Detener**, y el icono de VPN de Android desaparece. Un emulador Android 16 no cuenta.
 - El mismo teléfono cambia Wi‑Fi ↔ datos móviles con el túnel aún arriba, y la etiqueta coincide con la red física.
 - Un callback de red posterior a la parada no reabre el túnel (`userRequestedStop`).
-- SecureVault: cifrado, clave incorrecta, dato alterado y migración v9→v10 sin borrar el secreto viejo antes de validar el nuevo. En el POVA 5 eso solo es válido si el APK nuevo lleva la misma firma. Hasta que el dueño cree el keystore de `docs/FASE_2_PRUEBAS_POVA5.md`, cada APK puede obligar a desinstalar y borrar la bóveda. El `applicationId` no se toca. Si el Keystore del teléfono no puede probarse, se documenta el límite y no se finge la migración.
+- SecureVault: cifrado, clave incorrecta, dato alterado y rotación sin borrar la clave vieja antes de releer la nueva. No es una migración v9→v10 del teléfono: conservar los datos al actualizar solo vale si el APK nuevo lleva la misma firma. Hasta que el dueño cree el keystore de `docs/FASE_2_PRUEBAS_POVA5.md`, cada APK puede obligar a desinstalar y borrar la bóveda. El `applicationId` no se toca. No se exige StrongBox ni autenticación de usuario: el Escudo y el HMAC no pueden esperar a que el usuario esté delante. La purga tiene que borrar también la clave del Android Keystore.
+- Un rearranque por VPN siempre activa o por bloqueo, después de una parada del usuario, no llama a `performUserStop` en silencio. El bloqueo vuelve a iniciar el Escudo y lo dice. Always-on sin bloqueo avisa y lo deja apagado.
+- `releaseTunnel` y `pthread_join` no corren en el hilo principal. El join nativo tiene un tope de 3 s y, si falla, el hilo sigue siendo joinable.
 - `flutter analyze` y `flutter test` siguen en verde. Los tests de `tool/test_vpn_config_template.py` se actualizan si cambia el contrato, no se debilitan.
 
 No entra en esta fase: modos de firewall, IA generativa, ni el protocolo completo de fugas. Ese protocolo se deja listo para ejecutarlo, no se marca como pasado.

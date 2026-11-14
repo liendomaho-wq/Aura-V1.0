@@ -74,7 +74,13 @@ internal object AuraUnderlyingNetwork {
     }
 
     fun publish() {
-        latest = labelFor(AuraVpnService.appliedUnderlyingFacts() ?: defaultFacts)
+        latest = labelFor(
+            factsForLabel(
+                tunnelUp = AuraVpnService.isTunnelInterfaceUp(),
+                applied = AuraVpnService.appliedUnderlyingFacts(),
+                fallback = defaultFacts,
+            ),
+        )
         for (listener in listeners) {
             try {
                 listener(latest)

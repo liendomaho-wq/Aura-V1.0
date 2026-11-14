@@ -68,3 +68,17 @@ internal object UnderlyingNetworkKind {
         )
     }
 }
+
+/**
+ * While the tunnel is up, a missing underlay is "Sin conexión", not the
+ * default network. When the tunnel is down, the default network is the label.
+ * A null result means the caller should show "Sin conexión".
+ */
+internal fun factsForLabel(
+    tunnelUp: Boolean,
+    applied: PublicNetworkFacts?,
+    fallback: PublicNetworkFacts?,
+): PublicNetworkFacts? = when {
+    tunnelUp && applied == null -> null
+    else -> applied ?: fallback
+}

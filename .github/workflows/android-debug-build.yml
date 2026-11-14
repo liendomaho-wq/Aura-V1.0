@@ -78,7 +78,12 @@ jobs:
 
       - name: Run Kotlin VPN and local SOCKS5 unit tests
         working-directory: android
-        run: AURA_ALLOW_DEBUG_SIGNING=true python3 ../tool/ci_run.py ./gradlew :app:testDebugUnitTest --no-daemon
+        env:
+          AURA_ALLOW_DEBUG_SIGNING: 'true'
+          AURA_DEBUG_STORE_PASSWORD: ${{ secrets.AURA_DEBUG_STORE_PASSWORD }}
+          AURA_DEBUG_KEY_ALIAS: ${{ secrets.AURA_DEBUG_KEY_ALIAS }}
+          AURA_DEBUG_KEY_PASSWORD: ${{ secrets.AURA_DEBUG_KEY_PASSWORD }}
+        run: python3 ../tool/ci_run.py ./gradlew :app:testDebugUnitTest --no-daemon
 
       - name: Record actual JVM result counts from JUnit XML
         run: |
@@ -129,11 +134,17 @@ jobs:
         working-directory: android
         env:
           AURA_ALLOW_DEBUG_SIGNING: 'true'
+          AURA_DEBUG_STORE_PASSWORD: ${{ secrets.AURA_DEBUG_STORE_PASSWORD }}
+          AURA_DEBUG_KEY_ALIAS: ${{ secrets.AURA_DEBUG_KEY_ALIAS }}
+          AURA_DEBUG_KEY_PASSWORD: ${{ secrets.AURA_DEBUG_KEY_PASSWORD }}
         run: python3 ../tool/ci_run.py ./gradlew :app:assembleStorageMigration :app:assembleStorageMigrationAndroidTest --no-daemon
 
       - name: Build debug APK including native tunnel
         env:
           AURA_ALLOW_DEBUG_SIGNING: 'true'
+          AURA_DEBUG_STORE_PASSWORD: ${{ secrets.AURA_DEBUG_STORE_PASSWORD }}
+          AURA_DEBUG_KEY_ALIAS: ${{ secrets.AURA_DEBUG_KEY_ALIAS }}
+          AURA_DEBUG_KEY_PASSWORD: ${{ secrets.AURA_DEBUG_KEY_PASSWORD }}
         run: python3 tool/ci_run.py flutter build apk --debug
 
       - name: Verify debug APK exists
@@ -256,6 +267,9 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         env:
           AURA_ALLOW_DEBUG_SIGNING: 'true'
+          AURA_DEBUG_STORE_PASSWORD: ${{ secrets.AURA_DEBUG_STORE_PASSWORD }}
+          AURA_DEBUG_KEY_ALIAS: ${{ secrets.AURA_DEBUG_KEY_ALIAS }}
+          AURA_DEBUG_KEY_PASSWORD: ${{ secrets.AURA_DEBUG_KEY_PASSWORD }}
         with:
           api-level: 36
           target: google_apis
