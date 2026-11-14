@@ -40,7 +40,7 @@ Hecho cuando:
 - El TECNO POVA 5 (8 GB, Android 14, API 34) confirma parada desde la consola y desde **Detener**, y el icono de VPN de Android desaparece. Un emulador Android 16 no cuenta.
 - El mismo teléfono cambia Wi‑Fi ↔ datos móviles con el túnel aún arriba, y la etiqueta coincide con la red física.
 - Un callback de red posterior a la parada no reabre el túnel (`userRequestedStop`).
-- SecureVault: cifrado, clave incorrecta, dato alterado y migración v9→v10 sin borrar el secreto viejo antes de validar el nuevo. Si el Keystore del teléfono no puede probarse, se documenta el límite y no se finge la migración.
+- SecureVault: cifrado, clave incorrecta, dato alterado y migración v9→v10 sin borrar el secreto viejo antes de validar el nuevo. En el POVA 5 eso solo es válido si el APK nuevo lleva la misma firma. Hasta que el dueño cree el keystore de `docs/FASE_2_PRUEBAS_POVA5.md`, cada APK puede obligar a desinstalar y borrar la bóveda. El `applicationId` no se toca. Si el Keystore del teléfono no puede probarse, se documenta el límite y no se finge la migración.
 - `flutter analyze` y `flutter test` siguen en verde. Los tests de `tool/test_vpn_config_template.py` se actualizan si cambia el contrato, no se debilitan.
 
 No entra en esta fase: modos de firewall, IA generativa, ni el protocolo completo de fugas. Ese protocolo se deja listo para ejecutarlo, no se marca como pasado.
@@ -96,6 +96,8 @@ Solo acciones que las fases anteriores ya verifican: regla de firewall, VPN, aud
 ## Pruebas físicas (los dos teléfonos)
 
 El teléfono del dueño es un **TECNO POVA 5 con 8 GB y Android 14 (API 34)**. El Redmi Note 15 Pro+ (Android 16) sigue siendo la segunda referencia de la spec. No se copian cifras de uno al otro. `5089d35` no generó APK. El primer SHA posterior que volvió a compilar es `eef52b0`, run [43646707387](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43646707387).
+
+**Aviso de firma:** mientras no estén los secretos `AURA_DEBUG_KEYSTORE_BASE64`, `AURA_DEBUG_STORE_PASSWORD`, `AURA_DEBUG_KEY_ALIAS` y `AURA_DEBUG_KEY_PASSWORD`, cada APK de prueba puede salir con otro certificado. Instalarlo encima falla y desinstalar borra SecureVault. Los pasos están en `docs/FASE_2_PRUEBAS_POVA5.md`. No se cambia `com.ciberdefensa.aura`.
 
 | Prueba | Redmi Note 15 Pro+ 5G, Android 16 | TECNO POVA 5, 8 GB, Android 14 (API 34) |
 |---|---|---|

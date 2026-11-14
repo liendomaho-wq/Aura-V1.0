@@ -29,10 +29,10 @@ Los tests `tool/test_*.py` que leen el fuente **no cuentan como prueba de compor
 | Categoría | Filas |
 |---|---|
 | A | 8 |
-| B | 55 |
+| B | 56 |
 | C | 17 |
 | D | 6 |
-| **Total** | **86** |
+| **Total** | **87** |
 
 ## Instantánea de Git y CI
 
@@ -136,7 +136,7 @@ Los tests `tool/test_*.py` que leen el fuente **no cuentan como prueba de compor
 |---|---|---|
 | Arranque de la VPN | B | Código de consentimiento, integridad y establecimiento con reintento IPv4. El dueño confirmó arranque y uso en el TECNO POVA 5 el 2026-11-14, sobre commits previos a la parada de `5089d35`. |
 | Parada manual y notificación Detener | B | `ACTION_STOP`, cierre de HEV, TUN, `stopForeground(STOP_FOREGROUND_REMOVE)`, `stopSelf()` y `userRequestedStop` en `AuraVpnService.kt`. En Android 14 hace falta el permiso de notificaciones y el tipo de servicio en primer plano. Sigue en B hasta verse en el POVA 5 (API 34). El APK de `5089d35` no existió. |
-| Cambio Wi‑Fi/datos | B | `registerDefaultNetworkCallback` y `hasTransport` (API pública). Ya no se lee `getUnderlyingNetworks`. `setUnderlyingNetworks` sigue en el servicio. Etiquetas WiFi / Datos móviles / Sin conexión. Sin prueba en API 34. |
+| Cambio Wi‑Fi/datos | B | El túnel y la etiqueta usan `UnderlyingNetworkKind.choosePhysical` sobre las redes que entrega el `NetworkCallback` (`INTERNET` + `NOT_VPN`). No se usa `allNetworks` ni `getUnderlyingNetworks`. Con el túnel activo, la etiqueta es la red pasada a `setUnderlyingNetworks`. Sin prueba en API 34. |
 | Tráfico TCP, UDP, DNS, IPv4, IPv6 y fugas | C | El protocolo está escrito en `docs/ANDROID_TRAFFIC_VALIDATION.md` y sigue pendiente en ambos teléfonos. |
 | Declarar cero fugas | D | Una VPN local no puede declararse libre de fugas sin medición en ese aparato y esa red. Además hay caminos de OEM (always-on, app excluida) que no son “cero” universal. |
 | Telemetría apagada por defecto | A | `lib/services/aura_local_telemetry.dart`, `docs/PRIVACY.md`, `test/aura_local_telemetry_test.dart`. Si alguien configura un endpoint remoto, eso ya no es el modo por defecto. |
@@ -144,6 +144,7 @@ Los tests `tool/test_*.py` que leen el fuente **no cuentan como prueba de compor
 | Migración SecureVault | B | Opciones en `lib/secure_vault.dart`. `SecureStorageMigrationTest` pasó en emulador Android 16, run [43631402912](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43631402912), SHA `e5cf2fe`. Ese job se saltó cuando Kotlin no compilaba. No cuenta como prueba del POVA 5 (API 34). |
 | Sobre de modelo | B | AES-256-CBC + HMAC, autenticado antes de descifrar. No es el AES-GCM que pide la spec para todo secreto. |
 | Secretos fuera del repo | A | Firma por variables de entorno; `tool/test_release_signing_policy.py` y `tool/test_release_signing_runtime.py`. No hay un barrido forense de toda la historia de Git en esta auditoría. |
+| Firma de prueba estable | B | Sin un keystore fijo, cada runner puede crear otro `debug.keystore` y el APK nuevo no actualiza al anterior: hay que desinstalar y se borra SecureVault. `com.ciberdefensa.aura` no cambia. Si existen `AURA_DEBUG_KEYSTORE_BASE64` y las contraseñas, GitHub Actions y CodeMagic los usan; si no, sigue el comportamiento anterior. Pasos: `docs/FASE_2_PRUEBAS_POVA5.md`. |
 
 ## Parte 6 — Acciones e incidentes
 

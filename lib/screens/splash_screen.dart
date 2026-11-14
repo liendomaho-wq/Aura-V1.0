@@ -140,7 +140,8 @@ class _SplashScreenState extends State<SplashScreen>
       if (!mounted) return;
       setState(() {
         _loadingProgress = 1;
-        _bootStatusText = 'AURA LISTA; EL TÚNEL VPN REQUIERE CONSENTIMIENTO.';
+        _bootStatusText =
+            'AURA LISTA; EL ESCUDO REQUIERE EL PERMISO VPN DE ANDROID.';
       });
       await Future<void>.delayed(const Duration(milliseconds: 350));
       _navigateToCore();

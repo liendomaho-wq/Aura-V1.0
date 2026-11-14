@@ -171,7 +171,7 @@ void main() {
     expect(find.text('WiFi'), findsOneWidget);
     expect(find.text('Hola, soy Aura.'), findsOneWidget);
     expect(find.byType(AuraAvatar), findsOneWidget);
-    expect(find.textContaining('VPN local opcional'), findsOneWidget);
+    expect(find.textContaining('Escudo local'), findsOneWidget);
     await _pumpUntilVpnEnabled(tester);
 
     state.setSecurityLevel(AuraSecurityLevel.warning);

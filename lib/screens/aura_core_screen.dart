@@ -987,12 +987,12 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
         : 'Presencia activa. Prepará la IA para razonar en tu dispositivo.';
 
     final shieldMetric = !_shieldStatusKnown
-        ? 'VPN local opcional · estado no confirmado'
+        ? 'Escudo local · estado no confirmado'
         : vpnActive
-        ? 'VPN local opcional · activa'
+        ? 'Escudo local · activo'
         : _shieldServiceActive
-        ? 'VPN local opcional · sin forwarding'
-        : 'VPN local opcional · inactiva';
+        ? 'Escudo local · sin forwarding'
+        : 'Escudo local · inactivo';
     final presenceMetrics = <String>[
       '${state.blockedEvents} señales de bloqueo',
       shieldMetric,

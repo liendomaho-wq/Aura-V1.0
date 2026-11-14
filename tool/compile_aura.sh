@@ -300,7 +300,11 @@ export GRADLE_OPTS="${GRADLE_OPTS:+$GRADLE_OPTS }-Dorg.gradle.java.home=$JAVA_HO
 log "Gradle Java: $("$JAVA_HOME/bin/java" -version 2>&1 | head -n 1)"
 
 if [[ "$USE_DEBUG_SIGNING" == "true" ]]; then
-    debug_keystore="$HOME/.android/debug.keystore"
+    # A fixed test keystore, when the owner configured one, replaces a
+    # per-machine debug key. Missing variables keep the generated fallback.
+    # shellcheck disable=SC1091
+    source "$project_root/tool/install_fixed_debug_keystore.sh"
+    debug_keystore="${AURA_DEBUG_KEYSTORE_PATH:-$HOME/.android/debug.keystore}"
     if [[ ! -f "$debug_keystore" ]]; then
         mkdir -p "$HOME/.android"
         keytool -genkeypair \

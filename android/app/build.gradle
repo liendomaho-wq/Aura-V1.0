@@ -87,6 +87,16 @@ android {
     }
 
     signingConfigs {
+        debug {
+            // Optional stable test key. Absent variables keep AGP's own debug keystore.
+            def debugKeystorePath = System.getenv("AURA_DEBUG_KEYSTORE_PATH")
+            if (debugKeystorePath != null && !debugKeystorePath.trim().isEmpty()) {
+                storeFile project.file(debugKeystorePath).absoluteFile
+                storePassword System.getenv("AURA_DEBUG_STORE_PASSWORD") ?: "android"
+                keyAlias System.getenv("AURA_DEBUG_KEY_ALIAS") ?: "androiddebugkey"
+                keyPassword System.getenv("AURA_DEBUG_KEY_PASSWORD") ?: (System.getenv("AURA_DEBUG_STORE_PASSWORD") ?: "android")
+            }
+        }
         release {
             def keystorePath = System.getenv("AURA_KEYSTORE_PATH")
             storeFile = keystorePath ? project.file(keystorePath).absoluteFile : null

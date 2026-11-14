@@ -68,6 +68,14 @@ jobs:
       - name: Install dependencies
         run: python3 tool/ci_run.py flutter pub get
 
+      - name: Use the fixed debug keystore when the secret exists
+        env:
+          AURA_DEBUG_KEYSTORE_BASE64: ${{ secrets.AURA_DEBUG_KEYSTORE_BASE64 }}
+          AURA_DEBUG_STORE_PASSWORD: ${{ secrets.AURA_DEBUG_STORE_PASSWORD }}
+          AURA_DEBUG_KEY_ALIAS: ${{ secrets.AURA_DEBUG_KEY_ALIAS }}
+          AURA_DEBUG_KEY_PASSWORD: ${{ secrets.AURA_DEBUG_KEY_PASSWORD }}
+        run: bash tool/install_fixed_debug_keystore.sh
+
       - name: Run Kotlin VPN and local SOCKS5 unit tests
         working-directory: android
         run: AURA_ALLOW_DEBUG_SIGNING=true python3 ../tool/ci_run.py ./gradlew :app:testDebugUnitTest --no-daemon
@@ -235,6 +243,14 @@ jobs:
 
       - name: Install dependencies
         run: python3 tool/ci_run.py flutter pub get
+
+      - name: Use the fixed debug keystore when the secret exists
+        env:
+          AURA_DEBUG_KEYSTORE_BASE64: ${{ secrets.AURA_DEBUG_KEYSTORE_BASE64 }}
+          AURA_DEBUG_STORE_PASSWORD: ${{ secrets.AURA_DEBUG_STORE_PASSWORD }}
+          AURA_DEBUG_KEY_ALIAS: ${{ secrets.AURA_DEBUG_KEY_ALIAS }}
+          AURA_DEBUG_KEY_PASSWORD: ${{ secrets.AURA_DEBUG_KEY_PASSWORD }}
+        run: bash tool/install_fixed_debug_keystore.sh
 
       - name: Real v9 to v10 Keystore migration on Android 16 emulator
         uses: reactivecircus/android-emulator-runner@v2
