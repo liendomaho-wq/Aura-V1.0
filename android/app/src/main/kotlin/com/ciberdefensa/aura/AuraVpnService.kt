@@ -125,6 +125,19 @@ class AuraVpnService : VpnService() {
             }
         }
 
+        /**
+         * Capabilities of the network last passed to setUnderlyingNetworks,
+         * or null when the tunnel interface is not up.
+         */
+        @JvmStatic
+        fun appliedUnderlyingFacts(): PublicNetworkFacts? {
+            val service = activeService ?: return null
+            if (service.vpnInterface?.fileDescriptor?.valid() != true) return null
+            val network = service.underlyingNetwork ?: return null
+            val capabilities = service.trackedNetworks[network] ?: return null
+            return networkFacts(capabilities)
+        }
+
         fun recordDnsAuditEvent(event: Map<String, Any>) {
             val action = event["action"] as? String ?: return
             if (event["requested_domain"] !is String) return
@@ -151,12 +164,17 @@ class AuraVpnService : VpnService() {
             enqueueUnderlyingNetworkRefresh()
         }
     }
+    private val trackedNetworks = java.util.Collections.synchronizedMap(
+        linkedMapOf<Network, NetworkCapabilities>(),
+    )
     private val underlyingNetworkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
+            rememberNetwork(network, null)
             enqueueUnderlyingNetworkRefresh()
         }
 
         override fun onLost(network: Network) {
+            trackedNetworks.remove(network)
             enqueueUnderlyingNetworkRefresh(excludedNetwork = network)
         }
 
@@ -164,6 +182,7 @@ class AuraVpnService : VpnService() {
             network: Network,
             networkCapabilities: NetworkCapabilities,
         ) {
+            rememberNetwork(network, networkCapabilities)
             enqueueUnderlyingNetworkRefresh()
         }
     }
@@ -873,6 +892,7 @@ class AuraVpnService : VpnService() {
         // Commit the selected Network only after Android confirms the metadata
         // update. If that update failed, a later callback must try it again.
         underlyingNetwork = selected
+        AuraUnderlyingNetwork.publish()
 
         if (selected == null) {
             Log.w("AuraVPN", "Se perdió la red física; forwarding detenido hasta recuperar salida.")
@@ -1030,23 +1050,29 @@ class AuraVpnService : VpnService() {
         updateForegroundNotification()
     }
 
+    private fun rememberNetwork(network: Network, capabilities: NetworkCapabilities?) {
+        val resolved = capabilities ?: getSystemService(ConnectivityManager::class.java)
+            ?.getNetworkCapabilities(network)
+        if (resolved == null) return
+        trackedNetworks[network] = resolved
+    }
+
     private fun findUnderlyingNetwork(excludedNetwork: Network? = null): Network? {
-        val connectivity = getSystemService(ConnectivityManager::class.java)
-        val candidates = connectivity.allNetworks.mapNotNull { network ->
+        val snapshot = synchronized(trackedNetworks) { LinkedHashMap(trackedNetworks) }
+        val candidates = snapshot.mapNotNull { (network, capabilities) ->
             if (network == excludedNetwork) return@mapNotNull null
-            val capabilities = connectivity.getNetworkCapabilities(network) ?: return@mapNotNull null
             if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
                 !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) ||
                 capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
             ) {
                 null
             } else {
-                network to capabilities
+                network to networkFacts(capabilities)
             }
         }
-        return candidates.firstOrNull {
-            it.second.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-        }?.first ?: candidates.firstOrNull()?.first
+        val chosen = UnderlyingNetworkKind.choosePhysical(candidates.map { it.second })
+            ?: return null
+        return candidates.firstOrNull { it.second == chosen }?.first
     }
 
     /**

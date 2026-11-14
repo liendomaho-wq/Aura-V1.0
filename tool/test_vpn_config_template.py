@@ -580,6 +580,12 @@ if "excludedNetwork: Network? = null" not in network_selection.group(0):
     sys.exit("FAIL: physical network selection must support excluding a lost network")
 if "network == excludedNetwork" not in network_selection.group(1):
     sys.exit("FAIL: a lost physical network must not be selected again during callback races")
+if "allNetworks" in text or "allNetworks" in Path(
+    "android/app/src/main/kotlin/com/ciberdefensa/aura/AuraUnderlyingNetwork.kt"
+).read_text(encoding="utf-8"):
+    sys.exit("FAIL: physical network selection must not use deprecated allNetworks")
+if "UnderlyingNetworkKind.choosePhysical" not in network_selection.group(1):
+    sys.exit("FAIL: tunnel underlay and the on-screen label must share choosePhysical")
 
 print("PASS: VPN tracks physical network availability and unregisters callbacks safely.")
 

@@ -1,11 +1,7 @@
 package com.ciberdefensa.aura
 
 /**
- * Physical transport under the VPN, never the tunnel itself.
- * Wi-Fi wins when both radios are reported together.
- */
-/**
- * One network as seen through public [android.net.NetworkCapabilities] flags.
+ * One network as seen through public NetworkCapabilities flags.
  * [isVpn] is true when the transport is VPN or the network lacks NOT_VPN.
  */
 internal data class PublicNetworkFacts(
@@ -44,9 +40,9 @@ internal object UnderlyingNetworkKind {
     }
 
     /**
-     * Picks the physical network using only public capability flags.
-     * A VPN transport is never shown as the user's Wi-Fi or mobile data.
-     * Among physical networks, validated Wi-Fi wins, then validated cellular.
+     * Same order used by the VPN underlay and by the on-screen label.
+     * Validated Wi-Fi, then validated cellular, then any physical network.
+     * A VPN transport is never selected.
      */
     fun choosePhysical(candidates: List<PublicNetworkFacts>): PublicNetworkFacts? {
         val physical = candidates.filter { !it.isVpn && it.notVpn && it.internet }

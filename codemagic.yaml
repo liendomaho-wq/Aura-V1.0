@@ -13,6 +13,11 @@ workflows:
       flutter: 3.47.9
       java: 17
     scripts:
+      - name: Use the fixed debug keystore when the secret exists
+        script: |
+          set -euo pipefail
+          cd "${CM_BUILD_DIR:?CM_BUILD_DIR is required}"
+          bash tool/install_fixed_debug_keystore.sh
       - name: Resolve Flutter dependencies and record toolchain
         script: |
           set -euo pipefail
@@ -190,7 +195,8 @@ workflows:
             --tests com.ciberdefensa.aura.VpnLifecycleGateTest \
             --tests com.ciberdefensa.aura.VpnRecoveryGateTest \
             --tests com.ciberdefensa.aura.AuraSocks5CredentialsTest \
-            --tests com.ciberdefensa.aura.Socks5AuthProtocolTest
+            --tests com.ciberdefensa.aura.Socks5AuthProtocolTest \
+            --tests com.ciberdefensa.aura.UnderlyingNetworkKindTest
       - name: Report Keystore migration validation status
         script: |
           echo '[AURA-VALIDATION][NOT RUN] La migración Keystore no se ejecuta en este workflow; requiere el job Android Keystore de GitHub Actions o un dispositivo Android autorizado.'
