@@ -211,8 +211,17 @@ class AuraVpnService : VpnService() {
             return Service.START_NOT_STICKY
         }
         if (!verifyIntegrityOrStop()) {
+            val report = try {
+                AuraAntiTampering.inspect(this)
+            } catch (_: Exception) {
+                emptyMap()
+            }
+            val reason = AuraAntiTampering.failureReason(report).ifBlank {
+                "La comprobacion de integridad impidio el arranque."
+            }
+            Log.e("AuraVPN", reason)
             if (requestId != null) {
-                reportState(false, "La comprobación de integridad falló.", requestId = requestId)
+                reportState(false, reason, requestId = requestId)
             }
             return Service.START_NOT_STICKY
         }
@@ -383,7 +392,13 @@ class AuraVpnService : VpnService() {
         }
         if (report["isSecure"] == true) return true
 
-        Log.e("AuraVPN", "Deteniendo el túnel por fallo de integridad.")
+        Log.e(
+            "AuraVPN",
+            "Deteniendo el tunel por fallo de integridad: ${AuraAntiTampering.failureReason(report)} " +
+                "signatureValid=${report["signatureValid"]} maps=${report["mapsInspectionSucceeded"]} " +
+                "frida=${report["fridaDetected"]} debugger=${report["debuggerBlocked"]} " +
+                "testSigned=${report["testSignedArtifact"]}.",
+        )
         val stopConfirmed = stopNativeWorker()
         tunnelStarted = false
         reportState(
@@ -408,8 +423,7 @@ class AuraVpnService : VpnService() {
             // El túnel no debe depender de que un feed remoto esté disponible al arrancar.
             // La lista se carga en segundo plano y se aplica cuando el motor ya está activo.
             val tun = lifecycleGate.runIfOpen {
-                val descriptor = createVpnBuilder().establish()
-                    ?: throw IOException("Android no estableció la interfaz VPN.")
+                val descriptor = establishVpnInterface()
                 vpnInterface = descriptor
                 descriptor
             } ?: throw IOException("El servicio VPN está cerrándose.")
@@ -432,7 +446,12 @@ class AuraVpnService : VpnService() {
                     TProxyService.TProxyAddDynamicSniRule(endpoint)
                 } ?: false
                 if (!applied) {
-                    throw IOException("El firewall SNI no confirmó el bloqueo de $endpoint.")
+                    // Optional DoH/SNI hints must not roll back an already
+                    // authenticated local tunnel; log and continue.
+                    Log.w(
+                        "AuraVPN",
+                        "No se pudo aplicar la regla SNI opcional para un resolvedor conocido.",
+                    )
                 }
             }
             val ready = lifecycleGate.runIfOpen {
@@ -594,8 +613,9 @@ class AuraVpnService : VpnService() {
         var established: ParcelFileDescriptor? = null
         try {
             established = lifecycleGate.runIfOpen {
-                val descriptor = createVpnBuilder().establish()
-                    ?: throw IOException("Android no restableció la interfaz VPN aislada.")
+                val descriptor = establishVpnInterface(
+                    rejectedMessage = "Android no restablecio la interfaz VPN aislada.",
+                )
                 vpnInterface = descriptor
                 descriptor
             } ?: throw IOException("El servicio VPN está cerrándose.")
@@ -626,16 +646,31 @@ class AuraVpnService : VpnService() {
         reportState(false, error.message ?: "Falló el aislamiento de red.")
     }
 
-    private fun createVpnBuilder(): Builder = Builder()
-        .setSession("Aura Mobile Defens")
-        .setMtu(1500)
-        .setUnderlyingNetworks(underlyingNetwork?.let { arrayOf(it) })
-        .addAddress("10.0.0.2", 24)
-        .addAddress("fd00::2", 64)
-        // Full routes capture TCP and UDP on both IP families for tunnel inspection.
-        .addRoute("0.0.0.0", 0)
-        .addRoute("::", 0)
-        .addDnsServer("10.0.0.3")
+    private fun establishVpnInterface(
+        rejectedMessage: String = "Android no estableció la interfaz VPN.",
+    ): ParcelFileDescriptor {
+        val withIpv6 = createVpnBuilder(includeIpv6 = true).establish()
+        if (withIpv6 != null) return withIpv6
+        Log.w("AuraVPN", "Android rechazo el tunel con IPv6; reintentando solo IPv4.")
+        return createVpnBuilder(includeIpv6 = false).establish()
+            ?: throw IOException(rejectedMessage)
+    }
+
+    private fun createVpnBuilder(includeIpv6: Boolean = true): Builder {
+        val builder = Builder()
+            .setSession("Aura Mobile Defens")
+            .setMtu(1500)
+            .setUnderlyingNetworks(underlyingNetwork?.let { arrayOf(it) })
+            .addAddress("10.0.0.2", 24)
+            // Full routes capture TCP and UDP for tunnel inspection.
+            .addRoute("0.0.0.0", 0)
+            .addDnsServer("10.0.0.3")
+        if (includeIpv6) {
+            builder.addAddress("fd00::2", 64)
+            builder.addRoute("::", 0)
+        }
+        return builder
+    }
 
     /**
      * Forwarding sockets are pinned to a physical Network. Without the callback
@@ -1016,11 +1051,17 @@ class AuraVpnService : VpnService() {
                 return
             } catch (exception: Exception) {
                 lastFailure = exception
+                if (!TProxyService.TProxyIsRunning()) {
+                    throw IOException(
+                        "El motor VPN se detuvo antes de dejar listo el proxy local.",
+                        exception,
+                    )
+                }
                 Thread.sleep(100)
             }
         }
         throw IOException(
-            "El proxy SOCKS5 local autenticado no quedó listo; túnel detenido.",
+            "El proxy SOCKS5 local autenticado no quedo listo; tunel detenido.",
             lastFailure,
         )
     }

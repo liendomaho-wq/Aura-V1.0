@@ -519,6 +519,31 @@ if (
 
 print("PASS: USB debugging is reported as an advisory signal without disabling VPN protection.")
 
+if "BuildConfig.IS_DEBUG_FALLBACK" not in anti_tampering:
+    sys.exit("FAIL: test-signed release artifacts must honor IS_DEBUG_FALLBACK")
+if "fun failureReason" not in anti_tampering:
+    sys.exit("FAIL: integrity failures must expose a user-visible reason")
+if "val testSignedArtifact = BuildConfig.DEBUG || BuildConfig.IS_DEBUG_FALLBACK" not in anti_tampering:
+    sys.exit("FAIL: Codemagic debug-signed release APKs must not fail the signature pin")
+print("PASS: test-signed artifacts can start the VPN when the cert pin is empty or mismatched.")
+
+start_tunnel = re.search(
+    r"private fun startTunnel\(requestId: String\?\) \{(.*?)\n    private fun handleTunnelStartFailure",
+    text,
+    re.DOTALL,
+)
+if not start_tunnel:
+    sys.exit("FAIL: could not locate startTunnel")
+if "throw IOException(" in start_tunnel.group(1) and "firewall SNI" in start_tunnel.group(1):
+    sys.exit("FAIL: optional SNI rules must not abort an already started tunnel")
+if "establishVpnInterface()" not in start_tunnel.group(1):
+    sys.exit("FAIL: tunnel start must use IPv6-fallback interface establishment")
+if "El motor VPN se detuvo antes de dejar listo el proxy local." not in text:
+    sys.exit("FAIL: SOCKS readiness must fail fast if the native worker already stopped")
+if "Android rechazo el tunel con IPv6; reintentando solo IPv4." not in text:
+    sys.exit("FAIL: VPN builder must retry IPv4-only when IPv6 establish() is rejected")
+print("PASS: VPN start keeps optional SNI non-fatal and retries IPv4 when needed.")
+
 # The VPN must track physical connectivity without selecting another VPN as its underlay.
 for required_network_guard in (
     "NetworkRequest.Builder()",

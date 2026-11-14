@@ -45,11 +45,20 @@ object AuraAntiTampering {
             .toSet()
 
         val installedCertificates = installedSignerDigests(context)
-        val localDebugFallback = BuildConfig.DEBUG && allowedCertificates.isEmpty()
-        val signatureValid = localDebugFallback ||
-            (allowedCertificates.isNotEmpty() &&
-                installedCertificates.isNotEmpty() &&
-                installedCertificates.all { it in allowedCertificates })
+        // DEBUG and explicit test-signed release builds (Codemagic/android-build
+        // with AURA_ALLOW_DEBUG_SIGNING) must not be blocked when the Gradle pin
+        // was empty or computed from a keystore that did not yet exist.
+        val testSignedArtifact = BuildConfig.DEBUG || BuildConfig.IS_DEBUG_FALLBACK
+        val pinnedSignatureValid = allowedCertificates.isNotEmpty() &&
+            installedCertificates.isNotEmpty() &&
+            installedCertificates.all { it in allowedCertificates }
+        val signatureValid = pinnedSignatureValid || testSignedArtifact
+        if (testSignedArtifact && !pinnedSignatureValid) {
+            android.util.Log.w(
+                "AuraVPN",
+                "Test-signed APK: signature pin is empty or does not match the installed cert; allowing start.",
+            )
+        }
 
         val mapsResult = try {
             val maps = File("/proc/self/maps").bufferedReader().use { it.readText() }
@@ -91,8 +100,32 @@ object AuraAntiTampering {
             "adbEnabled" to adbEnabled,
             // Retained for existing Dart consumers; ADB is never an integrity veto.
             "adbBlocked" to false,
-            "localDebugFallback" to localDebugFallback,
+            "localDebugFallback" to testSignedArtifact,
+            "testSignedArtifact" to testSignedArtifact,
         )
+    }
+
+    fun failureReason(report: Map<String, Any>): String {
+        if (report["isSecure"] == true) return ""
+        val parts = mutableListOf<String>()
+        if (report["signatureValid"] != true) {
+            parts.add("la firma del APK no coincide con la esperada")
+        }
+        if (report["mapsInspectionSucceeded"] != true) {
+            parts.add("no se pudo inspeccionar el proceso")
+        }
+        if (report["fridaDetected"] == true) {
+            parts.add("se detecto instrumentacion en el proceso")
+        }
+        if (report["debuggerBlocked"] == true) {
+            parts.add("hay un depurador adjunto en un build de release")
+        }
+        val detail = if (parts.isEmpty()) {
+            "motivo no determinado"
+        } else {
+            parts.joinToString("; ")
+        }
+        return "La comprobacion de integridad impidio el arranque: $detail."
     }
 
     private fun installedSignerDigests(context: Context): Set<String> {
@@ -1227,9 +1260,12 @@ class MainActivity: FlutterFragmentActivity() {
                 if (shieldStartGate.matchesServiceResponse(requestId)) {
                     // A timeout is not proof that the service stopped. Ask the
                     // caller to inspect status rather than reporting a false stop.
+                    lastShieldFailure =
+                        "El servicio no confirmo el arranque a tiempo."
+                    android.util.Log.e("AuraVPN", lastShieldFailure!!)
                     takePendingShieldResult()?.error(
                         "VPN_START_TIMEOUT",
-                        "El servicio no confirmó el arranque; compruebe su estado.",
+                        "El servicio no confirmo el arranque a tiempo; compruebe su estado.",
                         null,
                     )
                 }

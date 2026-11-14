@@ -736,17 +736,22 @@ abstract class AuraTools {
         },
       );
     } on PlatformException catch (error) {
+      final failureDetail = activate
+          ? await _lastShieldFailure(shieldChannel)
+          : null;
+      final motivo = failureDetail == null ? '' : ' Motivo: $failureDetail.';
       return ToolResult(
         summary: error.code == 'VPN_START_TIMEOUT'
-            ? 'El servicio VPN no confirmó el arranque a tiempo. Comprueba su estado antes de reintentar.'
+            ? 'El servicio VPN no confirmó el arranque a tiempo.$motivo Comprueba su estado antes de reintentar.'
             : error.code == 'VPN_CONSENT_TIMEOUT'
             ? 'El consentimiento VPN agotó el tiempo. Cierra el diálogo del sistema antes de reintentar.'
-            : 'No pude contactar el motor VPN. Revisa que Aura esté activa.',
+            : 'No pude contactar el motor VPN.$motivo Revisa que Aura esté activa.',
         data: <String, dynamic>{
           'ok': false,
           'error': 'operation_failed',
           'error_type': 'PlatformException',
           'code': error.code,
+          if (failureDetail != null) 'failure_reason': failureDetail,
           'tool': 'toggle_defenses',
           'security_level': 'warning',
         },

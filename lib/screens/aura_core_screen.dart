@@ -134,13 +134,14 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
           .invokeMapMethod<String, dynamic>('getShieldStatus')
           .timeout(const Duration(seconds: 3));
       if (status == null ||
-          status['status_verified'] != true ||
           status['service_active'] is! bool ||
           status['vpn_interface_active'] is! bool ||
           status['forwarding_active'] is! bool ||
           status['isolation_active'] is! bool) {
         throw const FormatException('Estado VPN no verificable.');
       }
+      final verified = status['status_verified'] == true;
+      final serviceActive = status['service_active'] == true;
       final active = status['forwarding_active'] == true;
       if (active &&
           (status['service_active'] != true ||
@@ -151,8 +152,20 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
       if (!mounted || generation != _shieldStatusGeneration || _isShieldBusy) {
         return;
       }
-      final serviceActive = status['service_active'] == true;
-      context.read<AuraStateProvider>().setVpnActive(active);
+      // An unverifiable running service stays unknown so we do not start a
+      // second tunnel. An idle service with status_verified != true still
+      // lets the user retry after a failed start or unclean shutdown.
+      if (status['status_verified'] != true && serviceActive) {
+        context.read<AuraStateProvider>().setVpnActive(false);
+        if (_shieldStatusKnown || !_shieldServiceActive) {
+          setState(() {
+            _shieldStatusKnown = false;
+            _shieldServiceActive = true;
+          });
+        }
+        return;
+      }
+      context.read<AuraStateProvider>().setVpnActive(verified && active);
       if (!_shieldStatusKnown || _shieldServiceActive != serviceActive) {
         setState(() {
           _shieldStatusKnown = true;
