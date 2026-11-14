@@ -1,7 +1,9 @@
 # Tráfico Android real — protocolo reproducible, pendiente de dispositivo
 
-**Todos los casos de este documento están PENDIENTES DE DISPOSITIVO.** Un
-comando preparado, un test JVM o un handshake local no es una ejecución física.
+**Los casos de este protocolo siguen PENDIENTES DE DISPOSITIVO.** El 2026-11-14
+el propietario confirmó que la VPN arranca y funciona en un TECNO POVA 5
+(Android). Eso no cierra fugas, IPv6, batería ni ningún caso de este documento.
+Un comando preparado, un test JVM o un handshake local no es una ejecución física.
 No usar root, Shizuku, Superuser, listeners sustitutos de HEV ni certificados TLS
 ignorados. Ejecutar únicamente contra infraestructura y dispositivos autorizados.
 

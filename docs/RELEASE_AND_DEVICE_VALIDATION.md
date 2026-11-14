@@ -153,8 +153,13 @@ Para métricas ML, conservar dataset real, manifiesto, splits, semilla y reporte
 
 El protocolo ejecutable, incluyendo el probe contra el listener HEV real,
 TCP/UDP/DNS, IPv6 y un fallo de recuperación por conflicto real de puerto, está
-en [ANDROID_TRAFFIC_VALIDATION.md](ANDROID_TRAFFIC_VALIDATION.md). Todos esos
-casos están **pendientes de dispositivo** hasta adjuntar sus resultados.
+en [ANDROID_TRAFFIC_VALIDATION.md](ANDROID_TRAFFIC_VALIDATION.md). Esos casos
+siguen **pendientes de dispositivo** hasta adjuntar sus resultados. La fila
+siguiente no los cierra.
+
+| Fecha | Dispositivo | Caso | Resultado | Sigue sin validar |
+|---|---|---|---|---|
+| 2026-11-14 | TECNO POVA 5 (Android) | Arranque y funcionamiento de la VPN, confirmado por el propietario | Validado solo en ese teléfono | Fugas, IPv6, batería, cambios de red y el resto de esta sección |
 
 Documentar estado inicial, acción, resultado observable y logs para cada caso:
 

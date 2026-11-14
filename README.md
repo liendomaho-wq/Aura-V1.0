@@ -1,13 +1,45 @@
 # Aura Mobile Defens
 
 Aplicación Android de ciberdefensa local con Flutter/Dart, Kotlin y C/JNI.
-Funciona como una app normal, **sin root, Shizuku ni Superuser**. «Defens» es la
-ortografía intencional del producto.
+«Defens» es la ortografía intencional del producto.
 
-**En desarrollo; no certificada ni lista para release.** La implementación, una
-prueba unitaria y una función verificada en un teléfono son evidencias distintas.
-El estado de validación, los SHA, fallos y enlaces de CI pertenecen a
-[AURA_FINAL_AUDIT.md](AURA_FINAL_AUDIT.md), no a este README.
+## Qué es Aura / Qué hace
+
+Aura trabaja en el propio teléfono. No pide cuenta ni root, y no usa Shizuku ni
+Superuser. En una instalación limpia la telemetría está apagada.
+
+- **VPN local.** Si la persona la activa y acepta el permiso de Android, las
+  conexiones pasan por un túnel en el dispositivo. El filtrado ocurre ahí: Aura
+  no reenvía ese tráfico a servidores propios.
+- **Análisis de dominios.** Un clasificador local mira el nombre del dominio.
+  No abre la página y una clasificación no garantiza que el sitio sea seguro.
+- **Apps y permisos.** Revisa las aplicaciones que Android deja ver y los
+  permisos o accesos que el sistema informa. No desinstala otras apps ni las
+  aísla por su cuenta.
+- **Bloqueo de dominios.** Puede bloquear un dominio cuando la persona lo pide
+  y lo confirma.
+- **Aislamiento de pánico.** Puede dejar el túnel descartando el tráfico, solo
+  después de la confirmación prevista.
+- **Asistente en español.** Entiende un conjunto acotado de órdenes. Las acciones
+  que cambian la defensa piden responder `CONFIRMO`.
+- **Modelo de lenguaje opcional.** No viene dentro de la APK. Se descarga con
+  consentimiento, se comprueba en el teléfono y no ejecuta acciones ni sustituye
+  al clasificador.
+
+## Estado
+
+**En desarrollo. No es un antivirus certificado y no está en Play Store.**
+
+El 14 de noviembre de 2026 el propietario confirmó que la VPN arranca y funciona
+en un TECNO POVA 5 con Android. Esa confirmación es de ese teléfono y de ese uso.
+Sigue pendiente una matriz más amplia de dispositivos. Los feeds de amenazas
+necesitan configuración. En ese equipo no se han cerrado las pruebas de fugas,
+IPv6 ni batería. Un arranque correcto no demuestra ausencia de fugas ni
+protección universal.
+
+La implementación, una prueba unitaria y una función comprobada en un teléfono
+son evidencias distintas. SHA, fallos y enlaces de CI están en
+[AURA_FINAL_AUDIT.md](AURA_FINAL_AUDIT.md), no en este README.
 
 La experiencia aprobada conserva el tema oscuro, cian/violeta, consola y avatar
 con la IA protagonista. Este trabajo no rediseña la interfaz ni incorpora
@@ -21,7 +53,7 @@ publicación, monetización o cambios de distribución.
 | Clasificador ML | Bosque local de dominios, modelo activo **3.0.0**, seis características. | No inspecciona páginas ni archivos; una clasificación no garantiza seguridad. |
 | Auditoría Android | Inventario visible, permisos concedidos, servicios habilitados, firma, provenance y estados AppOps accesibles. | Visibilidad y APIs de una app normal; no puede aislar, desinstalar ni vigilar arbitrariamente otras apps. |
 | Centro de Hallazgos | Evidencia local de postura, apps y red con severidad, confianza, estado, alcance y límites. | Solo lectura: requiere auditoría/escaneo, no corrige ni desinstala, y no certifica ausencia de amenazas. |
-| VPN opcional | VpnService → TUN → HEV; rutas IPv4/IPv6, SOCKS5 autenticado y filtros DNS/SNI selectivos. | Arranque local no demuestra tráfico extremo a extremo ni ausencia de fugas. ECH, DoH personalizado y QUIC no se descifran. |
+| VPN opcional | VpnService → TUN → HEV; rutas IPv4/IPv6, SOCKS5 autenticado y filtros DNS/SNI selectivos. El 2026-11-14 el propietario confirmó arranque y funcionamiento en un TECNO POVA 5. | Esa confirmación no demuestra ausencia de fugas, IPv6 ni batería. ECH, DoH personalizado y QUIC no se descifran. |
 | Privacidad | Telemetría opt-in, HMAC de dominios y almacenamiento protegido. | Seudonimización, no anonimización absoluta; un servidor puede observar la IP de conexión. |
 
 Aura no sustituye un EDR ni garantiza protección universal. Los resultados deben
@@ -211,8 +243,11 @@ inventar resultados. Políticas: [privacidad](docs/PRIVACY.md) y
 | ABIs declaradas | `armeabi-v7a`, `arm64-v8a`, `x86_64`. Flutter 3.47.9 no publica motor para x86 de 32 bits. |
 
 Son requisitos/configuración, **no una certificación de todos los teléfonos**.
-La referencia física es Redmi Note 15 Pro Plus 5G, 8 GB, Android 16. Compatibilidad
-real depende del OEM, permisos, ABI, red y pruebas en cada versión relevante.
+La referencia de ingeniería sigue siendo Redmi Note 15 Pro Plus 5G, 8 GB,
+Android 16. El arranque y el funcionamiento de la VPN se confirmaron el
+2026-11-14 en un TECNO POVA 5; eso no sustituye una matriz más amplia ni las
+pruebas de fugas, IPv6 o batería. Compatibilidad real depende del OEM, permisos,
+ABI, red y pruebas en cada versión relevante.
 
 En una estación con la toolchain completa, sin secretos de producción:
 
