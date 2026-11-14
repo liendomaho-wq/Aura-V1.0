@@ -95,11 +95,11 @@ Solo acciones que las fases anteriores ya verifican: regla de firewall, VPN, aud
 
 ## Pruebas físicas (los dos teléfonos)
 
-El teléfono del dueño es un **TECNO POVA 5 con 8 GB y Android 14 (API 34)**. El Redmi Note 15 Pro+ (Android 16) sigue siendo la segunda referencia de la spec. No se copian cifras de uno al otro. El último APK de `main` que se sabe compilable es el de `e5cf2fe`. `5089d35` no generó APK.
+El teléfono del dueño es un **TECNO POVA 5 con 8 GB y Android 14 (API 34)**. El Redmi Note 15 Pro+ (Android 16) sigue siendo la segunda referencia de la spec. No se copian cifras de uno al otro. `5089d35` no generó APK. El primer SHA posterior que volvió a compilar es `eef52b0`, run [43646707387](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43646707387).
 
 | Prueba | Redmi Note 15 Pro+ 5G, Android 16 | TECNO POVA 5, 8 GB, Android 14 (API 34) |
 |---|---|---|
-| Instalar el APK de prueba del SHA | Pendiente | Imposible con `5089d35`. El último APK conocido es `e5cf2fe`. Repetir con el SHA que vuelva a compilar. |
+| Instalar el APK de prueba del SHA | Pendiente | `5089d35` no se pudo instalar. El APK de `eef52b0` ya compiló; falta instalarlo en el teléfono. |
 | Arranque de la VPN | Pendiente | Hecho el 2026-11-14 en un SHA anterior a la rotura; repetir en API 34 con el SHA verde |
 | Parada desde Aura y desde Detener | Pendiente | Pendiente. El código está, pero `5089d35` no se pudo instalar. |
 | Wi‑Fi ↔ datos, etiqueta correcta, túnel vivo | Pendiente | Pendiente |

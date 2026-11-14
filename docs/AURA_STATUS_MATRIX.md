@@ -28,8 +28,8 @@ Los tests `tool/test_*.py` que leen el fuente **no cuentan como prueba de compor
 
 | Categoría | Filas |
 |---|---|
-| A | 7 |
-| B | 56 |
+| A | 8 |
+| B | 55 |
 | C | 17 |
 | D | 6 |
 | **Total** | **86** |
@@ -52,7 +52,7 @@ Los tests `tool/test_*.py` que leen el fuente **no cuentan como prueba de compor
 | Flutter/Dart | B | App en `lib/` con consola, splash, agente y tests (`flutter test` local previo: 316 pasaron, 1 omitida). No cubre firewall por modos, memoria de conversación ni respuesta a incidentes. |
 | Kotlin y servicios | B | `AuraVpnService`, escáner, LLM, telemetría y `AuraUpdateWorker` existen. Desde `5089d35` `compileDebugKotlin` estaba roto por `underlyingNetworks` (API no pública). Este arreglo lo quita. Siguen faltando los servicios de las Partes 4 y 6. |
 | C++/JNI | B | `hev-jni.c` (puente en hilo propio), `aura_sni_firewall.c`, `libaura_llm`. `tool/test_jni_bridge.py` comprueba el fuente y omite el harness si falta `jni.h`. El dueño vio la VPN estable tras el arreglo de crash; no hay matriz JNI de fugas. |
-| Gradle | B | La política del wrapper y del NDK pasa (`tool/test_gradle_wrapper_policy.py`, `tool/test_install_android_ndk.py`), pero eso no compila la app. `assembleDebug` falló en `5089d35` y en `6318277`. Vuelve a B hasta un Android Debug Build verde del SHA que quite la API privada. |
+| Gradle | A | La política del wrapper y del NDK pasa, y además `eef52b0` compiló: [Aura Android Debug Build 43646707387](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43646707387) incluye `compileDebugKotlin`, el APK debug y las pruebas JVM. La A anterior, apoyada solo en tests de política mientras el build estaba rojo, no valía. |
 | llama.cpp | B | Backend nombrado en `AuraLlmContract.kt` y empaquetado como `libaura_llm.so` (lo comprueba el script de CodeMagic). Sin generación observada en un teléfono. |
 | Motor de IA (clasificador) | A | Bosque 3.0.0 en `assets/model/aura_brain_model.json`, `lib/inference/aura_ai_inference.dart`, `test/aura_ai_inference_test.dart`. No inspecciona páginas. |
 | Agente | B | `lib/agent/agent_controller.dart`, parser por reglas, confirmación `CONFIRMO`, `test/agent_controller_test.dart`. No planifica tareas persistentes. |
@@ -66,7 +66,7 @@ Los tests `tool/test_*.py` que leen el fuente **no cuentan como prueba de compor
 | Permisos | B | Manifest y escáner (`AuraAppGenomeScanner.kt`, `test/aura_core_test.dart`). No guía la revocación ni la desinstalación oficial. |
 | Interfaz | B | Splash, consola, hallazgos, hoja del modelo y etiqueta de red. La Parte 7 está diferida. No hay pantalla de firewall. |
 | Navegación | B | Splash hacia una consola. No hay rutas separadas para reglas, historial o incidentes. |
-| CI de GitHub | B | Workflows reales. Android Debug Build en rojo en [43636981696](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43636981696) (`5089d35`) y [43645598876](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43645598876) (`6318277`). Flutter Quality no compila Kotlin, así que puede estar verde con el mismo código roto. El enlace del build verde posterior a este arreglo se añade cuando Actions termine. |
+| CI de GitHub | B | Android Debug Build estuvo en rojo en [43636981696](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43636981696) (`5089d35`) y [43645598876](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43645598876) (`6318277`). En `eef52b0` volvió a verde: [43646707387](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43646707387) (APK debug, pruebas JVM y migración Keystore en emulador Android 16) y [Flutter Quality 43646707382](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43646707382). Sigue en B porque Flutter Quality no compila Kotlin y CodeMagic no se observó. |
 | CodeMagic | B | Dos workflows operativos en el YAML. El release de prueba puede firmar con debug. La migración Keystore no corre ahí. |
 | Pruebas | B | Suites Flutter, Python y JVM de la VPN. Falta el protocolo físico y casi toda la Parte 4 y 6. |
 | Documentación | B | README y `docs/` abundantes. Faltan los nombres que pide la Parte 8: `AURA_ARCHITECTURE.md`, `AURA_SECURITY.md`, `AURA_FIREWALL.md`, `AURA_VPN.md`, `AURA_AI.md`, `AURA_TESTING.md`. |
@@ -173,7 +173,7 @@ Los tests `tool/test_*.py` que leen el fuente **no cuentan como prueba de compor
 
 ## Issues críticos (orden de daño si se ignoran)
 
-1. Desde `5089d35`, `main` no compilaba Kotlin (`underlyingNetworks`, fuera del SDK público). No había APK de la parada ni de la etiqueta de red. Los runs [43636981696](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43636981696) y [43645598876](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43645598876) están en rojo. Este arreglo usa solo `hasTransport`, `NET_CAPABILITY_NOT_VPN` y `allNetworks`.
+1. Desde `5089d35`, `main` no compilaba Kotlin (`underlyingNetworks`, fuera del SDK público). Los runs [43636981696](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43636981696) y [43645598876](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43645598876) están en rojo. `eef52b0` lo quita y el build volvió a verde en [43646707387](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43646707387). La parada y la etiqueta de red ya se pueden instalar; en el POVA 5 siguen sin probarse.
 2. La parada, **Detener** y el cambio Wi‑Fi/datos siguen sin confirmarse en el TECNO POVA 5 (8 GB, Android 14, API 34). El arranque sí, en un build anterior que compilaba.
 3. No hay medición de tráfico, fugas, IPv6 ni batería. Afirmar cero fugas es falso.
 4. La IA local no ha generado un token en el POVA 5. 8 GB no demuestran que el GGUF cargue.
