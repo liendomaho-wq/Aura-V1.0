@@ -28,8 +28,8 @@ Los tests `tool/test_*.py` que leen el fuente **no cuentan como prueba de compor
 
 | Categoría | Filas |
 |---|---|
-| A | 7 |
-| B | 60 |
+| A | 8 |
+| B | 59 |
 | C | 17 |
 | D | 6 |
 | **Total** | **90** |
@@ -43,16 +43,16 @@ Los tests `tool/test_*.py` que leen el fuente **no cuentan como prueba de compor
 - Si `~/.android/debug.keystore` no existe, `tool/compile_aura.sh` lo genera en esa máquina. En un runner efímero el certificado puede cambiar de build a build. Instalar encima fallaría con `INSTALL_FAILED_UPDATE_INCOMPATIBLE` y desinstalar **borra** SecureVault y el resto de datos. No se compararon dos artefactos en esta corrección. No se mete un keystore en Git. Hace falta un keystore de prueba fijo en un grupo secreto de CodeMagic, o aceptar que cada APK de prueba obliga a desinstalar.
 - Toolchain fijada en `android/app/build.gradle`: minSdk 24, compileSdk/targetSdk 36, NDK `28.2.13676358`, ABI `armeabi-v7a`, `arm64-v8a`, `x86_64`.
 - Dispositivo objetivo confirmado por el dueño el 2026-11-14: **TECNO POVA 5, 8 GB de RAM, Android 14 (API 34)**. El Redmi Note 15 Pro+ 5G (Android 16) sigue en la spec como segunda referencia, no como sustituto. Un emulador Android 16 **no cuenta** como prueba del POVA 5. Toda fila que pida validación en el aparato sigue en B hasta verse en API 34.
-- El dueño confirmó el **arranque** de la VPN en ese TECNO, en un SHA anterior a `5089d35`. Ese SHA compilaba (`e5cf2fe` es el último Android Debug Build en verde). `5089d35` no produjo APK: la parada y la etiqueta de red no se pudieron instalar.
+- El dueño confirmó el **arranque** de la VPN en ese TECNO, en un SHA anterior a `5089d35`. El Android Debug Build en verde de esta corrección es `466f164`: [43652803857](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43652803857), con el job de Keystore ejecutado. `5089d35` no produjo APK. La parada y la etiqueta de ese APK nuevo siguen sin verse en el teléfono.
 
 ## Parte 1 — Áreas de la auditoría
 
 | Área | Estado | Evidencia o hueco |
 |---|---|---|
-| Flutter/Dart | B | App en `lib/` con consola, splash, agente y tests (`flutter test` local previo: 316 pasaron, 1 omitida). No cubre firewall por modos, memoria de conversación ni respuesta a incidentes. |
+| Flutter/Dart | B | App en `lib/` con consola, splash, agente y tests (`flutter test` local sobre esta corrección: 323 pasaron, 1 omitida). No cubre firewall por modos, memoria de conversación ni respuesta a incidentes. |
 | Kotlin y servicios | B | `AuraVpnService`, escáner, LLM, telemetría y `AuraUpdateWorker` existen. Desde `5089d35` `compileDebugKotlin` estaba roto por `underlyingNetworks` (API no pública). Este arreglo lo quita. Siguen faltando los servicios de las Partes 4 y 6. |
 | C++/JNI | B | `hev-jni.c` (puente en hilo propio), `aura_sni_firewall.c`, `libaura_llm`. `tool/test_jni_bridge.py` comprueba el fuente y omite el harness si falta `jni.h`. El dueño vio la VPN estable tras el arreglo de crash; no hay matriz JNI de fugas. |
-| Gradle | B | `eef52b0` compiló en [43646707387](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43646707387), pero `c0dadfe` volvió a cambiar Gradle y Kotlin y [43649867051](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43649867051) falló en `compileDebugKotlin`: `appliedUnderlyingFacts` era público y devolvía el tipo interno `PublicNetworkFacts`. Esa función pasa a `internal`. Esta fila vuelve a A solo cuando el Android Debug Build de este SHA termine en verde, incluido el job de Keystore. |
+| Gradle | A | `466f164` compiló en [Aura Android Debug Build 43652803857](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43652803857): `compileDebugKotlin`, el APK debug, las pruebas JVM y el job «Real Android Keystore migration» en el emulador Android 16. Ese job no quedó skipped. `c0dadfe` había fallado en [43649867051](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43649867051) porque `appliedUnderlyingFacts` era público y devolvía el tipo interno `PublicNetworkFacts`. |
 | llama.cpp | B | Backend nombrado en `AuraLlmContract.kt` y empaquetado como `libaura_llm.so` (lo comprueba el script de CodeMagic). Sin generación observada en un teléfono. |
 | Motor de IA (clasificador) | A | Bosque 3.0.0 en `assets/model/aura_brain_model.json`, `lib/inference/aura_ai_inference.dart`, `test/aura_ai_inference_test.dart`. No inspecciona páginas. |
 | Agente | B | `lib/agent/agent_controller.dart`, parser por reglas, confirmación `CONFIRMO`, `test/agent_controller_test.dart`. No planifica tareas persistentes. |
@@ -66,7 +66,7 @@ Los tests `tool/test_*.py` que leen el fuente **no cuentan como prueba de compor
 | Permisos | B | Manifest y escáner (`AuraAppGenomeScanner.kt`, `test/aura_core_test.dart`). No guía la revocación ni la desinstalación oficial. |
 | Interfaz | B | Splash, consola, hallazgos, hoja del modelo y etiqueta de red. La Parte 7 está diferida. No hay pantalla de firewall. |
 | Navegación | B | Splash hacia una consola. No hay rutas separadas para reglas, historial o incidentes. |
-| CI de GitHub | B | Android Debug Build estuvo en rojo en [43636981696](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43636981696) (`5089d35`), [43645598876](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43645598876) (`6318277`) y [43649867051](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43649867051) (`c0dadfe`, `compileDebugKotlin`; el job de Keystore quedó skipped). El último verde completo es `eef52b0`: [43646707387](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43646707387). Sigue en B hasta que el SHA de esta corrección tenga ese workflow en verde, Keystore incluido. Flutter Quality no compila Kotlin y CodeMagic no se observó. |
+| CI de GitHub | B | `466f164` tiene en verde [Android Debug Build 43652803857](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43652803857) (APK y Keystore), [Flutter Quality 43652803879](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43652803879) y el pipeline de modelo [43652803836](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43652803836). Sigue en B porque Flutter Quality no compila Kotlin y CodeMagic no se observó. Release signing no se disparó: este push no tocó `build.gradle` ni `compile_aura.sh`. El release por tag y el spike de llama no corren en un push a `main`. |
 | CodeMagic | B | Dos workflows operativos en el YAML. El release de prueba puede firmar con debug. La migración Keystore no corre ahí. |
 | Pruebas | B | Suites Flutter, Python y JVM de la VPN. Falta el protocolo físico y casi toda la Parte 4 y 6. |
 | Documentación | B | README y `docs/` abundantes. Faltan los nombres que pide la Parte 8: `AURA_ARCHITECTURE.md`, `AURA_SECURITY.md`, `AURA_FIREWALL.md`, `AURA_VPN.md`, `AURA_AI.md`, `AURA_TESTING.md`. |
@@ -136,7 +136,7 @@ Los tests `tool/test_*.py` que leen el fuente **no cuentan como prueba de compor
 |---|---|---|
 | Arranque de la VPN | B | Código de consentimiento, integridad y establecimiento con reintento IPv4. El dueño confirmó arranque y uso en el TECNO POVA 5 el 2026-11-14, sobre commits previos a la parada de `5089d35`. |
 | Parada manual y notificación Detener | B | `ACTION_STOP`, cierre de HEV, TUN, `stopForeground(STOP_FOREGROUND_REMOVE)`, `stopSelf()` y `userRequestedStop` en `AuraVpnService.kt`. `releaseTunnel` y `pthread_join` van en el hilo `aura-vpn-stop`, con tope de 3 s (`AURA_JOIN_TIMEOUT_MS`); si el join falla o vence, `thread_joinable` sigue en 1. En Android 14 hace falta el permiso de notificaciones. Sigue en B hasta verse en el POVA 5 (API 34). |
-| Cambio Wi‑Fi/datos | B | El túnel y la etiqueta usan `UnderlyingNetworkKind.choosePhysical` sobre las redes que entrega el `NetworkCallback` (`INTERNET` + `NOT_VPN`). No se usa `allNetworks` ni `getUnderlyingNetworks`. Con el túnel activo, la etiqueta es la red pasada a `setUnderlyingNetworks`. Si el túnel está arriba y no hay red subyacente, la etiqueta es **Sin conexión**, no la red por defecto. El listener del servicio ya no vuelve a entrar en `publish`. Sin prueba en API 34. El APK de `c0dadfe` no se generó: [43649867051](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43649867051). |
+| Cambio Wi‑Fi/datos | B | El túnel y la etiqueta usan `UnderlyingNetworkKind.choosePhysical` sobre las redes que entrega el `NetworkCallback` (`INTERNET` + `NOT_VPN`). No se usa `allNetworks` ni `getUnderlyingNetworks`. Con el túnel activo, la etiqueta es la red pasada a `setUnderlyingNetworks`. Si el túnel está arriba y no hay red subyacente, la etiqueta es **Sin conexión**, no la red por defecto. El listener del servicio ya no vuelve a entrar en `publish`. Sin prueba en API 34. El APK de `466f164` sí se generó: [43652803857](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43652803857). |
 | Always-on y bloqueo de VPN | B | Si el usuario ya detuvo el Escudo, un rearranque con bloqueo (API 29+) lo inicia y lo explica. Always-on sin bloqueo avisa y lo deja apagado. Ninguno de los dos llama a `performUserStop` en silencio. `SystemVpnRestartTest` cubre la decisión. Falta verlo en el POVA 5. |
 | Copia de seguridad y transferencia | B | `android:dataExtractionRules` excluye todo el dominio en `cloud-backup` y en `device-transfer`. `allowBackup="false"` no basta en targetSdk 36. No hay una transferencia real de aparato a aparato. |
 | Tráfico TCP, UDP, DNS, IPv4, IPv6 y fugas | C | El protocolo está escrito en `docs/ANDROID_TRAFFIC_VALIDATION.md` y sigue pendiente en ambos teléfonos. |

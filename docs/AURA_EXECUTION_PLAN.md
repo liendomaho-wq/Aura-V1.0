@@ -27,7 +27,7 @@ No se adelanta la fase 3 ni la 5. El firewall sobre una VPN que no para, o una I
 
 `5089d35` y `6318277` no compilaban. La fase 2 empieza por dejar el build Android en verde, porque sin APK no hay prueba física de la parada. Ese arreglo de compilación (quitar `underlyingNetworks`) es previo a la fase 2 y no la abre: no añade firewall, IA ni acciones nuevas.
 
-`c0dadfe` volvió a romper `compileDebugKotlin` ([43649867051](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43649867051)). Gradle queda en B hasta que el Android Debug Build de la corrección termine en verde, con el job de Keystore incluido. Una política de wrapper verde no sustituye esa compilación.
+`c0dadfe` rompió `compileDebugKotlin` ([43649867051](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43649867051)). `466f164` lo corrigió y [43652803857](https://github.com/liendomaho-wq/Aura-V1.0/actions/runs/43652803857) terminó en verde, con el job de Keystore ejecutado. Gradle vuelve a A por ese run. Una política de wrapper verde no sustituye esa compilación.
 
 Después de ese verde, la fase 2 sigue siendo el ciclo de vida de la VPN y SecureVault. El bloqueo que queda es de producto y de prueba en el POVA 5 (API 34).
 
