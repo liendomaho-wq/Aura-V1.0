@@ -588,6 +588,61 @@ void main() {
     expect(result.data.containsKey('vpn_active'), isFalse);
   });
 
+  test('toggle_defenses expone el motivo verificado del fallo VPN', () async {
+    messenger.setMockMethodCallHandler(shieldChannel, (call) async {
+      return switch (call.method) {
+        'startShield' => false,
+        'getLastShieldFailure' => 'La comprobación de integridad falló.',
+        _ => null,
+      };
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(
+        name: 'toggle_defenses',
+        arguments: <String, dynamic>{
+          'activate': true,
+          'confirmed_by_user': true,
+        },
+      ),
+    );
+
+    expect(result.data['ok'], isFalse);
+    expect(
+      result.data['failure_reason'],
+      'La comprobación de integridad falló.',
+    );
+    expect(
+      result.summary,
+      contains('Motivo: La comprobación de integridad falló.'),
+    );
+    expect(result.summary, contains('Comprueba su estado'));
+  });
+
+  test('toggle_defenses no filtra rutas en el motivo del fallo VPN', () async {
+    messenger.setMockMethodCallHandler(shieldChannel, (call) async {
+      return switch (call.method) {
+        'startShield' => false,
+        'getLastShieldFailure' => '/data/user/0/aura/secret-config.yml',
+        _ => null,
+      };
+    });
+
+    final result = await AuraTools.execute(
+      const ToolStep(
+        name: 'toggle_defenses',
+        arguments: <String, dynamic>{
+          'activate': true,
+          'confirmed_by_user': true,
+        },
+      ),
+    );
+
+    expect(result.data.containsKey('failure_reason'), isFalse);
+    expect(result.summary, isNot(contains('/data/user/0/aura')));
+    expect(result.data.toString(), isNot(contains('/data/user/0/aura')));
+  });
+
   test(
     'unexpected native scan errors return a failed result without leaking details',
     () async {

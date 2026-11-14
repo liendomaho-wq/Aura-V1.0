@@ -151,6 +151,7 @@ class MainActivity: FlutterFragmentActivity() {
     private var pendingNotificationResult: MethodChannel.Result? = null
     private var pendingNotificationPayload: Pair<String, String>? = null
     private var vpnReceiverRegistered = false
+    private var lastShieldFailure: String? = null
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         AuraHostileEnvironment.recordObscuredTouch(event)
@@ -169,7 +170,10 @@ class MainActivity: FlutterFragmentActivity() {
                 val status = AuraVpnService.shieldStatus()
                 val confirmed = started && status["status_verified"] == true &&
                     status["forwarding_active"] == true
+                if (!confirmed) lastShieldFailure = message
                 completePendingShieldStart(confirmed)
+            } else if (!started) {
+                lastShieldFailure = message
             }
             if (revoked) {
                 AuraNetworkStream.emitVpnRevokedEvent(message)
@@ -1016,6 +1020,8 @@ class MainActivity: FlutterFragmentActivity() {
 
                 "getShieldStatus" -> result.success(AuraVpnService.shieldStatus())
 
+                "getLastShieldFailure" -> result.success(lastShieldFailure)
+
                 "getLatestBlockedIps" -> {
                     // Backward-compatible method name. This returns the active
                     // threat-feed rules, not a log of IPs actually blocked in traffic.
@@ -1034,8 +1040,17 @@ class MainActivity: FlutterFragmentActivity() {
                 if (shieldStartGate.consumeConsentResult() && pendingShieldResult != null) {
                     clearShieldStartTimeout()
                     if (resultCode == RESULT_OK) {
-                        startVpnService()
+                        // Some OEM dialogs return RESULT_OK without recording the
+                        // consent. Starting anyway would surface an opaque failure
+                        // from establish(); verify the grant first.
+                        if (VpnService.prepare(this) != null) {
+                            lastShieldFailure = "Android no registró el consentimiento VPN."
+                            completePendingShieldStart(false)
+                        } else {
+                            startVpnService()
+                        }
                     } else {
+                        lastShieldFailure = "Consentimiento VPN denegado o cancelado."
                         completePendingShieldStart(false)
                     }
                 }
@@ -1157,6 +1172,7 @@ class MainActivity: FlutterFragmentActivity() {
         }
 
         pendingShieldResult = result
+        lastShieldFailure = null
         try {
             val consentIntent = VpnService.prepare(this)
             if (consentIntent != null) {
@@ -1165,6 +1181,8 @@ class MainActivity: FlutterFragmentActivity() {
                     if (shieldStartGate.matchesConsent()) {
                         // Leave the dialog marked outstanding: a late result must
                         // be consumed, not attributed to a new request.
+                        lastShieldFailure =
+                            "El consentimiento VPN no se recibió a tiempo."
                         takePendingShieldResult()?.error(
                             "VPN_CONSENT_TIMEOUT",
                             "El consentimiento VPN no se recibió a tiempo; cierre el diálogo antes de reintentar.",
@@ -1180,6 +1198,7 @@ class MainActivity: FlutterFragmentActivity() {
             }
         } catch (exception: Exception) {
             shieldStartGate.abandonConsent()
+            lastShieldFailure = "No se pudo solicitar el consentimiento VPN."
             completePendingShieldStart(false)
             android.util.Log.e("AuraVPN", "No se pudo solicitar el consentimiento VPN.", exception)
         }
@@ -1200,12 +1219,10 @@ class MainActivity: FlutterFragmentActivity() {
             } else {
                 startService(intent)
             }
-            val notificationIntent = Intent(this, AuraNotificationService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(notificationIntent)
-            } else {
-                startService(notificationIntent)
-            }
+            // The VPN service owns its foreground notification. The alert
+            // service is auxiliary and starts on demand; requesting a second
+            // special-use foreground service here lets OEM restrictions abort
+            // an otherwise valid VPN start.
             val timeout = Runnable {
                 if (shieldStartGate.matchesServiceResponse(requestId)) {
                     // A timeout is not proof that the service stopped. Ask the
@@ -1222,6 +1239,7 @@ class MainActivity: FlutterFragmentActivity() {
         } catch (exception: Exception) {
             stopService(Intent(this, AuraVpnService::class.java))
             stopService(Intent(this, AuraNotificationService::class.java))
+            lastShieldFailure = "Android no permitió iniciar el servicio VPN."
             completePendingShieldStart(false)
             android.util.Log.e("AuraVPN", "No se pudo iniciar AuraVpnService.", exception)
         }

@@ -188,6 +188,59 @@ if any(part not in manifest for part in (
     sys.exit("FAIL: VPN state broadcasts must require the app's signature permission")
 print("PASS: VPN start broadcasts are correlated, permission-protected and timeout remains unconfirmed.")
 
+# A VPN start must request only the VPN foreground service. Starting the
+# auxiliary alert service here would let OEM FGS restrictions reject or crash a
+# second special-use service and mask an otherwise valid VPN request.
+start_vpn_region = anti_tampering.split("private fun startVpnService()", 1)[1].split(
+    "private fun authenticateFingerprint", 1
+)[0]
+if "The VPN service owns its foreground notification" not in start_vpn_region:
+    sys.exit("FAIL: VPN start must document the service-owned foreground notification")
+if (
+    "notificationIntent" in start_vpn_region
+    or "startForegroundService(Intent(this, AuraNotificationService" in start_vpn_region
+    or "startService(Intent(this, AuraNotificationService" in start_vpn_region
+):
+    sys.exit("FAIL: VPN start must not request a second foreground service")
+
+# OEM consent dialogs can return RESULT_OK without recording the grant. Re-check
+# VpnService.prepare before starting so the user gets a precise failure instead
+# of an opaque establish() null.
+on_activity_result = anti_tampering.split(
+    "override fun onActivityResult", 1
+)[1].split("override fun", 1)[0]
+if (
+    'if (VpnService.prepare(this) != null)' not in on_activity_result
+    or '"Android no registró el consentimiento VPN."' not in on_activity_result
+):
+    sys.exit("FAIL: VPN consent result must be verified before starting the service")
+
+# Structured forwarding failures must reach Dart instead of being hidden behind
+# a generic boolean false. This is diagnostic only; it must remain path-safe.
+for required_failure_guard in (
+    '"getLastShieldFailure" -> result.success(lastShieldFailure)',
+    "if (!confirmed) lastShieldFailure = message",
+):
+    if required_failure_guard not in anti_tampering:
+        sys.exit("FAIL: native VPN failure detail is not exposed to Dart: " + required_failure_guard)
+if "'getLastShieldFailure'" not in Path("lib/agent/aura_tools.dart").read_text(
+    encoding="utf-8"
+):
+    sys.exit("FAIL: agent VPN tool does not request the native failure detail")
+
+# A foreground-service rejection must become an explicit failure, not a crash.
+start_command_region = text.split("override fun onStartCommand", 1)[1].split(
+    "override fun onDestroy", 1
+)[0]
+if (
+    "FOREGROUND_SERVICE_TYPE_SPECIAL_USE" not in start_command_region
+    or "Android rechazó el servicio VPN en primer plano." not in start_command_region
+    or "return Service.START_NOT_STICKY" not in start_command_region
+):
+    sys.exit("FAIL: VPN must declare and diagnose special-use foreground startup")
+
+print("PASS: optional alert service and foreground-service startup cannot mask VPN startup.")
+
 # stopService only acknowledges the request; tool results must not immediately
 # assert the native worker and TUN have fully stopped.
 agent_tools = Path("lib/agent/aura_tools.dart").read_text(encoding="utf-8")
