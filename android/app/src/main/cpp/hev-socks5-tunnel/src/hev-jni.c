@@ -18,6 +18,8 @@
 #include <signal.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <errno.h>
+#include <time.h>
 
 #include "hev-main.h"
 #include "hev-socks5-tunnel.h"
@@ -142,47 +144,420 @@ JNI_OnLoad (JavaVM *vm, void *reserved)
     return JNI_VERSION_1_4;
 }
 
+/*
+ * JNI bridge thread.
+ *
+ * hev-socks5-tunnel runs every session, the lwIP input loop and the local
+ * SOCKS5 server as hev-task coroutines on small mmap()ed stacks. ART must
+ * never run (or attach) Java code while the CPU is on one of those stacks:
+ * AttachCurrentThread() installs its stack-overflow guard relative to the
+ * current stack pointer and the interpreter checks frame addresses against
+ * the pthread stack bounds, so a JNI call from a coroutine aborts or corrupts
+ * the process (SIGSEGV/SIGABRT) a few milliseconds after the TUN comes up,
+ * when the first DNS query, DoT probe or TCP session reaches the tunnel.
+ *
+ * Every native -> Java call therefore goes through one dedicated pthread that
+ * is attached once on its own normal stack. Socket protection and DNS
+ * resolution are synchronous requests (the coroutine waits, exactly like the
+ * previous direct call); DNS/SNI telemetry events are queued and dropped when
+ * the bounded queue is full.
+ */
+
+#define AURA_JNI_MAX_PENDING_EVENTS 256
+#define AURA_JNI_TEXT_CAPACITY 256
+#define AURA_JNI_SMALL_TEXT_CAPACITY 64
+#define AURA_JNI_PROTECT_TIMEOUT_MS 5000
+#define AURA_JNI_RESOLVE_TIMEOUT_MS 10000
+
+enum
+{
+    AURA_JNI_REQUEST_PROTECT = 1,
+    AURA_JNI_REQUEST_RESOLVE,
+    AURA_JNI_EVENT_DNS,
+    AURA_JNI_EVENT_SNI,
+    AURA_JNI_EVENT_ENCRYPTED_DNS,
+};
+
+typedef struct _AuraJniRequest AuraJniRequest;
+
+struct _AuraJniRequest
+{
+    AuraJniRequest *next;
+    int type;
+    int synchronous;
+    int completed;
+    int abandoned;
+    int result;
+    int number;
+    int number2;
+    char text[AURA_JNI_TEXT_CAPACITY];
+    char text2[AURA_JNI_SMALL_TEXT_CAPACITY];
+    char output[AURA_JNI_SMALL_TEXT_CAPACITY];
+};
+
+static pthread_mutex_t bridge_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t bridge_work_cond = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t bridge_done_cond = PTHREAD_COND_INITIALIZER;
+static AuraJniRequest *bridge_sync_head;
+static AuraJniRequest *bridge_sync_tail;
+static AuraJniRequest *bridge_event_head;
+static AuraJniRequest *bridge_event_tail;
+static unsigned int bridge_pending_events;
+/* 0 = not started, 1 = running, -1 = unavailable (attach/create failed). */
+static int bridge_state;
+
+static int
+copy_text (char *destination, size_t capacity, const char *source)
+{
+    size_t length;
+
+    if (!source)
+        return -1;
+    length = strlen (source);
+    if (length >= capacity)
+        return -1;
+    memcpy (destination, source, length + 1);
+    return 0;
+}
+
+static void
+bridge_execute (JNIEnv *env, AuraJniRequest *request)
+{
+    if ((*env)->PushLocalFrame (env, 8) != JNI_OK) {
+        (*env)->ExceptionClear (env);
+        request->result = 0;
+        return;
+    }
+
+    switch (request->type) {
+    case AURA_JNI_REQUEST_PROTECT: {
+        jboolean protected = (*env)->CallStaticBooleanMethod (
+            env, tproxy_class, protect_socket_method, (jint)request->number);
+        if ((*env)->ExceptionCheck (env)) {
+            (*env)->ExceptionClear (env);
+            protected = JNI_FALSE;
+        }
+        request->result = protected == JNI_TRUE;
+        break;
+    }
+    case AURA_JNI_REQUEST_RESOLVE: {
+        jstring java_hostname = (*env)->NewStringUTF (env, request->text);
+        jstring java_address = NULL;
+        const char *resolved = NULL;
+
+        request->result = 0;
+        request->output[0] = '\0';
+        if (java_hostname) {
+            java_address = (jstring)(*env)->CallStaticObjectMethod (
+                env, tproxy_class, resolve_host_method, java_hostname);
+            if (!(*env)->ExceptionCheck (env) && java_address) {
+                resolved = (*env)->GetStringUTFChars (env, java_address, NULL);
+                if (resolved && resolved[0] != '\0' &&
+                    copy_text (request->output, sizeof (request->output),
+                               resolved) == 0)
+                    request->result = 1;
+                if (resolved)
+                    (*env)->ReleaseStringUTFChars (env, java_address, resolved);
+            }
+        }
+        if ((*env)->ExceptionCheck (env))
+            (*env)->ExceptionClear (env);
+        break;
+    }
+    case AURA_JNI_EVENT_DNS: {
+        jstring java_domain = (*env)->NewStringUTF (env, request->text);
+        jstring java_source = (*env)->NewStringUTF (env, request->text2);
+        if (java_domain && java_source)
+            (*env)->CallStaticVoidMethod (env, tproxy_class, dns_event_method,
+                                         java_domain, (jint)request->number,
+                                         java_source, (jint)request->number2);
+        if ((*env)->ExceptionCheck (env))
+            (*env)->ExceptionClear (env);
+        break;
+    }
+    case AURA_JNI_EVENT_SNI: {
+        jstring java_domain = (*env)->NewStringUTF (env, request->text);
+        jstring java_destination = (*env)->NewStringUTF (env, request->text2);
+        if (java_domain && java_destination)
+            (*env)->CallStaticVoidMethod (env, tproxy_class, sni_event_method,
+                                         java_domain, java_destination,
+                                         (jint)request->number);
+        if ((*env)->ExceptionCheck (env))
+            (*env)->ExceptionClear (env);
+        break;
+    }
+    case AURA_JNI_EVENT_ENCRYPTED_DNS: {
+        jstring java_destination = (*env)->NewStringUTF (env, request->text);
+        jstring java_protocol = (*env)->NewStringUTF (env, request->text2);
+        if (java_destination && java_protocol)
+            (*env)->CallStaticVoidMethod (env, tproxy_class,
+                                         encrypted_dns_event_method,
+                                         java_destination,
+                                         (jint)request->number, java_protocol);
+        if ((*env)->ExceptionCheck (env))
+            (*env)->ExceptionClear (env);
+        break;
+    }
+    default:
+        break;
+    }
+
+    (*env)->PopLocalFrame (env, NULL);
+}
+
+/* Call with bridge_mutex held. Fails every queued request. */
+static void
+bridge_fail_pending_locked (void)
+{
+    AuraJniRequest *request;
+
+    while ((request = bridge_sync_head)) {
+        bridge_sync_head = request->next;
+        if (request->abandoned) {
+            free (request);
+        } else {
+            request->result = 0;
+            request->completed = 1;
+        }
+    }
+    bridge_sync_tail = NULL;
+    while ((request = bridge_event_head)) {
+        bridge_event_head = request->next;
+        free (request);
+    }
+    bridge_event_tail = NULL;
+    bridge_pending_events = 0;
+    pthread_cond_broadcast (&bridge_done_cond);
+}
+
+static void *
+bridge_thread_handler (void *data)
+{
+    JNIEnv *env = NULL;
+    JavaVMAttachArgs args;
+
+    (void)data;
+    args.version = JNI_VERSION_1_4;
+    args.name = "AuraJniBridge";
+    args.group = NULL;
+    if ((*java_vm)->AttachCurrentThreadAsDaemon (java_vm, (void *)&env, &args) !=
+        JNI_OK) {
+        pthread_mutex_lock (&bridge_mutex);
+        bridge_state = -1;
+        bridge_fail_pending_locked ();
+        pthread_mutex_unlock (&bridge_mutex);
+        return NULL;
+    }
+
+    for (;;) {
+        AuraJniRequest *request;
+
+        pthread_mutex_lock (&bridge_mutex);
+        while (!bridge_sync_head && !bridge_event_head)
+            pthread_cond_wait (&bridge_work_cond, &bridge_mutex);
+        if (bridge_sync_head) {
+            request = bridge_sync_head;
+            bridge_sync_head = request->next;
+            if (!bridge_sync_head)
+                bridge_sync_tail = NULL;
+            if (request->abandoned) {
+                /* The waiting coroutine already timed out; its fd may be closed. */
+                free (request);
+                pthread_mutex_unlock (&bridge_mutex);
+                continue;
+            }
+        } else {
+            request = bridge_event_head;
+            bridge_event_head = request->next;
+            if (!bridge_event_head)
+                bridge_event_tail = NULL;
+            if (bridge_pending_events)
+                bridge_pending_events--;
+        }
+        pthread_mutex_unlock (&bridge_mutex);
+
+        request->next = NULL;
+        bridge_execute (env, request);
+
+        if (!request->synchronous) {
+            free (request);
+            continue;
+        }
+        pthread_mutex_lock (&bridge_mutex);
+        if (request->abandoned) {
+            free (request);
+        } else {
+            request->completed = 1;
+            pthread_cond_broadcast (&bridge_done_cond);
+        }
+        pthread_mutex_unlock (&bridge_mutex);
+    }
+
+    return NULL;
+}
+
+/* Starts the bridge once per process. Returns 0 when it is usable. */
+static int
+bridge_start (void)
+{
+    pthread_attr_t attr;
+    pthread_t thread;
+    int result;
+
+    pthread_mutex_lock (&bridge_mutex);
+    if (bridge_state != 0) {
+        result = bridge_state > 0 ? 0 : -1;
+        pthread_mutex_unlock (&bridge_mutex);
+        return result;
+    }
+
+    result = -1;
+    if (java_vm && pthread_attr_init (&attr) == 0) {
+        pthread_attr_setdetachstate (&attr, PTHREAD_CREATE_DETACHED);
+        /* ART needs a real, generously sized stack for Java frames. */
+        pthread_attr_setstacksize (&attr, 1024 * 1024);
+        if (pthread_create (&thread, &attr, bridge_thread_handler, NULL) == 0) {
+            bridge_state = 1;
+            result = 0;
+        }
+        pthread_attr_destroy (&attr);
+    }
+    pthread_mutex_unlock (&bridge_mutex);
+    return result;
+}
+
+static void
+add_ms_to_now (struct timespec *deadline, int timeout_ms)
+{
+    clock_gettime (CLOCK_REALTIME, deadline);
+    deadline->tv_sec += timeout_ms / 1000;
+    deadline->tv_nsec += (long)(timeout_ms % 1000) * 1000000L;
+    if (deadline->tv_nsec >= 1000000000L) {
+        deadline->tv_sec++;
+        deadline->tv_nsec -= 1000000000L;
+    }
+}
+
+/*
+ * Runs @request synchronously on the bridge thread. On success the caller
+ * owns @request again and must free it. On failure (bridge unavailable or
+ * timeout) ownership has been released and the caller must not touch it.
+ */
+static int
+bridge_call (AuraJniRequest *request, int timeout_ms)
+{
+    struct timespec deadline;
+
+    request->synchronous = 1;
+    request->next = NULL;
+    pthread_mutex_lock (&bridge_mutex);
+    if (bridge_state != 1) {
+        pthread_mutex_unlock (&bridge_mutex);
+        free (request);
+        return -1;
+    }
+    if (bridge_sync_tail)
+        bridge_sync_tail->next = request;
+    else
+        bridge_sync_head = request;
+    bridge_sync_tail = request;
+    pthread_cond_signal (&bridge_work_cond);
+
+    add_ms_to_now (&deadline, timeout_ms);
+    while (!request->completed) {
+        int wait = pthread_cond_timedwait (&bridge_done_cond, &bridge_mutex,
+                                           &deadline);
+        if (wait == ETIMEDOUT && !request->completed) {
+            /* The bridge (or bridge_fail_pending_locked) frees it later. */
+            request->abandoned = 1;
+            pthread_mutex_unlock (&bridge_mutex);
+            return -1;
+        }
+    }
+    pthread_mutex_unlock (&bridge_mutex);
+    return 0;
+}
+
+static void
+bridge_post_event (AuraJniRequest *request)
+{
+    request->synchronous = 0;
+    request->next = NULL;
+    pthread_mutex_lock (&bridge_mutex);
+    if (bridge_state != 1 ||
+        bridge_pending_events >= AURA_JNI_MAX_PENDING_EVENTS) {
+        pthread_mutex_unlock (&bridge_mutex);
+        free (request);
+        return;
+    }
+    if (bridge_event_tail)
+        bridge_event_tail->next = request;
+    else
+        bridge_event_head = request;
+    bridge_event_tail = request;
+    bridge_pending_events++;
+    pthread_cond_signal (&bridge_work_cond);
+    pthread_mutex_unlock (&bridge_mutex);
+}
+
+/* Threads already known to ART (Java threads, the bridge) call directly. */
+static JNIEnv *
+current_attached_env (void)
+{
+    JNIEnv *env = NULL;
+
+    if (!java_vm)
+        return NULL;
+    if ((*java_vm)->GetEnv (java_vm, (void **)&env, JNI_VERSION_1_4) != JNI_OK)
+        return NULL;
+    return env;
+}
+
+static void
+bridge_run_or_post (AuraJniRequest *request)
+{
+    JNIEnv *env = current_attached_env ();
+
+    if (env) {
+        bridge_execute (env, request);
+        free (request);
+        return;
+    }
+    bridge_post_event (request);
+}
+
 int
 hev_jni_protect_socket (int socket_fd)
 {
-    JNIEnv *env = NULL;
-    int attached = 0;
-    jint status;
-    jboolean protected;
+    AuraJniRequest *request;
+    JNIEnv *env;
+    int result;
 
     if (!java_vm || !tproxy_class || !protect_socket_method)
         return 0;
 
-    status = (*java_vm)->GetEnv (java_vm, (void **)&env, JNI_VERSION_1_4);
-    if (status == JNI_EDETACHED) {
-        if ((*java_vm)->AttachCurrentThread (java_vm, (void **)&env, NULL) != JNI_OK)
-            return 0;
-        attached = 1;
-    } else if (status != JNI_OK) {
+    request = calloc (1, sizeof (*request));
+    if (!request)
+        return 0;
+    request->type = AURA_JNI_REQUEST_PROTECT;
+    request->number = socket_fd;
+
+    env = current_attached_env ();
+    if (env) {
+        bridge_execute (env, request);
+    } else if (bridge_call (request, AURA_JNI_PROTECT_TIMEOUT_MS) < 0) {
         return 0;
     }
-
-    protected = (*env)->CallStaticBooleanMethod (
-        env, tproxy_class, protect_socket_method, (jint)socket_fd);
-    if ((*env)->ExceptionCheck (env)) {
-        (*env)->ExceptionClear (env);
-        protected = JNI_FALSE;
-    }
-    if (attached)
-        (*java_vm)->DetachCurrentThread (java_vm);
-
-    return protected == JNI_TRUE;
+    result = request->result;
+    free (request);
+    return result;
 }
 
 int
 hev_jni_resolve_host (const char *hostname, char *address, size_t address_size)
 {
-    JNIEnv *env = NULL;
-    jstring java_hostname = NULL;
-    jstring java_address = NULL;
-    const char *resolved = NULL;
-    int attached = 0;
-    jint status;
+    AuraJniRequest *request;
+    JNIEnv *env;
     int result = 0;
 
     if (!hostname || !address || address_size == 0 || !java_vm ||
@@ -190,40 +565,25 @@ hev_jni_resolve_host (const char *hostname, char *address, size_t address_size)
         return 0;
 
     address[0] = '\0';
-    status = (*java_vm)->GetEnv (java_vm, (void **)&env, JNI_VERSION_1_4);
-    if (status == JNI_EDETACHED) {
-        if ((*java_vm)->AttachCurrentThread (java_vm, (void **)&env, NULL) != JNI_OK)
-            return 0;
-        attached = 1;
-    } else if (status != JNI_OK) {
+    request = calloc (1, sizeof (*request));
+    if (!request)
+        return 0;
+    request->type = AURA_JNI_REQUEST_RESOLVE;
+    if (copy_text (request->text, sizeof (request->text), hostname) < 0) {
+        free (request);
         return 0;
     }
 
-    java_hostname = (*env)->NewStringUTF (env, hostname);
-    if (java_hostname) {
-        java_address = (jstring)(*env)->CallStaticObjectMethod (
-            env, tproxy_class, resolve_host_method, java_hostname);
-        if (!(*env)->ExceptionCheck (env) && java_address) {
-            resolved = (*env)->GetStringUTFChars (env, java_address, NULL);
-            if (resolved && resolved[0] != '\0' &&
-                strlen (resolved) < address_size) {
-                memcpy (address, resolved, strlen (resolved) + 1);
-                result = 1;
-            }
-        }
+    env = current_attached_env ();
+    if (env) {
+        bridge_execute (env, request);
+    } else if (bridge_call (request, AURA_JNI_RESOLVE_TIMEOUT_MS) < 0) {
+        return 0;
     }
-
-    if ((*env)->ExceptionCheck (env))
-        (*env)->ExceptionClear (env);
-    if (resolved)
-        (*env)->ReleaseStringUTFChars (env, java_address, resolved);
-    if (java_address)
-        (*env)->DeleteLocalRef (env, java_address);
-    if (java_hostname)
-        (*env)->DeleteLocalRef (env, java_hostname);
-    if (attached)
-        (*java_vm)->DetachCurrentThread (java_vm);
-
+    if (request->result &&
+        copy_text (address, address_size, request->output) == 0)
+        result = 1;
+    free (request);
     return result;
 }
 
@@ -231,42 +591,26 @@ void
 hev_jni_report_dns_event (const char *domain, int action,
                           uint32_t source_ipv4, uint16_t source_port)
 {
-    JNIEnv *env = NULL;
+    AuraJniRequest *request;
     char source_address[INET_ADDRSTRLEN] = "0.0.0.0";
-    jstring java_domain;
-    jstring java_source_address;
-    int attached = 0;
-    jint status;
 
-    if (!java_vm || !tproxy_class || !dns_event_method)
+    if (!java_vm || !tproxy_class || !dns_event_method || !domain)
         return;
     if (source_ipv4)
         inet_ntop (AF_INET, &source_ipv4, source_address, sizeof (source_address));
 
-    status = (*java_vm)->GetEnv (java_vm, (void **)&env, JNI_VERSION_1_4);
-    if (status == JNI_EDETACHED) {
-        if ((*java_vm)->AttachCurrentThread (java_vm, (void **)&env, NULL) != JNI_OK)
-            return;
-        attached = 1;
-    } else if (status != JNI_OK) {
+    request = calloc (1, sizeof (*request));
+    if (!request)
+        return;
+    request->type = AURA_JNI_EVENT_DNS;
+    request->number = action;
+    request->number2 = source_port;
+    if (copy_text (request->text, sizeof (request->text), domain) < 0 ||
+        copy_text (request->text2, sizeof (request->text2), source_address) < 0) {
+        free (request);
         return;
     }
-
-    java_domain = (*env)->NewStringUTF (env, domain);
-    java_source_address = (*env)->NewStringUTF (env, source_address);
-    if (java_domain && java_source_address) {
-        (*env)->CallStaticVoidMethod (env, tproxy_class, dns_event_method,
-                                     java_domain, (jint)action,
-                                     java_source_address, (jint)source_port);
-        if ((*env)->ExceptionCheck (env))
-            (*env)->ExceptionClear (env);
-    }
-    if (java_domain)
-        (*env)->DeleteLocalRef (env, java_domain);
-    if (java_source_address)
-        (*env)->DeleteLocalRef (env, java_source_address);
-    if (attached)
-        (*java_vm)->DetachCurrentThread (java_vm);
+    bridge_run_or_post (request);
 }
 
 void
@@ -274,39 +618,24 @@ hev_jni_report_sni_event (const char *domain,
                           const char *destination_address,
                           uint16_t destination_port)
 {
-    JNIEnv *env = NULL;
-    jstring java_domain;
-    jstring java_destination;
-    int attached = 0;
-    jint status;
+    AuraJniRequest *request;
 
     if (!java_vm || !tproxy_class || !sni_event_method ||
         !domain || !destination_address)
         return;
-    status = (*java_vm)->GetEnv (java_vm, (void **)&env, JNI_VERSION_1_4);
-    if (status == JNI_EDETACHED) {
-        if ((*java_vm)->AttachCurrentThread (java_vm, (void **)&env, NULL) != JNI_OK)
-            return;
-        attached = 1;
-    } else if (status != JNI_OK) {
+
+    request = calloc (1, sizeof (*request));
+    if (!request)
+        return;
+    request->type = AURA_JNI_EVENT_SNI;
+    request->number = destination_port;
+    if (copy_text (request->text, sizeof (request->text), domain) < 0 ||
+        copy_text (request->text2, sizeof (request->text2),
+                   destination_address) < 0) {
+        free (request);
         return;
     }
-
-    java_domain = (*env)->NewStringUTF (env, domain);
-    java_destination = (*env)->NewStringUTF (env, destination_address);
-    if (java_domain && java_destination) {
-        (*env)->CallStaticVoidMethod (env, tproxy_class, sni_event_method,
-                                     java_domain, java_destination,
-                                     (jint)destination_port);
-        if ((*env)->ExceptionCheck (env))
-            (*env)->ExceptionClear (env);
-    }
-    if (java_domain)
-        (*env)->DeleteLocalRef (env, java_domain);
-    if (java_destination)
-        (*env)->DeleteLocalRef (env, java_destination);
-    if (attached)
-        (*java_vm)->DetachCurrentThread (java_vm);
+    bridge_run_or_post (request);
 }
 
 void
@@ -314,40 +643,25 @@ hev_jni_report_encrypted_dns_event (const char *destination_address,
                                    uint16_t destination_port,
                                    const char *transport_protocol)
 {
-    JNIEnv *env = NULL;
-    jstring java_destination;
-    jstring java_protocol;
-    int attached = 0;
-    jint status;
+    AuraJniRequest *request;
 
     if (!java_vm || !tproxy_class || !encrypted_dns_event_method ||
         !destination_address || !transport_protocol)
         return;
-    status = (*java_vm)->GetEnv (java_vm, (void **)&env, JNI_VERSION_1_4);
-    if (status == JNI_EDETACHED) {
-        if ((*java_vm)->AttachCurrentThread (java_vm, (void **)&env, NULL) != JNI_OK)
-            return;
-        attached = 1;
-    } else if (status != JNI_OK) {
+
+    request = calloc (1, sizeof (*request));
+    if (!request)
+        return;
+    request->type = AURA_JNI_EVENT_ENCRYPTED_DNS;
+    request->number = destination_port;
+    if (copy_text (request->text, sizeof (request->text),
+                   destination_address) < 0 ||
+        copy_text (request->text2, sizeof (request->text2),
+                   transport_protocol) < 0) {
+        free (request);
         return;
     }
-
-    java_destination = (*env)->NewStringUTF (env, destination_address);
-    java_protocol = (*env)->NewStringUTF (env, transport_protocol);
-    if (java_destination && java_protocol) {
-        (*env)->CallStaticVoidMethod (env, tproxy_class,
-                                     encrypted_dns_event_method,
-                                     java_destination, (jint)destination_port,
-                                     java_protocol);
-        if ((*env)->ExceptionCheck (env))
-            (*env)->ExceptionClear (env);
-    }
-    if (java_destination)
-        (*env)->DeleteLocalRef (env, java_destination);
-    if (java_protocol)
-        (*env)->DeleteLocalRef (env, java_protocol);
-    if (attached)
-        (*java_vm)->DetachCurrentThread (java_vm);
+    bridge_run_or_post (request);
 }
 
 static void *
@@ -384,6 +698,10 @@ native_start_service (JNIEnv *env, jobject thiz, jstring config_path, jint fd)
             goto exit;
         thread_joinable = 0;
     }
+
+    /* Native -> Java callbacks must never run on hev-task coroutine stacks. */
+    if (bridge_start () < 0)
+        goto exit;
 
     tdata = malloc (sizeof (ThreadData));
     if (!tdata)

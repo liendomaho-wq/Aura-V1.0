@@ -173,6 +173,7 @@ class AuraVpnService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
+        AuraCrashReporter.install(applicationContext)
         activeService = this
         AuraNetworkStream.setApplicationContext(applicationContext)
         registerUnderlyingNetworkCallback()
@@ -441,19 +442,7 @@ class AuraVpnService : VpnService() {
             } ?: false
             if (!started) throw IOException("El motor tun2socks no pudo iniciar.")
             verifyLocalSocks5Ready(socks5Credentials)
-            for (endpoint in AuraBlocklistService.knownEncryptedDnsEndpoints()) {
-                val applied = lifecycleGate.runIfOpen {
-                    TProxyService.TProxyAddDynamicSniRule(endpoint)
-                } ?: false
-                if (!applied) {
-                    // Optional DoH/SNI hints must not roll back an already
-                    // authenticated local tunnel; log and continue.
-                    Log.w(
-                        "AuraVPN",
-                        "No se pudo aplicar la regla SNI opcional para un resolvedor conocido.",
-                    )
-                }
-            }
+            applyOptionalSniRules(AuraBlocklistService.knownEncryptedDnsEndpoints())
             val ready = lifecycleGate.runIfOpen {
                 if (!TProxyService.TProxyIsRunning()) false else {
                     tunnelStarted = true
@@ -470,13 +459,55 @@ class AuraVpnService : VpnService() {
             )
             updateForegroundNotification()
             Log.i("AuraVPN", "Hev tun2socks autenticado con el proxy SOCKS5 local.")
-        } catch (e: Exception) {
-            handleTunnelStartFailure(e, established, requestId)
-        } catch (error: LinkageError) {
-            // JNI can fail before the native worker is created (missing ABI/library
-            // or an unresolved native symbol). Treat that as a failed startup and
-            // run the same descriptor/worker cleanup instead of crashing the service.
-            handleTunnelStartFailure(error, established, requestId)
+        } catch (error: Throwable) {
+            // Any failure here (I/O, JNI LinkageError from a missing ABI/library or
+            // unresolved symbol, unexpected runtime errors) runs on the worker
+            // executor: an escaping Throwable would kill the whole app process
+            // while the TUN is up. Report it and clean up instead.
+            try {
+                handleTunnelStartFailure(error, established, requestId)
+            } catch (cleanupError: Throwable) {
+                Log.e("AuraVPN", "Falló la limpieza tras el error de arranque.", cleanupError)
+                startRequested.set(false)
+                try {
+                    reportState(false, describeFailure(error), requestId = requestId)
+                } catch (_: Throwable) {
+                }
+                stopSelf()
+            }
+        }
+    }
+
+    /**
+     * Optional DoH/SNI hints must never roll back (or crash) an already
+     * authenticated tunnel. The native call can throw IllegalStateException or
+     * IllegalArgumentException; log and continue.
+     */
+    private fun applyOptionalSniRules(endpoints: List<String>) {
+        for (endpoint in endpoints) {
+            val applied = try {
+                lifecycleGate.runIfOpen {
+                    TProxyService.TProxyAddDynamicSniRule(endpoint)
+                } ?: false
+            } catch (error: Exception) {
+                Log.w("AuraVPN", "Regla SNI opcional rechazada por el motor nativo.", error)
+                false
+            }
+            if (!applied) {
+                Log.w(
+                    "AuraVPN",
+                    "No se pudo aplicar la regla SNI opcional para un resolvedor conocido.",
+                )
+            }
+        }
+    }
+
+    private fun describeFailure(error: Throwable): String {
+        val message = error.message?.takeIf { it.isNotBlank() }
+        return when {
+            error is IOException && message != null -> message
+            message != null -> "${error.javaClass.simpleName}: $message"
+            else -> "No se pudo iniciar el túnel (${error.javaClass.simpleName})."
         }
     }
 
@@ -486,6 +517,7 @@ class AuraVpnService : VpnService() {
         requestId: String?,
     ) {
         Log.e("AuraVPN", "No se pudo iniciar el escudo VPN.", error)
+        AuraCrashReporter.recordVpnFailure(this, "startTunnel", error)
         val stopConfirmed = stopNativeWorker()
         if (stopConfirmed) discardTunnelConfiguration()
         tunnelStarted = false
@@ -501,7 +533,7 @@ class AuraVpnService : VpnService() {
         }
         underlyingNetwork = null
         startRequested.set(false)
-        val failureMessage = error.message ?: "No se pudo iniciar el túnel."
+        val failureMessage = describeFailure(error)
         reportState(
             false,
             if (stopConfirmed) {
@@ -665,6 +697,13 @@ class AuraVpnService : VpnService() {
             // Full routes capture TCP and UDP for tunnel inspection.
             .addRoute("0.0.0.0", 0)
             .addDnsServer("10.0.0.3")
+        try {
+            // Aura's own sockets (local SOCKS5 relay upstreams, threat feed,
+            // DNS on the physical network) must never re-enter its own TUN.
+            builder.addDisallowedApplication(packageName)
+        } catch (exception: android.content.pm.PackageManager.NameNotFoundException) {
+            Log.w("AuraVPN", "No se pudo excluir la propia app del túnel.", exception)
+        }
         if (includeIpv6) {
             builder.addAddress("fd00::2", 64)
             builder.addRoute("::", 0)
@@ -874,14 +913,8 @@ class AuraVpnService : VpnService() {
                 throw IOException("El motor VPN no pudo reiniciarse en la nueva red.")
             }
             verifyLocalSocks5Ready(socks5Credentials)
-            for (endpoint in AuraBlocklistService.knownEncryptedDnsEndpoints()) {
-                val applied = lifecycleGate.runIfOpen {
-                    TProxyService.TProxyAddDynamicSniRule(endpoint)
-                } ?: false
-                if (!applied) {
-                    throw IOException("No se pudo restaurar una regla SNI tras cambiar de red.")
-                }
-            }
+            // Same optional (non-fatal) SNI hints as the initial start.
+            applyOptionalSniRules(AuraBlocklistService.knownEncryptedDnsEndpoints())
             val ready = lifecycleGate.runIfOpen {
                 if (!TProxyService.TProxyIsRunning()) false else {
                     tunnelStarted = true

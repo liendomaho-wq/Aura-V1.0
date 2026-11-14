@@ -1157,3 +1157,17 @@ if (
     sys.exit("FAIL: failed VPN resume must distinguish confirmed and unconfirmed native shutdown")
 
 print("PASS: VPN teardown and resume reconcile native worker state after failures.")
+
+# Crash diagnostics and loop safety for the VPN start path.
+if "builder.addDisallowedApplication(packageName)" not in text:
+    sys.exit("FAIL: Aura's own sockets must be excluded from its TUN")
+if "AuraCrashReporter.install(applicationContext)" not in text or \
+        "AuraCrashReporter.install(applicationContext)" not in anti_tampering:
+    sys.exit("FAIL: uncaught exceptions must be captured to a file for testers without adb")
+if '"getLastCrashReport"' not in anti_tampering or "getLastCrashReport" not in CONSOLE_SOURCE:
+    sys.exit("FAIL: the last crash report must be visible and copyable in the app")
+if "catch (error: Throwable)" not in start_tunnel.group(1):
+    sys.exit("FAIL: startTunnel runs on an executor and must not let any Throwable kill the process")
+if "No se pudo restaurar una regla SNI tras cambiar de red." in text:
+    sys.exit("FAIL: optional SNI hints must not abort a recovered tunnel")
+print("PASS: VPN start captures crashes, excludes Aura's own sockets and keeps SNI hints optional.")

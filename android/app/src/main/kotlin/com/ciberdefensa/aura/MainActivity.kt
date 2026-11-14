@@ -217,6 +217,7 @@ class MainActivity: FlutterFragmentActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        AuraCrashReporter.install(applicationContext)
         registerVpnReceiver()
         AuraNetworkStream.setApplicationContext(applicationContext)
         AuraBlocklistService.scheduleUpdates(applicationContext)
@@ -1054,6 +1055,19 @@ class MainActivity: FlutterFragmentActivity() {
                 "getShieldStatus" -> result.success(AuraVpnService.shieldStatus())
 
                 "getLastShieldFailure" -> result.success(lastShieldFailure)
+
+                "getLastCrashReport" -> {
+                    // Imports native crashes/ANRs recorded by Android (API 30+)
+                    // off the main thread, then returns the combined report.
+                    val appContext = applicationContext
+                    Thread({
+                        AuraCrashReporter.importLastProcessExit(appContext)
+                        val report = AuraCrashReporter.lastReport(appContext)
+                        runOnUiThread { result.success(report) }
+                    }, "AuraCrashReport").start()
+                }
+
+                "clearLastCrashReport" -> result.success(AuraCrashReporter.clear(applicationContext))
 
                 "getLatestBlockedIps" -> {
                     // Backward-compatible method name. This returns the active

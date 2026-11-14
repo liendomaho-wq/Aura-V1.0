@@ -100,6 +100,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
     unawaited(_refreshAccessibilityServices());
     await _initializeTelemetryMode();
     if (!mounted) return;
+    unawaited(_showPendingCrashReport());
     if (authenticated) {
       controller.initGreeting();
       _startNetworkAuditor();
@@ -117,6 +118,85 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
     );
     if (!mounted) return;
     setState(() => _isAuthenticated = false);
+  }
+
+  /// Shows the last crash / VPN failure captured on the device so testers
+  /// without adb can copy the exact stack trace and send it.
+  Future<void> _showPendingCrashReport() async {
+    String? report;
+    try {
+      report = await _shieldChannel
+          .invokeMethod<String>('getLastCrashReport')
+          .timeout(const Duration(seconds: 5));
+    } on Object {
+      return;
+    }
+    final text = report?.trim();
+    if (text == null || text.isEmpty || !mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF07110E),
+        title: const Text(
+          'Diagnóstico del último fallo',
+          style: TextStyle(color: _terminalGreen, fontFamily: 'monospace'),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Aura se cerró o no pudo iniciar la VPN. Pulsa COPIAR y '
+                'envía este texto al soporte.',
+                style: TextStyle(color: _terminalYellow, fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    text,
+                    style: const TextStyle(
+                      color: _terminalGreen,
+                      fontFamily: 'monospace',
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: text));
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Diagnóstico copiado.')),
+              );
+            },
+            child: const Text('COPIAR'),
+          ),
+          TextButton(
+            onPressed: () async {
+              try {
+                await _shieldChannel.invokeMethod<bool>('clearLastCrashReport');
+              } on Object {
+                // Keep the dialog dismissible even if the file cannot be removed.
+              }
+              if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+            },
+            child: const Text('BORRAR'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('CERRAR'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
