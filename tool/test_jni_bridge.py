@@ -7,10 +7,12 @@ compiles hev-jni.c against a fake JavaVM and checks that protect/resolve run
 on the bridge thread, events are delivered without blocking, the queue is
 bounded and a timed-out request does not wedge later calls.
 
-Needs gcc and jni.h (from $JAVA_HOME/include or $AURA_JNI_INCLUDE); skips
-otherwise.
+Needs a C compiler and jni.h (from $JAVA_HOME/include or $AURA_JNI_INCLUDE);
+the runtime part skips otherwise. Works both as a script and under pytest:
+nothing runs or exits at import time, so pytest collection stays clean.
 """
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -19,37 +21,50 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HEV = ROOT / "android/app/src/main/cpp/hev-socks5-tunnel"
-JNI_SOURCE = (HEV / "src/hev-jni.c").read_text(encoding="utf-8")
-
-# Static guards: no direct attach on coroutine threads.
-for required in (
+JNI_PATH = HEV / "src/hev-jni.c"
+REQUIRED_SNIPPETS = (
     "AttachCurrentThreadAsDaemon",
     "bridge_call (request, AURA_JNI_PROTECT_TIMEOUT_MS)",
     "bridge_call (request, AURA_JNI_RESOLVE_TIMEOUT_MS)",
     "AURA_JNI_MAX_PENDING_EVENTS",
     "if (bridge_start () < 0)",
-):
-    if required not in JNI_SOURCE:
-        sys.exit("FAIL: JNI bridge is missing " + required)
-if "AttachCurrentThread (" in JNI_SOURCE:
-    sys.exit("FAIL: native callbacks must not AttachCurrentThread from hev-task coroutines")
-print("PASS: native callbacks are routed through the attached JNI bridge thread.")
+)
 
-include_dirs = []
-for candidate in (
-    os.environ.get("AURA_JNI_INCLUDE"),
-    os.path.join(os.environ.get("JAVA_HOME", ""), "include") if os.environ.get("JAVA_HOME") else None,
-):
-    if candidate and Path(candidate, "jni.h").is_file():
-        include_dirs.append(candidate)
-        linux = Path(candidate, "linux")
-        if linux.is_dir():
-            include_dirs.append(str(linux))
-        break
-compiler = shutil.which("gcc") or shutil.which("cc")
-if not include_dirs or not compiler:
-    print("SKIP: gcc or jni.h unavailable; JNI bridge runtime test not executed.")
-    sys.exit(0)
+
+class Skip(Exception):
+    """The runtime harness cannot run on this host."""
+
+
+def check_static_guards():
+    """Static guards: no direct attach on coroutine threads."""
+    source = JNI_PATH.read_text(encoding="utf-8")
+    for required in REQUIRED_SNIPPETS:
+        if required not in source:
+            raise AssertionError("JNI bridge is missing " + required)
+    if "AttachCurrentThread (" in source:
+        raise AssertionError(
+            "native callbacks must not AttachCurrentThread from hev-task coroutines")
+    return "PASS: native callbacks are routed through the attached JNI bridge thread."
+
+
+def find_toolchain():
+    include_dirs = []
+    for candidate in (
+        os.environ.get("AURA_JNI_INCLUDE"),
+        os.path.join(os.environ["JAVA_HOME"], "include") if os.environ.get("JAVA_HOME") else None,
+    ):
+        if candidate and Path(candidate, "jni.h").is_file():
+            include_dirs.append(candidate)
+            # jni_md.h lives in a platform subdirectory (linux, darwin, ...).
+            for platform_dir in ("linux", "darwin", "win32"):
+                if Path(candidate, platform_dir).is_dir():
+                    include_dirs.append(str(Path(candidate, platform_dir)))
+            break
+    compiler = shutil.which("gcc") or shutil.which("cc") or shutil.which("clang")
+    if not include_dirs or not compiler:
+        raise Skip("gcc or jni.h unavailable; JNI bridge runtime test not executed.")
+    return compiler, include_dirs
+
 
 HARNESS = r"""
 #include <stdarg.h>
@@ -141,19 +156,61 @@ int main (void) {
 
 """
 
-with tempfile.TemporaryDirectory() as tmp:
-    source = Path(tmp, "bridge_test.c")
-    binary = Path(tmp, "bridge_test")
-    source.write_text(HARNESS, encoding="utf-8")
-    command = [
-        compiler, "-g", "-D__ANDROID__", "-Wno-incompatible-pointer-types",
-        *[f"-I{d}" for d in include_dirs],
-        f"-I{HEV / 'src'}", f"-I{HEV.parent}", f"-I{HEV / 'src/misc'}",
-        f"-I{HEV / 'src/core/include'}", f"-I{HEV / 'third-part/hev-task-system/include'}",
-        str(source), "-o", str(binary), "-lpthread",
-    ]
-    subprocess.run(command, check=True)
-    result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=60)
-    if result.returncode != 0 or "BRIDGE_TEST_OK" not in result.stdout:
-        sys.exit("FAIL: JNI bridge runtime test failed\n" + result.stdout + result.stderr)
-print("PASS: JNI bridge marshals protect/resolve/events off coroutine stacks with bounded queues and timeouts.")
+
+def run_runtime_harness():
+    compiler, include_dirs = find_toolchain()
+    with tempfile.TemporaryDirectory() as tmp:
+        source = Path(tmp, "bridge_test.c")
+        binary = Path(tmp, "bridge_test")
+        source.write_text(HARNESS, encoding="utf-8")
+        command = [
+            compiler, "-g", "-D__ANDROID__", "-Wno-incompatible-pointer-types",
+            *[f"-I{d}" for d in include_dirs],
+            f"-I{HEV / 'src'}", f"-I{HEV.parent}", f"-I{HEV / 'src/misc'}",
+            f"-I{HEV / 'src/core/include'}", f"-I{HEV / 'third-part/hev-task-system/include'}",
+            str(source), "-o", str(binary), "-lpthread",
+        ]
+        build = subprocess.run(command, capture_output=True, text=True)
+        if build.returncode != 0:
+            # The harness targets the Linux/Android libc. On other hosts
+            # (e.g. macOS CI runners) a host-libc mismatch is not a bridge
+            # defect, so skip there; on Linux a compile error is a failure.
+            if platform.system() != "Linux":
+                raise Skip("JNI bridge harness does not compile on "
+                           f"{platform.system()}; runtime test not executed.\n"
+                           + build.stderr[-2000:])
+            raise AssertionError("JNI bridge harness failed to compile\n"
+                                 + build.stdout + build.stderr)
+        result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=60)
+        if result.returncode != 0 or "BRIDGE_TEST_OK" not in result.stdout:
+            raise AssertionError("JNI bridge runtime test failed\n"
+                                 + result.stdout + result.stderr)
+    return ("PASS: JNI bridge marshals protect/resolve/events off coroutine stacks "
+            "with bounded queues and timeouts.")
+
+
+def test_jni_bridge_static_guards():
+    check_static_guards()
+
+
+def test_jni_bridge_runtime():
+    import pytest
+
+    try:
+        run_runtime_harness()
+    except Skip as skip:
+        pytest.skip(str(skip))
+
+
+def main():
+    try:
+        print(check_static_guards())
+        print(run_runtime_harness())
+    except Skip as skip:
+        print("SKIP: " + str(skip))
+    except AssertionError as failure:
+        sys.exit("FAIL: " + str(failure))
+
+
+if __name__ == "__main__":
+    main()
