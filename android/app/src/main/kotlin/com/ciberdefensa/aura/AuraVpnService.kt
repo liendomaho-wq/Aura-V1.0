@@ -3,7 +3,9 @@ package com.ciberdefensa.aura
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
+import android.content.Intent
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -35,7 +37,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 class AuraVpnService : VpnService() {
     companion object {
         const val ACTION_STATE = "com.ciberdefensa.aura.VPN_STATE"
+        const val ACTION_START = "com.ciberdefensa.aura.action.START_VPN"
+        const val ACTION_STOP = "com.ciberdefensa.aura.action.STOP_VPN"
         const val EXTRA_START_REQUEST_ID = "com.ciberdefensa.aura.VPN_START_REQUEST_ID"
+        private const val USER_STOPPED_KEY = "user_stopped"
         private const val LOCAL_SOCKS5_HOST = "127.0.0.1"
         private const val LOCAL_SOCKS5_PORT = 18763
         private const val THREAT_FEED_URL =
@@ -136,6 +141,16 @@ class AuraVpnService : VpnService() {
     @Volatile private var underlyingNetwork: Network? = null
     @Volatile private var networkCallbackRegistered = false
     @Volatile private var serviceShuttingDown = false
+    @Volatile private var userRequestedStop = false
+    private val tunnelReleased = AtomicBoolean(false)
+    private val onUnderlyingNetworkChanged: (Map<String, String>) -> Unit = {
+        // Ignore the initial reading taken before the TUN exists. A failed
+        // setUnderlyingNetworks() at that point would look like an underlay loss.
+        val tunnelInstalled = vpnInterface != null || tunnelStarted || startRequested.get()
+        if (!userRequestedStop && !serviceShuttingDown && tunnelInstalled) {
+            enqueueUnderlyingNetworkRefresh()
+        }
+    }
     private val underlyingNetworkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             enqueueUnderlyingNetworkRefresh()
@@ -173,10 +188,14 @@ class AuraVpnService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
+        userRequestedStop = getSharedPreferences(VPN_STATE_PREFERENCES, MODE_PRIVATE)
+            .getBoolean(USER_STOPPED_KEY, false)
         AuraCrashReporter.install(applicationContext)
         activeService = this
         AuraNetworkStream.setApplicationContext(applicationContext)
         registerUnderlyingNetworkCallback()
+        AuraUnderlyingNetwork.addListener(onUnderlyingNetworkChanged)
+        AuraUnderlyingNetwork.ensureStarted(applicationContext)
         panicIsolationActive = getSharedPreferences(
             VPN_STATE_PREFERENCES,
             MODE_PRIVATE,
@@ -210,6 +229,15 @@ class AuraVpnService : VpnService() {
             )
             stopSelf()
             return Service.START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_STOP ||
+            (userRequestedStop && intent?.action != ACTION_START)
+        ) {
+            performUserStop("Túnel VPN detenido.")
+            return Service.START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_START) {
+            setUserStopped(false)
         }
         if (!verifyIntegrityOrStop()) {
             val report = try {
@@ -287,53 +315,96 @@ class AuraVpnService : VpnService() {
         serviceShuttingDown = true
         lifecycleGate.beginClosing()
         unregisterUnderlyingNetworkCallback()
+        AuraUnderlyingNetwork.removeListener(onUnderlyingNetworkChanged)
         feedRefresh.shutdownNow()
         integrityMonitor.shutdownNow()
         worker.shutdownNow()
         // Serialize destruction with TUN establishment and native lifecycle
         // calls; stale work cannot start or stop a later service's worker.
-        val shutdownConfirmed = lifecycleGate.close {
-            val nativeStopped = stopNativeWorkerUnchecked()
-            tunnelStarted = false
-            val interfaceClosed = try {
-                vpnInterface?.close()
-                true
-            } catch (exception: Exception) {
-                Log.e("AuraVPN", "No se pudo cerrar la interfaz VPN.", exception)
-                false
-            }
-            vpnInterface = null
-            nativeStopped && interfaceClosed
-        }
-        discardTunnelConfiguration()
+        val shutdownConfirmed = releaseTunnel()
         if (activeService === this) {
             lastShutdownConfirmed = shutdownConfirmed
             activeService = null
         }
+        removeForegroundNotification()
         notificationHandler.removeCallbacksAndMessages(null)
         underlyingNetwork = null
-        stopService(android.content.Intent(this, AuraNotificationService::class.java))
+        stopService(Intent(this, AuraNotificationService::class.java))
         super.onDestroy()
     }
 
     override fun onRevoke() {
         // Revocation can arrive while a worker is still starting. Refuse new
-        // native work immediately; teardown is only confirmed in onDestroy.
-        serviceShuttingDown = true
-        lifecycleGate.beginClosing()
-        tunnelStarted = false
+        // native work, close the TUN, and remember the stop so a sticky
+        // restart cannot bring the tunnel back without an explicit start.
         val message =
             "[CRIT] TÚNEL REVOCADO POR ANDROID O POR EL OPERADOR — " +
                 "LAS DEFENSAS ESTÁN INACTIVAS. " +
                 "Remedio: revise el consentimiento VPN y reactive la defensa."
-        reportState(false, message, revoked = true)
         AuraNotificationService.triggerPersistentAlert(
             this,
             "Túnel VPN revocado",
             message,
         )
-        stopSelf()
+        performUserStop(message, revoked = true)
         super.onRevoke()
+    }
+
+    /**
+     * Explicit user or system stop. Closes hev-socks5-tunnel, the local SOCKS5
+     * listener and the TUN, then removes the foreground notification. A later
+     * network callback must not start the tunnel again.
+     */
+    private fun performUserStop(message: String, revoked: Boolean = false) {
+        setUserStopped(true)
+        panicIsolationActive = false
+        serviceShuttingDown = true
+        lifecycleGate.beginClosing()
+        tunnelStarted = false
+        startRequested.set(false)
+        val confirmed = releaseTunnel()
+        reportState(false, message, revoked = revoked)
+        removeForegroundNotification()
+        if (activeService === this) {
+            lastShutdownConfirmed = confirmed
+            activeService = null
+        }
+        stopSelf()
+    }
+
+    private fun setUserStopped(stopped: Boolean) {
+        userRequestedStop = stopped
+        getSharedPreferences(VPN_STATE_PREFERENCES, MODE_PRIVATE)
+            .edit()
+            .putBoolean(USER_STOPPED_KEY, stopped)
+            .putBoolean(PANIC_ISOLATION_KEY, if (stopped) false else panicIsolationActive)
+            .commit()
+    }
+
+    private fun releaseTunnel(): Boolean {
+        if (!tunnelReleased.compareAndSet(false, true)) return lastShutdownConfirmed
+        val confirmed = lifecycleGate.close {
+            val nativeStopped = stopNativeWorkerUnchecked()
+            val interfaceClosed = try {
+                vpnInterface?.close()
+                vpnInterface = null
+                true
+            } catch (exception: Exception) {
+                Log.e("AuraVPN", "No se pudo cerrar la interfaz VPN.", exception)
+                false
+            }
+            nativeStopped && interfaceClosed
+        }
+        discardTunnelConfiguration()
+        return confirmed
+    }
+
+    private fun removeForegroundNotification() {
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } catch (exception: Exception) {
+            Log.w("AuraVPN", "No se pudo retirar la notificación de la VPN.", exception)
+        }
     }
 
     /**
@@ -415,6 +486,7 @@ class AuraVpnService : VpnService() {
     }
 
     private fun startTunnel(requestId: String?) {
+        if (userRequestedStop || serviceShuttingDown) return
         var established: ParcelFileDescriptor? = null
         try {
             requireUnderlyingNetworkMonitor()
@@ -429,6 +501,7 @@ class AuraVpnService : VpnService() {
                 descriptor
             } ?: throw IOException("El servicio VPN está cerrándose.")
             established = tun
+            if (userRequestedStop || serviceShuttingDown) return
 
             val (configFile, socks5Credentials) = prepareTunnelConfiguration()
 
@@ -460,6 +533,7 @@ class AuraVpnService : VpnService() {
             updateForegroundNotification()
             Log.i("AuraVPN", "Hev tun2socks autenticado con el proxy SOCKS5 local.")
         } catch (error: Throwable) {
+            if (userRequestedStop || serviceShuttingDown) return
             // Any failure here (I/O, JNI LinkageError from a missing ABI/library or
             // unresolved symbol, unexpected runtime errors) runs on the worker
             // executor: an escaping Throwable would kill the whole app process
@@ -753,7 +827,7 @@ class AuraVpnService : VpnService() {
     }
 
     private fun enqueueUnderlyingNetworkRefresh(excludedNetwork: Network? = null) {
-        if (worker.isShutdown) return
+        if (userRequestedStop || worker.isShutdown) return
         try {
             worker.execute { refreshUnderlyingNetwork(excludedNetwork) }
         } catch (_: java.util.concurrent.RejectedExecutionException) {
@@ -764,6 +838,7 @@ class AuraVpnService : VpnService() {
     @Synchronized
     private fun refreshUnderlyingNetwork(excludedNetwork: Network? = null) {
         if (serviceShuttingDown) return
+        if (userRequestedStop) return
         val previous = underlyingNetwork
         val selected = findUnderlyingNetwork(excludedNetwork)
         if (selected == previous) {
@@ -842,7 +917,7 @@ class AuraVpnService : VpnService() {
             panicIsolationActive = panicIsolationActive,
             forwardingVerified = shieldStatus()["forwarding_active"] == true,
             startInProgress = startRequested.get(),
-            closing = serviceShuttingDown || worker.isShutdown,
+            closing = serviceShuttingDown || worker.isShutdown || userRequestedStop,
         )
 
     /**
@@ -852,6 +927,7 @@ class AuraVpnService : VpnService() {
      * same TUN descriptor so new protected sockets use the selected underlay.
      */
     private fun requestTunnelRecovery(requestId: String? = null) {
+        if (userRequestedStop) return
         if (worker.isShutdown) {
             if (requestId != null) {
                 reportState(false, "El servicio VPN está cerrándose.", requestId = requestId)
@@ -868,6 +944,7 @@ class AuraVpnService : VpnService() {
         try {
             worker.execute {
                 try {
+                    if (userRequestedStop) return@execute
                     if (serviceShuttingDown || panicIsolationActive) {
                         if (requestId != null) {
                             reportState(
@@ -1285,6 +1362,13 @@ class AuraVpnService : VpnService() {
     private fun createNotification(
         contentText: String = NOTIFICATION_TEXT,
     ): Notification {
+        val stopIntent = Intent(this, AuraVpnService::class.java).setAction(ACTION_STOP)
+        val stopPending = PendingIntent.getService(
+            this,
+            1,
+            stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL)
             .setContentTitle("Aura Centinela")
             // Show the actual service state and DNS summary instead of a fixed
@@ -1293,6 +1377,7 @@ class AuraVpnService : VpnService() {
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Detener", stopPending)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()

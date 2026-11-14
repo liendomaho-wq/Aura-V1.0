@@ -1,4 +1,5 @@
 import 'package:aura_mobile_defens/providers/aura_state_provider.dart';
+import 'support/mock_underlying_network.dart';
 import 'package:aura_mobile_defens/services/aura_local_telemetry.dart';
 import 'package:aura_mobile_defens/screens/aura_core_screen.dart';
 import 'package:aura_mobile_defens/widgets/aura_avatar.dart';
@@ -51,6 +52,7 @@ void main() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     addTearDown(() {
       messenger.setMockMethodCallHandler(shieldChannel, null);
+      clearUnderlyingNetworkMock();
       messenger.setMockMethodCallHandler(telemetryChannel, null);
       messenger.setMockMethodCallHandler(securityChannel, null);
       messenger.setMockMethodCallHandler(biometricChannel, null);
@@ -70,7 +72,11 @@ void main() {
       // Diagnostics are not shield start/stop actions. A null report means
       // there is nothing to show and must not change the VPN call sequence.
       if (call.method == 'getLastCrashReport' ||
-          call.method == 'clearLastCrashReport') {
+          call.method == 'clearLastCrashReport' ||
+          call.method == 'getUnderlyingNetwork') {
+        if (call.method == 'getUnderlyingNetwork') {
+          return <String, String>{'kind': 'wifi', 'label': 'WiFi'};
+        }
         return null;
       }
       calls.add(call.method);
@@ -109,6 +115,7 @@ void main() {
         },
       ),
     );
+    mockUnderlyingNetwork(kind: 'wifi', label: 'WiFi');
 
     await tester.pumpWidget(
       ChangeNotifierProvider<AuraStateProvider>.value(
@@ -161,6 +168,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('DEFENSA: OFF'), findsOneWidget);
+    expect(find.text('WiFi'), findsOneWidget);
     expect(find.text('Hola, soy Aura.'), findsOneWidget);
     expect(find.byType(AuraAvatar), findsOneWidget);
     expect(find.textContaining('VPN local opcional'), findsOneWidget);

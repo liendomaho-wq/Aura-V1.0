@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:aura_mobile_defens/providers/aura_state_provider.dart';
 import 'package:aura_mobile_defens/screens/aura_core_screen.dart';
 import 'package:aura_mobile_defens/screens/splash_screen.dart';
+import 'support/mock_underlying_network.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -58,11 +59,13 @@ void main() {
       networkEventChannel,
       MockStreamHandler.inline(onListen: (_, __) {}),
     );
+    mockUnderlyingNetwork();
     addTearDown(() async {
       await tester.pumpWidget(const SizedBox.shrink());
       messenger.setMockMethodCallHandler(biometricChannel, null);
       messenger.setMockMethodCallHandler(pathProviderChannel, null);
       messenger.setMockStreamHandler(networkEventChannel, null);
+      clearUnderlyingNetworkMock();
       state.dispose();
     });
 

@@ -185,6 +185,23 @@ class MainActivity: FlutterFragmentActivity() {
     private var pendingNotificationPayload: Pair<String, String>? = null
     private var vpnReceiverRegistered = false
     private var lastShieldFailure: String? = null
+    private var underlyingNetworkListener: ((Map<String, String>) -> Unit)? = null
+    private val underlyingNetworkEvents = object : EventChannel.StreamHandler {
+        override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+            underlyingNetworkListener?.let { AuraUnderlyingNetwork.removeListener(it) }
+            val listener: (Map<String, String>) -> Unit = { snapshot ->
+                runOnUiThread { events?.success(snapshot) }
+            }
+            underlyingNetworkListener = listener
+            AuraUnderlyingNetwork.addListener(listener)
+            AuraUnderlyingNetwork.ensureStarted(applicationContext)
+        }
+
+        override fun onCancel(arguments: Any?) {
+            underlyingNetworkListener?.let { AuraUnderlyingNetwork.removeListener(it) }
+            underlyingNetworkListener = null
+        }
+    }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         AuraHostileEnvironment.recordObscuredTouch(event)
@@ -361,6 +378,10 @@ class MainActivity: FlutterFragmentActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             NETWORK_STREAM_CHANNEL,
         ).setStreamHandler(AuraNetworkStream)
+        EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.ciberdefensa.aura/underlying_network",
+        ).setStreamHandler(underlyingNetworkEvents)
 
         // Local llama.cpp runtime for lib/llm/aura_llm_runtime.dart. The
         // plugin stays fail-closed: if libaura_llm.so or its worker cannot
@@ -1044,15 +1065,19 @@ class MainActivity: FlutterFragmentActivity() {
                 "stopShield" -> {
                     // Ignore a late consent or start response after an explicit stop.
                     completePendingShieldStart(false)
-                    val intent = Intent(this, AuraVpnService::class.java)
-                    val stopAccepted = stopService(intent)
+                    val delivered = deliverVpnStop()
                     stopService(Intent(this, AuraNotificationService::class.java))
-                    // Do not report a successful stop when Android had no running
-                    // VPN service to stop; Dart must keep the state conservative.
-                    result.success(stopAccepted)
+                    // True only means Android accepted the stop command. Dart must
+                    // read getShieldStatus instead of treating this as a finished stop.
+                    result.success(delivered)
                 }
 
                 "getShieldStatus" -> result.success(AuraVpnService.shieldStatus())
+
+                "getUnderlyingNetwork" -> {
+                    AuraUnderlyingNetwork.ensureStarted(applicationContext)
+                    result.success(AuraUnderlyingNetwork.snapshot())
+                }
 
                 "getLastShieldFailure" -> result.success(lastShieldFailure)
 
@@ -1260,6 +1285,7 @@ class MainActivity: FlutterFragmentActivity() {
         }
         try {
             val intent = Intent(this, AuraVpnService::class.java)
+                .setAction(AuraVpnService.ACTION_START)
                 .putExtra(AuraVpnService.EXTRA_START_REQUEST_ID, requestId)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent)
@@ -1367,6 +1393,18 @@ class MainActivity: FlutterFragmentActivity() {
         }
     }
 
+    private fun deliverVpnStop(): Boolean {
+        return try {
+            val intent = Intent(this, AuraVpnService::class.java)
+                .setAction(AuraVpnService.ACTION_STOP)
+            startService(intent)
+            true
+        } catch (exception: Exception) {
+            android.util.Log.e("AuraVPN", "No se pudo pedir la detención de la VPN.", exception)
+            false
+        }
+    }
+
     private fun registerVpnReceiver() {
         if (vpnReceiverRegistered) return
         val filter = IntentFilter(AuraVpnService.ACTION_STATE)
@@ -1383,6 +1421,8 @@ class MainActivity: FlutterFragmentActivity() {
     override fun onDestroy() {
         genomeScannerExecutor.shutdownNow()
         blocklistExecutor.shutdownNow()
+        underlyingNetworkListener?.let { AuraUnderlyingNetwork.removeListener(it) }
+        underlyingNetworkListener = null
         if (vpnReceiverRegistered) {
             unregisterReceiver(vpnStateReceiver)
             vpnReceiverRegistered = false

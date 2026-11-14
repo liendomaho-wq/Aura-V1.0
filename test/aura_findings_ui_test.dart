@@ -1,5 +1,6 @@
 import 'package:aura_mobile_defens/providers/aura_state_provider.dart';
 import 'package:aura_mobile_defens/screens/aura_core_screen.dart';
+import 'support/mock_underlying_network.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -37,8 +38,10 @@ void main() {
       messenger.setMockMethodCallHandler(biometricChannel, null);
       messenger.setMockMethodCallHandler(telemetryChannel, null);
       messenger.setMockStreamHandler(networkEventChannel, null);
+      clearUnderlyingNetworkMock();
       state.dispose();
     });
+    mockUnderlyingNetwork();
     messenger.setMockMethodCallHandler(securityChannel, (call) async {
       if (call.method == 'checkHostileEnvironment') {
         return <String, Object>{

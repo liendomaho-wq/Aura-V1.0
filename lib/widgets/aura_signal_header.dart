@@ -16,6 +16,7 @@ class AuraSignalHeader extends StatelessWidget {
     required this.shieldStatusKnown,
     required this.shieldServiceActive,
     required this.vpnActive,
+    required this.networkLabel,
     required this.onToggleShield,
   });
 
@@ -28,6 +29,7 @@ class AuraSignalHeader extends StatelessWidget {
   final bool shieldStatusKnown;
   final bool shieldServiceActive;
   final bool vpnActive;
+  final String networkLabel;
   final VoidCallback onToggleShield;
 
   @override
@@ -89,53 +91,73 @@ class AuraSignalHeader extends StatelessWidget {
               ],
             ),
           ),
-          TextButton(
-            key: const ValueKey<String>('vpn-toggle'),
-            onPressed: isAuthenticated && !isShieldBusy && shieldStatusKnown
-                ? onToggleShield
-                : null,
-            style: TextButton.styleFrom(
-              foregroundColor: vpnColor,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              minimumSize: const Size(0, 34),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: isShieldBusy
-                ? const SizedBox.square(
-                    dimension: 13,
-                    child: CircularProgressIndicator(strokeWidth: 1.6),
-                  )
-                : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 5,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: vpnColor.withValues(alpha: 0.9),
-                          boxShadow: vpnActive
-                              ? [
-                                  BoxShadow(
-                                    color: vpnColor.withValues(alpha: 0.45),
-                                    blurRadius: 7,
-                                  ),
-                                ]
-                              : null,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        vpnLabel,
-                        style: TextStyle(
-                          color: vpnColor,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.55,
-                        ),
-                      ),
-                    ],
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextButton(
+                key: const ValueKey<String>('vpn-toggle'),
+                onPressed: isAuthenticated && !isShieldBusy && shieldStatusKnown
+                    ? onToggleShield
+                    : null,
+                style: TextButton.styleFrom(
+                  foregroundColor: vpnColor,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
                   ),
+                  minimumSize: const Size(0, 34),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: isShieldBusy
+                    ? const SizedBox.square(
+                        dimension: 13,
+                        child: CircularProgressIndicator(strokeWidth: 1.6),
+                      )
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 5,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: vpnColor.withValues(alpha: 0.9),
+                              boxShadow: vpnActive
+                                  ? [
+                                      BoxShadow(
+                                        color: vpnColor.withValues(alpha: 0.45),
+                                        blurRadius: 7,
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            vpnLabel,
+                            style: TextStyle(
+                              color: vpnColor,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.55,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+              Text(
+                networkLabel,
+                key: const ValueKey<String>('underlying-network-label'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AuraTokens.textMuted,
+                  fontSize: 8,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
           ),
         ],
       ),

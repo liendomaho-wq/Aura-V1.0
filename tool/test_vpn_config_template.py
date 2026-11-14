@@ -981,9 +981,21 @@ on_destroy = re.search(
     text,
     re.DOTALL,
 )
-if not on_destroy or any(part not in on_destroy.group(1) for part in (
-    "lifecycleGate.beginClosing()", "lifecycleGate.close", "stopNativeWorkerUnchecked()",
-)):
+release_tunnel = re.search(
+    r"private fun releaseTunnel\(\): Boolean \{(.*?)\n    \}",
+    text,
+    re.DOTALL,
+)
+if (
+    not on_destroy
+    or "lifecycleGate.beginClosing()" not in on_destroy.group(1)
+    or "releaseTunnel()" not in on_destroy.group(1)
+    or not release_tunnel
+    or any(part not in release_tunnel.group(1) for part in (
+        "lifecycleGate.close",
+        "stopNativeWorkerUnchecked()",
+    ))
+):
     sys.exit("FAIL: VPN destruction must close the lifecycle gate and reconcile native worker state")
 if '"status_verified" to lastShutdownConfirmed' not in text:
     sys.exit("FAIL: an unconfirmed native teardown must not be reported as verified")
@@ -1171,3 +1183,35 @@ if "catch (error: Throwable)" not in start_tunnel.group(1):
 if "No se pudo restaurar una regla SNI tras cambiar de red." in text:
     sys.exit("FAIL: optional SNI hints must not abort a recovered tunnel")
 print("PASS: VPN start captures crashes, excludes Aura's own sockets and keeps SNI hints optional.")
+
+if "const val ACTION_STOP" not in text or "performUserStop(" not in text:
+    sys.exit("FAIL: VPN stop must be an explicit service action that tears the tunnel down")
+if "stopForeground(STOP_FOREGROUND_REMOVE)" not in text:
+    sys.exit("FAIL: VPN stop must remove the foreground notification")
+if "userRequestedStop" not in text:
+    sys.exit("FAIL: a user stop must block later network recovery from restarting the tunnel")
+if '.addAction(android.R.drawable.ic_menu_close_clear_cancel, "Detener", stopPending)' not in text:
+    sys.exit("FAIL: the VPN notification must expose a Detener action")
+if "setAction(AuraVpnService.ACTION_STOP)" not in anti_tampering:
+    sys.exit("FAIL: Flutter stopShield must deliver ACTION_STOP to AuraVpnService")
+if "setAction(AuraVpnService.ACTION_START)" not in anti_tampering:
+    sys.exit("FAIL: VPN start must be distinguishable from a sticky restart")
+network_monitor = Path(
+    "android/app/src/main/kotlin/com/ciberdefensa/aura/AuraUnderlyingNetwork.kt"
+).read_text(encoding="utf-8")
+for required_network_signal in (
+    "registerDefaultNetworkCallback(callback)",
+    "NetworkCapabilities.TRANSPORT_WIFI",
+    "NetworkCapabilities.TRANSPORT_CELLULAR",
+    "NetworkCapabilities.TRANSPORT_VPN",
+    "NetworkCapabilities.NET_CAPABILITY_NOT_VPN",
+):
+    if required_network_signal not in network_monitor:
+        sys.exit("FAIL: underlying network monitor is missing " + required_network_signal)
+if "com.ciberdefensa.aura/underlying_network" not in anti_tampering:
+    sys.exit("FAIL: the physical network type must be exposed to Flutter")
+if "underlying-network-label" not in Path(
+    "lib/widgets/aura_signal_header.dart"
+).read_text(encoding="utf-8"):
+    sys.exit("FAIL: the VPN screen must show the current physical network")
+print("PASS: VPN stop is explicit and the screen reports Wi-Fi or mobile data.")

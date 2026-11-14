@@ -11,6 +11,7 @@ import '../ai_brain.dart';
 import '../explanation/aura_verdict_explanation.dart';
 import '../infrastructure/agent/aura_intent_parser.dart';
 import '../models/aura_model_integrity_report.dart';
+import '../network/underlying_network_label.dart';
 import '../network_auditor.dart';
 import '../llm/aura_llm_setup_controller.dart';
 import '../security/aura_finding.dart';
@@ -59,12 +60,17 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
   static const MethodChannel _securityChannel = MethodChannel(
     'com.ciberdefensa.aura/security',
   );
+  static const EventChannel _underlyingNetworkChannel = EventChannel(
+    'com.ciberdefensa.aura/underlying_network',
+  );
 
   final TextEditingController _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   AuraNetworkAuditor? _networkAuditor;
   AuraAIBrain? _aiBrain;
   StreamSubscription<NetworkAuditEvent>? _networkEventSubscription;
+  StreamSubscription<dynamic>? _underlyingNetworkSub;
+  String _underlyingNetworkLabel = 'Sin conexión';
   bool _isListening = false;
   bool _isRunning = false;
   bool _isShieldBusy = false;
@@ -89,9 +95,34 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _listenUnderlyingNetwork();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _authenticateConsole();
     });
+  }
+
+  void _listenUnderlyingNetwork() {
+    _underlyingNetworkSub = _underlyingNetworkChannel
+        .receiveBroadcastStream()
+        .listen((event) {
+          final label = underlyingNetworkLabelFromEvent(event);
+          if (!mounted || label == _underlyingNetworkLabel) return;
+          setState(() => _underlyingNetworkLabel = label);
+        }, onError: (Object _) {});
+    unawaited(_queryUnderlyingNetwork());
+  }
+
+  Future<void> _queryUnderlyingNetwork() async {
+    try {
+      final status = await _shieldChannel.invokeMapMethod<String, dynamic>(
+        'getUnderlyingNetwork',
+      );
+      final label = underlyingNetworkLabelFromEvent(status);
+      if (!mounted || label == _underlyingNetworkLabel) return;
+      setState(() => _underlyingNetworkLabel = label);
+    } on Object {
+      // The event channel remains the live source when this query is unavailable.
+    }
   }
 
   Future<void> _authenticateConsole() async {
@@ -373,6 +404,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
     _shieldStatusGeneration++;
     _shieldStatusTimer?.cancel();
     _cancelPendingCrashReport();
+    unawaited(_underlyingNetworkSub?.cancel());
+    _underlyingNetworkSub = null;
     WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     _inputController.dispose();
@@ -1044,6 +1077,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                   shieldStatusKnown: _shieldStatusKnown,
                   shieldServiceActive: _shieldServiceActive,
                   vpnActive: vpnActive,
+                  networkLabel: _underlyingNetworkLabel,
                   onToggleShield: _toggleShield,
                 ),
                 Expanded(
