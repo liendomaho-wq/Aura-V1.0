@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.os.Build
 import android.util.Log
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -90,64 +89,30 @@ internal object AuraUnderlyingNetwork {
     private fun readSnapshot(connectivity: ConnectivityManager): Map<String, String> {
         val network = connectivity.activeNetwork
         val capabilities = network?.let { connectivity.getNetworkCapabilities(it) }
-        val physical = unwrapVpn(connectivity, capabilities)
-        val kind = if (physical == null) {
-            UnderlyingNetworkKind.NONE
-        } else {
-            UnderlyingNetworkKind.fromTransports(
-                isVpn = false,
-                hasWifi = physical.hasTransport(NetworkCapabilities.TRANSPORT_WIFI),
-                hasCellular = physical.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR),
-                hasInternet = physical.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
-            )
+        val others = connectivity.allNetworks.mapNotNull { candidate ->
+            connectivity.getNetworkCapabilities(candidate)?.let(::factsOf)
         }
+        val kind = UnderlyingNetworkKind.kindFor(
+            capabilities?.let(::factsOf),
+            others,
+        )
         return mapOf(
             "kind" to kind,
             "label" to UnderlyingNetworkKind.label(kind),
         )
     }
 
-    private fun unwrapVpn(
-        connectivity: ConnectivityManager,
-        capabilities: NetworkCapabilities?,
-    ): NetworkCapabilities? {
-        if (capabilities == null) return null
-        val isVpn = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
-            !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-        if (!isVpn) return capabilities
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val underlying = capabilities.underlyingNetworks
-            if (underlying != null) {
-                for (candidate in underlying) {
-                    val candidateCaps = connectivity.getNetworkCapabilities(candidate) ?: continue
-                    if (candidateCaps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) continue
-                    if (!candidateCaps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)) {
-                        continue
-                    }
-                    return candidateCaps
-                }
-            }
-        }
-        val physical = connectivity.allNetworks.mapNotNull { candidate ->
-            val candidateCaps = connectivity.getNetworkCapabilities(candidate) ?: return@mapNotNull null
-            if (candidateCaps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return@mapNotNull null
-            if (!candidateCaps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)) {
-                return@mapNotNull null
-            }
-            if (!candidateCaps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
-                return@mapNotNull null
-            }
-            candidateCaps
-        }
-        return physical.firstOrNull {
-            it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
-                it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-        } ?: physical.firstOrNull {
-            it.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
-                it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-        } ?: physical.firstOrNull { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) }
-            ?: physical.firstOrNull { it.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) }
-            ?: physical.firstOrNull()
+    private fun factsOf(capabilities: NetworkCapabilities): PublicNetworkFacts {
+        val vpn = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        val notVpn = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+        return PublicNetworkFacts(
+            isVpn = vpn || !notVpn,
+            notVpn = notVpn,
+            wifi = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI),
+            cellular = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR),
+            internet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
+            validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+        )
     }
 
     private fun disconnected(): Map<String, String> = mapOf(

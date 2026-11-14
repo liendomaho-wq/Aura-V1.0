@@ -25,15 +25,19 @@ No se adelanta la fase 3 ni la 5. El firewall sobre una VPN que no para, o una I
 
 ## Por qué no se cambia el orden
 
-La matriz no muestra un fallo de compilación en `5089d35`. El bloqueo real es de producto y de prueba física, no de Gradle. Por eso la fase 2 no es “arreglar el build” en abstracto: es cerrar el ciclo de vida de la VPN y el vault, que son la base de todo lo demás.
+`5089d35` y `6318277` no compilaban. La fase 2 empieza por dejar el build Android en verde, porque sin APK no hay prueba física de la parada. Ese arreglo de compilación (quitar `underlyingNetworks`) es previo a la fase 2 y no la abre: no añade firewall, IA ni acciones nuevas.
+
+Después del build, la fase 2 sigue siendo el ciclo de vida de la VPN y SecureVault. El bloqueo que queda es de producto y de prueba en el POVA 5 (API 34), no de “Gradle en abstracto”. Una política de wrapper verde no sustituye `compileDebugKotlin`.
 
 Poner el motor de ciberdefensa (fase 4) antes del firewall dejaría los hallazgos de red otra vez en contadores de sesión. El motor debe consolidarse cuando ya pueda guardar un evento de bloqueo real. Por eso el firewall va antes, y escribe en el motor de hallazgos que ya existe (`lib/security/`), sin crear un segundo almacén.
 
 ## Fase 2 — Base estable (Parte 5)
 
+No empieza hasta que QA acepte esta corrección. El primer paso, cuando haya luz verde, es comprobar que el Android Debug Build y el job de Keystore del SHA corregido están en verde. Eso no es el resto de la fase.
+
 Hecho cuando:
 
-- El TECNO POVA 5 confirma parada desde la consola y desde **Detener**, y el icono de VPN de Android desaparece.
+- El TECNO POVA 5 (8 GB, Android 14, API 34) confirma parada desde la consola y desde **Detener**, y el icono de VPN de Android desaparece. Un emulador Android 16 no cuenta.
 - El mismo teléfono cambia Wi‑Fi ↔ datos móviles con el túnel aún arriba, y la etiqueta coincide con la red física.
 - Un callback de red posterior a la parada no reabre el túnel (`userRequestedStop`).
 - SecureVault: cifrado, clave incorrecta, dato alterado y migración v9→v10 sin borrar el secreto viejo antes de validar el nuevo. Si el Keystore del teléfono no puede probarse, se documenta el límite y no se finge la migración.
@@ -91,11 +95,13 @@ Solo acciones que las fases anteriores ya verifican: regla de firewall, VPN, aud
 
 ## Pruebas físicas (los dos teléfonos)
 
-| Prueba | Redmi Note 15 Pro+ 5G, Android 16 | TECNO POVA 5 (teléfono actual del dueño) |
+El teléfono del dueño es un **TECNO POVA 5 con 8 GB y Android 14 (API 34)**. El Redmi Note 15 Pro+ (Android 16) sigue siendo la segunda referencia de la spec. No se copian cifras de uno al otro. El último APK de `main` que se sabe compilable es el de `e5cf2fe`. `5089d35` no generó APK.
+
+| Prueba | Redmi Note 15 Pro+ 5G, Android 16 | TECNO POVA 5, 8 GB, Android 14 (API 34) |
 |---|---|---|
-| Instalar el APK de prueba del SHA | Pendiente | Pendiente para `5089d35` |
-| Arranque de la VPN | Pendiente | Hecho el 2026-11-14 en un SHA anterior; repetir en el SHA de la fase 2 |
-| Parada desde Aura y desde Detener | Pendiente | Pendiente (`5089d35`) |
+| Instalar el APK de prueba del SHA | Pendiente | Imposible con `5089d35`. El último APK conocido es `e5cf2fe`. Repetir con el SHA que vuelva a compilar. |
+| Arranque de la VPN | Pendiente | Hecho el 2026-11-14 en un SHA anterior a la rotura; repetir en API 34 con el SHA verde |
+| Parada desde Aura y desde Detener | Pendiente | Pendiente. El código está, pero `5089d35` no se pudo instalar. |
 | Wi‑Fi ↔ datos, etiqueta correcta, túnel vivo | Pendiente | Pendiente |
 | Parada y luego un cambio de red: no debe reencenderse | Pendiente | Pendiente |
 | TCP, UDP, DNS, IPv4, IPv6, fugas | Pendiente | Pendiente |
@@ -105,6 +111,16 @@ Solo acciones que las fases anteriores ya verifican: regla de firewall, VPN, aud
 | Reglas de firewall, modo estricto y recuperación | Pendiente hasta la fase 3 | Pendiente hasta la fase 3 |
 
 El Redmi sigue siendo la referencia de la spec (Android 16, 8 GB). El POVA 5 es donde el dueño puede mirar cada fase. Un pase en uno no se copia al otro.
+
+## Decisiones abiertas para la fase 2
+
+No se implementan aquí. Recomendación de quien implementa, para que el dueño las confirme.
+
+1. **¿La VPN es solo local o sale a un servidor remoto?** Recomendación: solo local. El túnel termina en un SOCKS5 de `127.0.0.1` dentro del teléfono (`AuraVpnService`). No hay servidor VPN de Aura. Un salto remoto sería otro producto y otra promesa de privacidad.
+2. **¿Qué resolver DNS usa?** Recomendación: el que ya está. Dentro del túnel, el DNS es el `mapdns` local `10.0.0.3`. La resolución hacia fuera usa la red física (`resolveHostOnUnderlyingNetwork`), no un DoH propio de Aura. No anunciar un resolver público.
+3. **¿Bloquear un dominio bloquea también sus subdominios?** Recomendación: sí, con límite de etiqueta. `domain_matches_rule` en `aura_sni_firewall.c` acepta el nombre exacto o un sufijo separado por punto: `ejemplo.com` cubre `a.ejemplo.com` y no cubre `ejemplo.com.otro.test`. Mantener esa regla y escribirla en la UI cuando exista el firewall. No pasar a “contiene la cadena”.
+4. **SecureVault no tiene pantalla.** Recomendación: no inventar un gestor de secretos en la fase 2. La purga sigue detrás de `CONFIRMO`. Una pantalla de solo lectura (“qué queda en el teléfono”) cabe en la fase 6, no en el arreglo del build.
+5. **Marca en la UI.** Recomendación: en la consola, “Escudo”. “VPN” solo donde Android obliga a decirlo (permiso del sistema, `VpnService`, texto de notificación que el sistema asocia al túnel). No mezclar las dos palabras en el mismo botón.
 
 ## Reglas de cada commit
 
