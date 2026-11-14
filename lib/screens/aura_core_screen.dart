@@ -72,6 +72,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
   bool _shieldServiceActive = false;
   int _shieldStatusGeneration = 0;
   Timer? _shieldStatusTimer;
+  Timer? _crashReportTimer;
+  Completer<String?>? _crashReportResult;
   bool _isAuthenticated = false;
   bool _showCoverageAudit = false;
   bool _telemetryEndpointConfigured = false;
@@ -122,12 +124,20 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
 
   /// Shows the last crash / VPN failure captured on the device so testers
   /// without adb can copy the exact stack trace and send it.
+  ///
+  /// A missing plugin, a null report, or a channel that never answers must
+  /// not block the console. The wait is cancelled in [dispose] so it cannot
+  /// leave a timer running after the screen is gone.
   Future<void> _showPendingCrashReport() async {
-    String? report;
+    final String? report;
     try {
-      report = await _shieldChannel
-          .invokeMethod<String>('getLastCrashReport')
-          .timeout(const Duration(seconds: 5));
+      report = await _loadLastCrashReport();
+    } on MissingPluginException {
+      return;
+    } on PlatformException {
+      return;
+    } on TimeoutException {
+      return;
     } on Object {
       return;
     }
@@ -197,6 +207,47 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
         ],
       ),
     );
+  }
+
+  Future<String?> _loadLastCrashReport() {
+    final result = Completer<String?>();
+    final previous = _crashReportResult;
+    if (previous != null && !previous.isCompleted) {
+      previous.completeError(StateError('crash report lookup replaced'));
+    }
+    _crashReportResult = result;
+    _crashReportTimer?.cancel();
+    _crashReportTimer = Timer(const Duration(seconds: 5), () {
+      if (!result.isCompleted) {
+        result.completeError(
+          TimeoutException('getLastCrashReport', const Duration(seconds: 5)),
+        );
+      }
+    });
+    unawaited(() async {
+      try {
+        final report = await _shieldChannel.invokeMethod<String>(
+          'getLastCrashReport',
+        );
+        _crashReportTimer?.cancel();
+        if (!result.isCompleted) result.complete(report);
+      } catch (error, stackTrace) {
+        _crashReportTimer?.cancel();
+        if (!result.isCompleted) {
+          result.completeError(error, stackTrace);
+        }
+      }
+    }());
+    return result.future;
+  }
+
+  void _cancelPendingCrashReport() {
+    _crashReportTimer?.cancel();
+    _crashReportTimer = null;
+    final pending = _crashReportResult;
+    if (pending != null && !pending.isCompleted) {
+      pending.completeError(StateError('crash report lookup cancelled'));
+    }
   }
 
   @override
@@ -321,6 +372,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
   void dispose() {
     _shieldStatusGeneration++;
     _shieldStatusTimer?.cancel();
+    _cancelPendingCrashReport();
     WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     _inputController.dispose();

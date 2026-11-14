@@ -67,6 +67,12 @@ void main() {
     });
     messenger.setMockMethodCallHandler(biometricChannel, (_) async => true);
     messenger.setMockMethodCallHandler(shieldChannel, (call) async {
+      // Diagnostics are not shield start/stop actions. A null report means
+      // there is nothing to show and must not change the VPN call sequence.
+      if (call.method == 'getLastCrashReport' ||
+          call.method == 'clearLastCrashReport') {
+        return null;
+      }
       calls.add(call.method);
       if (call.method == 'startShield') {
         vpnServiceActive = true;

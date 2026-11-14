@@ -24,6 +24,7 @@ void main() {
     tester,
   ) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    const shieldChannel = MethodChannel('com.ciberdefensa.aura/shield');
     const securityChannel = MethodChannel('com.ciberdefensa.aura/security');
     const biometricChannel = MethodChannel('com.aura.cyberdefense/biometrics');
     const telemetryChannel = MethodChannel('com.ciberdefensa.aura/telemetry');
@@ -34,11 +35,25 @@ void main() {
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     addTearDown(() {
+      messenger.setMockMethodCallHandler(shieldChannel, null);
       messenger.setMockMethodCallHandler(securityChannel, null);
       messenger.setMockMethodCallHandler(biometricChannel, null);
       messenger.setMockMethodCallHandler(telemetryChannel, null);
       messenger.setMockStreamHandler(networkEventChannel, null);
       state.dispose();
+    });
+    messenger.setMockMethodCallHandler(shieldChannel, (call) async {
+      if (call.method == 'getShieldStatus') {
+        return <String, dynamic>{
+          'service_active': false,
+          'vpn_interface_active': false,
+          'forwarding_active': false,
+          'isolation_active': false,
+          'status_verified': true,
+        };
+      }
+      // No stored crash report. The console must still open.
+      return null;
     });
     messenger.setMockMethodCallHandler(securityChannel, (call) async {
       if (call.method == 'checkHostileEnvironment') {
