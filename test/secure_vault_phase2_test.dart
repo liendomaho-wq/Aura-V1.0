@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:aura_mobile_defens/secure_vault.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -39,35 +37,6 @@ void main() {
     });
     await expectLater(
       AuraSecureVault().withModelMasterKey((_) {}),
-      throwsStateError,
-    );
-    expect(
-      await FlutterSecureStorage().read(key: 'aura_model_master_key_v1'),
-      'abc',
-    );
-  });
-
-  test('rotation replaces the model key with a different value', () async {
-    final vault = AuraSecureVault();
-    String? first;
-    await vault.withModelMasterKey((bytes) {
-      first = base64UrlEncode(bytes).replaceAll('=', '');
-    });
-    await vault.rotateModelMasterKey();
-    String? second;
-    await vault.withModelMasterKey((bytes) {
-      second = base64UrlEncode(bytes).replaceAll('=', '');
-    });
-    expect(second, isNotNull);
-    expect(second, isNot(first));
-  });
-
-  test('an illegible model key is not rotated away', () async {
-    FlutterSecureStorage.setMockInitialValues(<String, String>{
-      'aura_model_master_key_v1': 'abc',
-    });
-    await expectLater(
-      AuraSecureVault().rotateModelMasterKey(),
       throwsStateError,
     );
     expect(

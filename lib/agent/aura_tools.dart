@@ -551,7 +551,7 @@ abstract class AuraTools {
           return ToolResult(
             summary: isolated
                 ? 'Forwarding del túnel detenido; la interfaz VPN queda en modo de descarte.'
-                : 'No se confirmó el aislamiento: el túnel VPN no estaba activo.',
+                : 'No se confirmó el aislamiento: el Escudo no estaba activo.',
             data: <String, dynamic>{
               'ok': isolated,
               'isolation_active': isolated,

@@ -31,4 +31,16 @@ class SystemVpnRestartTest {
             SystemVpnRestart.decide(alwaysOn = true, lockdown = false),
         )
     }
+
+    @Test
+    fun explicitStopDuringLockdownWarnsAndKeepsTheShield() {
+        assertEquals(
+            SystemVpnRestart.ExplicitStop.WARN_AND_KEEP_RUNNING,
+            SystemVpnRestart.decideExplicitStop(lockdown = true),
+        )
+        assertEquals(
+            SystemVpnRestart.ExplicitStop.PERFORM_STOP,
+            SystemVpnRestart.decideExplicitStop(lockdown = false),
+        )
+    }
 }

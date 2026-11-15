@@ -693,6 +693,11 @@ native_start_service (JNIEnv *env, jobject thiz, jstring config_path, jint fd)
     if (atomic_load_explicit (&is_running, memory_order_acquire))
         goto exit;
 
+    /* A timed-out stop still owns work_thread. Joining it here is undefined
+     * and can deadlock on mutex, which the helper needs to finish. */
+    if (atomic_load_explicit (&aura_join_in_progress, memory_order_acquire))
+        goto exit;
+
     if (thread_joinable) {
         res = pthread_join (work_thread, NULL);
         if (res != 0)
@@ -788,8 +793,10 @@ aura_join_worker_with_timeout (pthread_t target)
     int finished;
 
     wait = calloc (1, sizeof (AuraJoinWait));
-    if (!wait)
+    if (!wait) {
+        atomic_store_explicit (&aura_join_in_progress, 0, memory_order_release);
         return ENOMEM;
+    }
     wait->target = target;
     pthread_mutex_init (&wait->lock, NULL);
     pthread_cond_init (&wait->cond, NULL);
@@ -798,6 +805,7 @@ aura_join_worker_with_timeout (pthread_t target)
         pthread_cond_destroy (&wait->cond);
         pthread_mutex_destroy (&wait->lock);
         free (wait);
+        atomic_store_explicit (&aura_join_in_progress, 0, memory_order_release);
         return res;
     }
 

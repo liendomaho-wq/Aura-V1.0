@@ -22,4 +22,19 @@ internal object SystemVpnRestart {
         alwaysOn -> Action.NOTIFY_AND_STAY_DOWN
         else -> Action.TEAR_DOWN
     }
+
+    /**
+     * An explicit stop while lockdown is on must not tear the tunnel down.
+     * Android does not promise to restart a service the app itself stopped,
+     * and lockdown with no VPN leaves the phone with no network.
+     */
+    enum class ExplicitStop {
+        PERFORM_STOP,
+        WARN_AND_KEEP_RUNNING,
+    }
+
+    fun decideExplicitStop(lockdown: Boolean): ExplicitStop = when {
+        lockdown -> ExplicitStop.WARN_AND_KEEP_RUNNING
+        else -> ExplicitStop.PERFORM_STOP
+    }
 }

@@ -112,7 +112,9 @@ class SecureStorageInstrumentationPolicyTests(unittest.TestCase):
 
     def test_ci_requires_real_android_execution_and_never_ignores_failure(self):
         self.assertIn("reactivecircus/android-emulator-runner@v2", self.workflow)
-        self.assertIn("api-level: 36", self.workflow)
+        self.assertIn("api-level: [34, 36]", self.workflow)
+        self.assertIn("api-level: ${{ matrix.api-level }}", self.workflow)
+        self.assertIn("com.ciberdefensa.aura.SecureVaultPurgeTest", self.workflow)
         self.assertIn(":app:connectedStorageMigrationAndroidTest", self.workflow)
         self.assertIn(":app:assembleStorageMigrationAndroidTest", self.workflow)
         self.assertIn(

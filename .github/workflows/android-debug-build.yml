@@ -198,10 +198,14 @@ jobs:
   # Keeping it separate permits a hashed debug artifact without claiming that
   # Keystore/device acceptance passed or changing the user's application UID.
   keystore-migration:
-    name: Real Android Keystore migration (not a JVM substitute)
+    name: Real Android Keystore migration API ${{ matrix.api-level }}
     needs: android-debug
     runs-on: ubuntu-latest
     timeout-minutes: 110
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [34, 36]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -263,7 +267,7 @@ jobs:
           AURA_DEBUG_KEY_PASSWORD: ${{ secrets.AURA_DEBUG_KEY_PASSWORD }}
         run: bash tool/install_fixed_debug_keystore.sh
 
-      - name: Real v9 to v10 Keystore migration on Android 16 emulator
+      - name: Real v9 to v10 Keystore migration on Android ${{ matrix.api-level }} emulator
         uses: reactivecircus/android-emulator-runner@v2
         env:
           AURA_ALLOW_DEBUG_SIGNING: 'true'
@@ -271,12 +275,12 @@ jobs:
           AURA_DEBUG_KEY_ALIAS: ${{ secrets.AURA_DEBUG_KEY_ALIAS }}
           AURA_DEBUG_KEY_PASSWORD: ${{ secrets.AURA_DEBUG_KEY_PASSWORD }}
         with:
-          api-level: 36
+          api-level: ${{ matrix.api-level }}
           target: google_apis
           arch: x86_64
           disable-linux-hw-accel: false
           working-directory: android
-          script: python3 ../tool/ci_run.py ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest --no-daemon
+          script: python3 ../tool/ci_run.py ./gradlew :app:connectedStorageMigrationAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ciberdefensa.aura.SecureStorageMigrationTest,com.ciberdefensa.aura.SecureVaultPurgeTest --no-daemon
 
       - name: Expose the first real Android test failure without suppressing it
         if: failure()

@@ -214,42 +214,6 @@ class AuraSecureVault {
   Future<void> clearLogsSecurely() =>
       _enqueue(() => _storage.delete(key: _auditLogsKey));
 
-  /// Replaces the model key only after the new value is read back.
-  /// An unreadable stored key is left in place.
-  Future<void> rotateModelMasterKey() =>
-      _rotateKey(_modelMasterKeyStorageKey, validate: _isValidModelMasterKey);
-
-  /// Replaces the domain HMAC key only after the new value is read back.
-  Future<void> rotateDomainHashKey() =>
-      _rotateKey(_domainHashKeyStorageKey, validate: _isValidModelMasterKey);
-
-  Future<void> _rotateKey(
-    String storageKey, {
-    required bool Function(String? value) validate,
-  }) => _enqueue(() async {
-    final previous = await _storage.read(key: storageKey);
-    if (previous != null && !validate(previous)) {
-      throw StateError('SecureVault no rota una clave ilegible; se conserva.');
-    }
-    final random = math.Random.secure();
-    final keyBytes = Uint8List.fromList(
-      List<int>.generate(32, (_) => random.nextInt(256), growable: false),
-    );
-    try {
-      final generated = base64UrlEncode(keyBytes).replaceAll('=', '');
-      if (generated == previous) {
-        throw StateError('La clave nueva coincide con la anterior.');
-      }
-      await _storage.write(key: storageKey, value: generated);
-      final persisted = await _storage.read(key: storageKey);
-      if (persisted != generated || !validate(persisted)) {
-        throw StateError('No se pudo verificar la clave rotada.');
-      }
-    } finally {
-      keyBytes.fillRange(0, keyBytes.length, 0);
-    }
-  });
-
   Future<void> purgeSensitiveData() {
     return _enqueue(() async {
       await _storage.deleteAll();

@@ -166,7 +166,7 @@ class AuraNotificationService : Service() {
                         "Estado de protección Aura",
                         NotificationManager.IMPORTANCE_LOW,
                     ).apply {
-                        description = "Estado persistente del túnel VPN de Aura."
+                        description = "Estado persistente del Escudo de Aura."
                     },
                 )
             }

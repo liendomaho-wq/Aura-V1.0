@@ -175,6 +175,9 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("::warning title=Keystore de prueba fijo ausente::", script)
+        self.assertIn("base64 -d", script)
+        self.assertIn("[[ ! -s \"$destination\" ]]", script)
+        self.assertIn("return 1", script)
         published = re.search(
             r"GITHUB_ENV:-.*?>> \"\$GITHUB_ENV\"",
             script,
@@ -206,6 +209,10 @@ class ReleaseSigningPolicyTests(unittest.TestCase):
         self.assertIn("<cloud-backup>", rules)
         self.assertIn("<device-transfer>", rules)
         self.assertGreaterEqual(rules.count('<exclude domain="sharedpref"'), 2)
+        self.assertGreaterEqual(rules.count('<exclude domain="device_sharedpref"'), 2)
+        self.assertGreaterEqual(rules.count('<exclude domain="device_root"'), 2)
+        self.assertGreaterEqual(rules.count('<exclude domain="device_file"'), 2)
+        self.assertGreaterEqual(rules.count('<exclude domain="device_database"'), 2)
 
 
 if __name__ == "__main__":

@@ -1046,6 +1046,15 @@ join_guard = re.search(
 )
 if not join_guard:
     sys.exit("FAIL: native start must preserve joinable state after pthread_join failure")
+start_body = native_start.group(1)
+in_progress_at = start_body.find("aura_join_in_progress")
+join_at = start_body.find("pthread_join (work_thread, NULL)")
+if in_progress_at < 0 or join_at < in_progress_at or "goto exit" not in start_body[in_progress_at:join_at]:
+    sys.exit("FAIL: native start must not pthread_join while a timed-out join is still running")
+if "free (wait);\n        atomic_store_explicit (&aura_join_in_progress, 0, memory_order_release);\n        return res;" not in native_jni:
+    sys.exit("FAIL: a failed helper thread must clear aura_join_in_progress")
+if "return ENOMEM" not in native_jni or "aura_join_in_progress, 0" not in native_jni[native_jni.find("return ENOMEM") - 200:native_jni.find("return ENOMEM")]:
+    sys.exit("FAIL: a failed join allocation must clear aura_join_in_progress")
 stop_body = native_stop.group(1)
 if "aura_join_worker_with_timeout (work_thread)" not in stop_body:
     sys.exit("FAIL: native stop must join the worker with a timeout")
@@ -1205,8 +1214,19 @@ if "SystemVpnRestart.decide" not in text or "START_BECAUSE_LOCKDOWN" not in text
 if "NOTIFY_AND_STAY_DOWN" not in text:
     sys.exit("FAIL: always-on without lockdown must notify and stay down")
 ui_copy = Path("lib/screens/aura_core_screen.dart").read_text(encoding="utf-8")
-if "Túnel VPN" in ui_copy:
+if "Túnel VPN" in ui_copy or "túnel VPN" in ui_copy:
     sys.exit("FAIL: user-facing copy must say Escudo, not Túnel VPN")
+for user_copy in (
+    "android/app/src/main/kotlin/com/ciberdefensa/aura/AuraVpnService.kt",
+    "lib/agent/agent_controller.dart",
+    "lib/agent/aura_tools.dart",
+):
+    if "túnel VPN" in Path(user_copy).read_text(encoding="utf-8"):
+        sys.exit("FAIL: user-facing copy in " + user_copy + " must say Escudo, not túnel VPN")
+if "decideExplicitStop" not in text or "WARN_AND_KEEP_RUNNING" not in text:
+    sys.exit("FAIL: an explicit stop during lockdown must warn instead of stopping")
+if "El Escudo se está cerrando." not in text:
+    sys.exit("FAIL: a start during shutdown must be rejected with a clear message")
 if "const val ACTION_STOP" not in text or "performUserStop(" not in text:
     sys.exit("FAIL: VPN stop must be an explicit service action that tears the tunnel down")
 if "stopForeground(STOP_FOREGROUND_REMOVE)" not in text:

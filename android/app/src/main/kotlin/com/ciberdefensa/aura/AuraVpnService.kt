@@ -253,7 +253,30 @@ class AuraVpnService : VpnService() {
             stopSelf()
             return Service.START_NOT_STICKY
         }
+        if (intent?.action == ACTION_START && serviceShuttingDown) {
+            reportState(
+                false,
+                "El Escudo se está cerrando. Espera a que termine y vuelve a activarlo.",
+                requestId = requestId,
+            )
+            return Service.START_NOT_STICKY
+        }
         if (intent?.action == ACTION_STOP) {
+            val lockdown = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && isLockdownEnabled
+            if (SystemVpnRestart.decideExplicitStop(lockdown) ==
+                SystemVpnRestart.ExplicitStop.WARN_AND_KEEP_RUNNING
+            ) {
+                val message =
+                    "El Escudo sigue activo porque el bloqueo de Android dejaría el teléfono sin red. " +
+                        "Desactiva «Bloquear conexiones sin VPN» en Ajustes → Red → VPN y vuelve a pulsar Detener."
+                AuraNotificationService.triggerPersistentAlert(
+                    this,
+                    "No se apaga el Escudo con el bloqueo activo",
+                    message,
+                )
+                reportState(true, message, requestId = requestId)
+                return Service.START_STICKY
+            }
             performUserStop("Escudo detenido.")
             return Service.START_NOT_STICKY
         }
@@ -328,7 +351,7 @@ class AuraVpnService : VpnService() {
             return Service.START_STICKY
         }
         if (shieldStatus()["forwarding_active"] == true) {
-            reportState(true, "El túnel VPN ya estaba activo.", requestId = requestId)
+            reportState(true, "El Escudo ya estaba activo.", requestId = requestId)
         } else if (shouldRetryTunnelRecovery()) {
             // A stale tunnelStarted flag is not evidence of a live worker. Reuse
             // the retained valid TUN and verify recovery for this exact request.
@@ -761,7 +784,7 @@ class AuraVpnService : VpnService() {
                 throw IOException("No se pudo confirmar la salida del aislamiento de emergencia.")
             }
             scheduleFeedRefresh()
-            reportState(true, "Forwarding del túnel VPN restablecido.")
+            reportState(true, "Forwarding del Escudo restablecido.")
             updateForegroundNotification()
             true
         } catch (exception: Exception) {

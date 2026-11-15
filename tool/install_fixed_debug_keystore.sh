@@ -10,7 +10,16 @@ install_fixed_debug_keystore() {
   if [[ -n "${AURA_DEBUG_KEYSTORE_BASE64:-}" ]]; then
     local destination="${AURA_DEBUG_KEYSTORE_PATH:-$HOME/.android/aura-debug.keystore}"
     mkdir -p "$(dirname "$destination")"
-    printf '%s' "$AURA_DEBUG_KEYSTORE_BASE64" | base64 -d > "$destination"
+    if ! printf '%s' "$AURA_DEBUG_KEYSTORE_BASE64" | base64 -d > "$destination"; then
+      echo "::error title=Keystore de prueba ilegible::AURA_DEBUG_KEYSTORE_BASE64 no es Base64 válido."
+      rm -f "$destination"
+      return 1
+    fi
+    if [[ ! -s "$destination" ]]; then
+      echo "::error title=Keystore de prueba vacío::El archivo decodificado de AURA_DEBUG_KEYSTORE_BASE64 está vacío."
+      rm -f "$destination"
+      return 1
+    fi
     export AURA_DEBUG_KEYSTORE_PATH="$destination"
   fi
   export AURA_DEBUG_STORE_PASSWORD="${AURA_DEBUG_STORE_PASSWORD:-android}"
@@ -23,4 +32,4 @@ install_fixed_debug_keystore() {
     printf 'AURA_DEBUG_KEYSTORE_PATH=%s\n' "$AURA_DEBUG_KEYSTORE_PATH" >> "$CM_ENV"
   fi
 }
-install_fixed_debug_keystore
+install_fixed_debug_keystore || exit $?
