@@ -148,10 +148,16 @@ object AuraCrashReporter {
     @JvmStatic
     fun clear(context: Context): Boolean {
         val appContext = context.applicationContext
-        return listOf(CRASH_FILE, EXIT_FILE, VPN_ERROR_FILE).all { name ->
+        val filesCleared = listOf(CRASH_FILE, EXIT_FILE, VPN_ERROR_FILE).all { name ->
             val file = File(appContext.filesDir, name)
             !file.exists() || file.delete()
         }
+        val preferencesCleared = appContext
+            .getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
+        return filesCleared && preferencesCleared
     }
 
     private fun header(context: Context, title: String): String {

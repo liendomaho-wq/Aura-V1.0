@@ -12,11 +12,13 @@ import 'llm/aura_llm_setup_controller.dart';
 import 'llm/local_llm_planner.dart';
 import 'providers/aura_state_provider.dart';
 import 'screens/splash_screen.dart';
+import 'secure_vault.dart';
 import 'theme/aura_tokens.dart';
 import 'widgets/aura_llm_setup_scope.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AuraSecureVault.consumePendingKeyDeletion();
   try {
     await AuraDynamicWhitelist.instance.initialize();
   } on Object catch (error, stackTrace) {

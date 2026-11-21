@@ -60,6 +60,16 @@ class AuraLlmSetupController extends ChangeNotifier {
   static const String _consentKey = 'aura.llm.consent.v1';
   static const String _prefetchKey = 'aura.llm.prefetch.v1';
 
+  /// Removes the stored consent and prefetch choice. The downloaded GGUF
+  /// is a separate file and is not deleted here.
+  static Future<void> clearStoredPreferences([
+    Future<SharedPreferences> Function()? preferences,
+  ]) async {
+    final prefs = await (preferences ?? SharedPreferences.getInstance)();
+    await prefs.remove(_consentKey);
+    await prefs.remove(_prefetchKey);
+  }
+
   final AuraLlmModelSource source;
   final AuraLlmModelProvisioner _manager;
   final AuraStorage _storage;

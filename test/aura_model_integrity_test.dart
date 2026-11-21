@@ -141,4 +141,50 @@ void main() {
       expect(report.message, contains('firma RSA verificados'));
     },
   );
+
+  test('after purge the base model loads without an integrity alert', () async {
+    const pathProviderChannel = MethodChannel(
+      'plugins.flutter.io/path_provider',
+    );
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    final supportDirectory = await Directory.systemTemp.createTemp(
+      'aura-purge-model-',
+    );
+    messenger.setMockMethodCallHandler(
+      pathProviderChannel,
+      (_) async => supportDirectory.path,
+    );
+    final alerts = <String>[];
+    AuraAIBrain.onModelIntegrityFailure = alerts.add;
+    addTearDown(() async {
+      AuraAIBrain.onModelIntegrityFailure = null;
+      messenger.setMockMethodCallHandler(pathProviderChannel, null);
+      await supportDirectory.delete(recursive: true);
+    });
+
+    final installed = File('${supportDirectory.path}/aura_brain_model.enc');
+    await installed.writeAsString('cifrado-que-no-es-el-modelo-base');
+    await File('${installed.path}.sha256').writeAsString('ab' * 32);
+    await File('${installed.path}.sig').writeAsBytes(<int>[1, 2, 3]);
+
+    await AuraAIBrain.purgeAllInMemoryModels();
+    expect(await installed.exists(), isFalse);
+
+    final state = AuraStateProvider();
+    addTearDown(state.dispose);
+    final brain = AuraAIBrain(
+      stateProvider: state,
+      secureVault: _TestSecureVault(),
+    );
+    expect(await brain.preloadModel(), isTrue);
+    final report = await brain.verifyModelIntegrity();
+    expect(alerts, isEmpty);
+    expect(report.verified, isTrue);
+    expect(report.signatureVerified, isTrue);
+    expect(
+      report.sha256,
+      'd190dddf5ca0d55093a215463dfd98d81395d9282f3a93fb425a058853928ba2',
+    );
+  });
 }

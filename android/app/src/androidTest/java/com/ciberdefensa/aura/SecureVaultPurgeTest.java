@@ -14,6 +14,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.security.KeyStore;
 import java.util.HashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -89,6 +90,47 @@ public class SecureVaultPurgeTest {
         first.write(prefixed, NEW_VALUE);
 
         FlutterSecureStorage second = newStorage();
+        assertEquals(NEW_VALUE, second.read(prefixed));
+    }
+
+    @Test
+    public void nextStartDeletesTheKeyBeforeThePluginOpens() throws Exception {
+        FlutterSecureStorage first = newStorage();
+        String prefixed = config.getSharedPreferencesKeyPrefix() + "_" + SECRET_KEY;
+        first.write(prefixed, OLD_VALUE);
+        first.deleteAll();
+        assertTrue(AuraVaultKeystore.INSTANCE.deleteKnownKeys(context));
+        assertTrue(AuraVaultKeystore.INSTANCE.isPendingKeyDeletion(context));
+        first.write(prefixed, NEW_VALUE);
+
+        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+        keyStore.load(null);
+        boolean aliasPresent = false;
+        for (String alias : AuraVaultKeystore.INSTANCE.aliases(context.getPackageName())) {
+            if (keyStore.containsAlias(alias)) aliasPresent = true;
+        }
+        assertTrue(aliasPresent);
+        assertFalse(context.getSharedPreferences(
+                AuraVaultKeystore.KEY_PREFS, Context.MODE_PRIVATE).getAll().isEmpty());
+
+        assertTrue(AuraVaultKeystore.INSTANCE.consumePendingKeyDeletion(context));
+        assertFalse(AuraVaultKeystore.INSTANCE.isPendingKeyDeletion(context));
+        assertTrue(context.getSharedPreferences(
+                AuraVaultKeystore.KEY_PREFS, Context.MODE_PRIVATE).getAll().isEmpty());
+        SharedPreferences markers = context.getSharedPreferences(
+                AuraVaultKeystore.NAMESPACED_CONFIG_PREFS, Context.MODE_PRIVATE);
+        assertEquals(AuraVaultKeystore.CURRENT_KEY_ALGORITHM,
+                markers.getString(AuraVaultKeystore.ALGORITHM_KEY, null));
+        assertEquals(AuraVaultKeystore.CURRENT_STORAGE_ALGORITHM,
+                markers.getString(AuraVaultKeystore.ALGORITHM_STORAGE, null));
+        keyStore.load(null);
+        for (String alias : AuraVaultKeystore.INSTANCE.aliases(context.getPackageName())) {
+            assertFalse(keyStore.containsAlias(alias));
+        }
+
+        FlutterSecureStorage second = newStorage();
+        assertNull(second.read(prefixed));
+        second.write(prefixed, NEW_VALUE);
         assertEquals(NEW_VALUE, second.read(prefixed));
     }
 

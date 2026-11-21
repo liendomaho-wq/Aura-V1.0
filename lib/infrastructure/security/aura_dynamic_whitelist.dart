@@ -122,6 +122,21 @@ class AuraDynamicWhitelist {
     return _commit(updated, previous);
   }
 
+  /// Drops hosts added on this phone. The static suffixes stay in code.
+  Future<void> purge() async {
+    _dynamicAllowedHosts.clear();
+    final directory = await getApplicationSupportDirectory();
+    final file = File('${directory.path}/$_fileName');
+    if (await file.exists()) await file.delete();
+    try {
+      await _syncWithNativeFirewall(<String>{});
+    } on MissingPluginException {
+      return;
+    } on StateError {
+      return;
+    }
+  }
+
   Future<bool> revokeAllowedHost(String rawHost) async {
     await initialize();
     final host = _normalizeHost(rawHost);

@@ -28,7 +28,10 @@ object AuraVaultKeystore {
     const val ALGORITHM_STORAGE = "FlutterSecureSAlgorithmStorage"
     const val CURRENT_KEY_ALGORITHM = "RSA_ECB_OAEPwithSHA_256andMGF1Padding"
     const val CURRENT_STORAGE_ALGORITHM = "AES_GCM_NoPadding"
+    const val PURGE_PREFS = "aura_vault_purge"
+    const val PENDING_KEY_DELETION = "pending_key_deletion"
     private const val CHANNEL = "com.ciberdefensa.aura/vault_keystore"
+    private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
 
     fun aliases(packageName: String): List<String> = listOf(
         "$packageName.FlutterSecureStoragePluginKey",
@@ -66,15 +69,99 @@ object AuraVaultKeystore {
         }
     }
 
-    fun deleteKnownKeys(context: Context): Boolean = clearPluginStores(context)
+    fun deleteKnownKeys(context: Context): Boolean {
+        val dataCleared = clearPluginStores(context)
+        val marked = markPendingKeyDeletion(context)
+        return dataCleared && marked
+    }
+
+    fun markPendingKeyDeletion(context: Context): Boolean {
+        return context
+            .getSharedPreferences(PURGE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(PENDING_KEY_DELETION, true)
+            .commit()
+    }
+
+    fun isPendingKeyDeletion(context: Context): Boolean {
+        return context
+            .getSharedPreferences(PURGE_PREFS, Context.MODE_PRIVATE)
+            .getBoolean(PENDING_KEY_DELETION, false)
+    }
+
+    /**
+     * Next process start, before flutter_secure_storage is opened. Uses
+     * [deleteAliases] so a failed delete does not report the key as gone.
+     */
+    fun consumePendingKeyDeletion(context: Context): Boolean {
+        if (!isPendingKeyDeletion(context)) return true
+        val aliasesDeleted = deleteKeystoreAliases(context.packageName)
+        val keysCleared = context
+            .getSharedPreferences(KEY_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
+        val legacyCleared = context
+            .getSharedPreferences(LEGACY_CONFIG_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
+        val markersWritten = context
+            .getSharedPreferences(NAMESPACED_CONFIG_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .putString(ALGORITHM_KEY, CURRENT_KEY_ALGORITHM)
+            .putString(ALGORITHM_STORAGE, CURRENT_STORAGE_ALGORITHM)
+            .commit()
+        // Values written after the purge used the key this step deletes.
+        val dataCleared = clearPluginStores(context)
+        val flagCleared = context
+            .getSharedPreferences(PURGE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(PENDING_KEY_DELETION)
+            .commit()
+        return aliasesDeleted &&
+            keysCleared &&
+            legacyCleared &&
+            markersWritten &&
+            dataCleared &&
+            flagCleared &&
+            !isPendingKeyDeletion(context)
+    }
+
+    private fun deleteKeystoreAliases(packageName: String): Boolean {
+        return try {
+            val keyStore = java.security.KeyStore.getInstance(KEYSTORE_PROVIDER)
+            keyStore.load(null)
+            deleteAliases(
+                object : VaultKeystoreEntries {
+                    override fun contains(alias: String) = keyStore.containsAlias(alias)
+                    override fun delete(alias: String) {
+                        keyStore.deleteEntry(alias)
+                    }
+                },
+                aliases(packageName),
+            )
+        } catch (_: Exception) {
+            false
+        }
+    }
 
     fun install(flutterEngine: FlutterEngine, context: Context) {
+        if (!consumePendingKeyDeletion(context)) {
+            android.util.Log.e(
+                "AuraVault",
+                "No se pudo completar el borrado de la clave pendiente.",
+            )
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
-                if (call.method == "deleteVaultKeystoreKeys") {
-                    result.success(deleteKnownKeys(context))
-                } else {
-                    result.notImplemented()
+                when (call.method) {
+                    "deleteVaultKeystoreKeys" ->
+                        result.success(deleteKnownKeys(context))
+                    "consumePendingKeyDeletion" ->
+                        result.success(consumePendingKeyDeletion(context))
+                    else -> result.notImplemented()
                 }
             }
     }

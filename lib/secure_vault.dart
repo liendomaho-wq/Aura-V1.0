@@ -56,6 +56,16 @@ class AuraSecureVault {
     : _storage =
           storage ?? const FlutterSecureStorage(aOptions: _androidOptions);
 
+  /// Deletes a key left behind by an earlier purge, before this process
+  /// opens flutter_secure_storage. A missing plugin means tests, not a device.
+  static Future<void> consumePendingKeyDeletion() async {
+    try {
+      await _keystoreChannel.invokeMethod<bool>('consumePendingKeyDeletion');
+    } on MissingPluginException {
+      return;
+    }
+  }
+
   Future<T> withModelMasterKey<T>(
     FutureOr<T> Function(Uint8List secureKeyBytes) action,
   ) => _enqueue(() async {
@@ -230,9 +240,9 @@ class AuraSecureVault {
           );
         }
       } on MissingPluginException {
-        // JVM and widget tests have no Android embedding. On Android the
-        // channel clears the stored values and keeps the AES key, so a
-        // later write in this process stays readable after a restart.
+        // JVM and widget tests have no Android embedding. On a device the
+        // channel clears the values and marks the AES key for deletion on
+        // the next start, before the plugin is opened again.
       }
     });
   }

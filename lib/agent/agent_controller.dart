@@ -66,7 +66,7 @@ class AgentController {
       'Puedo abrir los ajustes de una aplicación para que el operador decida qué hacer.',
       'Puedo solicitar el modo de aislamiento del Escudo activo, si está disponible.',
       'Puedo pedir que se reanude el forwarding del Escudo configurado.',
-      'Puedo purgar cachés del modelo y datos sensibles almacenados por la app.',
+      'Puedo purgar la bóveda, la allowlist dinámica, los diagnósticos de cierre, las preferencias del modelo local y el modelo instalado. El modelo base empaquetado se queda; la clave de la bóveda se borra al siguiente arranque.',
       'Puedo buscar una actualización del modelo, validar su integridad e instalarla localmente.',
       'Puedo revisar aplicaciones instaladas, servicios sensibles, permisos solicitados, firmas y señales heurísticas de ofuscación.',
       'Puedo auditar señales de root, emulador, instrumentación, overlays y servicios de accesibilidad que Android expone.',

@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import '../ai_brain.dart';
+import '../infrastructure/security/aura_dynamic_whitelist.dart';
+import '../llm/aura_llm_setup_controller.dart';
 import '../providers/aura_state_provider.dart';
 import '../secure_vault.dart';
 import 'aura_crypto_layer.dart';
@@ -45,6 +47,9 @@ abstract class AuraTools {
   );
   static const MethodChannel _panicChannel = MethodChannel(
     'com.aura.cyberdefense/panic',
+  );
+  static const MethodChannel _shieldChannel = MethodChannel(
+    'com.ciberdefensa.aura/shield',
   );
   static final AuraSecureVault _secureVault = AuraSecureVault();
 
@@ -595,6 +600,13 @@ abstract class AuraTools {
             );
           }
           await AuraAIBrain.purgeAllInMemoryModels();
+          await AuraDynamicWhitelist.instance.purge();
+          await AuraLlmSetupController.clearStoredPreferences();
+          try {
+            await _shieldChannel.invokeMethod<bool>('clearLastCrashReport');
+          } on MissingPluginException {
+            // Tests and hosts without the crash channel.
+          }
           final nativeAuditMemoryPurged =
               await _engineChannel.invokeMethod<bool>('purgeAuditMemory') ??
               false;
