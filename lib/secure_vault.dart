@@ -230,8 +230,9 @@ class AuraSecureVault {
           );
         }
       } on MissingPluginException {
-        // JVM and widget tests have no Android embedding. The device path
-        // is AuraVaultKeystore.deleteKnownKeys.
+        // JVM and widget tests have no Android embedding. On Android the
+        // channel clears the stored values and keeps the AES key, so a
+        // later write in this process stays readable after a restart.
       }
     });
   }

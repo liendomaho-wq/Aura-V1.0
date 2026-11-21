@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -62,7 +63,7 @@ public class SecureVaultPurgeTest {
 
         SharedPreferences wrapped = context.getSharedPreferences(
                 AuraVaultKeystore.KEY_PREFS, Context.MODE_PRIVATE);
-        assertTrue(wrapped.getAll().isEmpty());
+        assertFalse("the AES key must survive the purge", wrapped.getAll().isEmpty());
         SharedPreferences markers = context.getSharedPreferences(
                 AuraVaultKeystore.NAMESPACED_CONFIG_PREFS, Context.MODE_PRIVATE);
         assertEquals(AuraVaultKeystore.CURRENT_KEY_ALGORITHM,
@@ -73,6 +74,21 @@ public class SecureVaultPurgeTest {
         FlutterSecureStorage second = newStorage();
         assertNull(second.read(prefixed));
         second.write(prefixed, NEW_VALUE);
+        assertEquals(NEW_VALUE, second.read(prefixed));
+    }
+
+    @Test
+    public void writeAfterPurgeIsReadableByANewInstance() throws Exception {
+        FlutterSecureStorage first = newStorage();
+        String prefixed = config.getSharedPreferencesKeyPrefix() + "_" + SECRET_KEY;
+        first.write(prefixed, OLD_VALUE);
+        assertEquals(OLD_VALUE, first.read(prefixed));
+
+        first.deleteAll();
+        assertTrue(AuraVaultKeystore.INSTANCE.deleteKnownKeys(context));
+        first.write(prefixed, NEW_VALUE);
+
+        FlutterSecureStorage second = newStorage();
         assertEquals(NEW_VALUE, second.read(prefixed));
     }
 

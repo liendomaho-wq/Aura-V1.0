@@ -5,13 +5,12 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 /**
- * Aliases and preference files flutter_secure_storage 10.3.1 leaves behind.
- * [FlutterSecureStorage.deleteAll] only clears the data preferences. The
- * wrapped AES key stays in FlutterSecureKeyStorage, and the next start
- * fails closed because resetOnError is false. This follows the library's
- * deleteAllDataAndKeys: delete the Keystore aliases, clear the wrapped key
- * and the algorithm markers, then write the current algorithm so a new
- * instance can initialize.
+ * flutter_secure_storage 10.3.1 keeps the AES key in memory after
+ * [FlutterSecureStorage.deleteAll]. Deleting that key from disk makes every
+ * later write in the same process unreadable on the next start, and
+ * resetOnError=false then fails closed. A purge therefore clears only the
+ * data preferences and leaves FlutterSecureKeyStorage and the Keystore
+ * aliases in place until the next process start.
  */
 internal interface VaultKeystoreEntries {
     fun contains(alias: String): Boolean
@@ -30,7 +29,6 @@ object AuraVaultKeystore {
     const val CURRENT_KEY_ALGORITHM = "RSA_ECB_OAEPwithSHA_256andMGF1Padding"
     const val CURRENT_STORAGE_ALGORITHM = "AES_GCM_NoPadding"
     private const val CHANNEL = "com.ciberdefensa.aura/vault_keystore"
-    private const val PROVIDER = "AndroidKeyStore"
 
     fun aliases(packageName: String): List<String> = listOf(
         "$packageName.FlutterSecureStoragePluginKey",
@@ -51,64 +49,24 @@ object AuraVaultKeystore {
         }
     }
 
-    fun deleteKnownKeys(packageName: String): Boolean {
-        return try {
-            val keyStore = java.security.KeyStore.getInstance(PROVIDER)
-            keyStore.load(null)
-            deleteAliases(
-                object : VaultKeystoreEntries {
-                    override fun contains(alias: String) = keyStore.containsAlias(alias)
-                    override fun delete(alias: String) {
-                        keyStore.deleteEntry(alias)
-                    }
-                },
-                aliases(packageName),
-            )
-        } catch (_: Exception) {
-            false
-        }
-    }
-
     /**
-     * Clears the data file, the wrapped AES key and both configuration
-     * stores, then records the current cipher so the next plugin instance
-     * does not try to unwrap a deleted key.
+     * Clears stored secrets. The wrapped AES key and the Keystore aliases
+     * stay, so the plugin instance that is already in memory can keep
+     * writing values the next process is able to read.
      */
     fun clearPluginStores(context: Context): Boolean {
         return try {
-            val dataCleared = context
+            context
                 .getSharedPreferences(DATA_PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .clear()
                 .commit()
-            val keysCleared = context
-                .getSharedPreferences(KEY_PREFS, Context.MODE_PRIVATE)
-                .edit()
-                .clear()
-                .commit()
-            val legacyCleared = context
-                .getSharedPreferences(LEGACY_CONFIG_PREFS, Context.MODE_PRIVATE)
-                .edit()
-                .clear()
-                .commit()
-            val markersWritten = context
-                .getSharedPreferences(NAMESPACED_CONFIG_PREFS, Context.MODE_PRIVATE)
-                .edit()
-                .clear()
-                .putString(ALGORITHM_KEY, CURRENT_KEY_ALGORITHM)
-                .putString(ALGORITHM_STORAGE, CURRENT_STORAGE_ALGORITHM)
-                .commit()
-            dataCleared && keysCleared && legacyCleared && markersWritten
         } catch (_: Exception) {
             false
         }
     }
 
-    fun deleteKnownKeys(context: Context): Boolean {
-        val storesCleared = clearPluginStores(context)
-        val aliasesDeleted = deleteKnownKeys(context.packageName)
-        return storesCleared && aliasesDeleted
-    }
+    fun deleteKnownKeys(context: Context): Boolean = clearPluginStores(context)
 
     fun install(flutterEngine: FlutterEngine, context: Context) {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
