@@ -1,7 +1,11 @@
 // voice_engine.dart - Motor de Voz Nativo de Aura
+import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 class AuraVoiceEngine {
+  /// True only while the device TTS engine is actually speaking.
+  static final ValueNotifier<bool> speaking = ValueNotifier<bool>(false);
+
   final FlutterTts _flutterTts = FlutterTts();
   late final Future<void> _initialization;
   bool _available = true;
@@ -19,6 +23,15 @@ class AuraVoiceEngine {
     } on Object {
       // Tests, desktop targets and devices without a TTS plugin remain usable.
       _available = false;
+      return;
+    }
+    try {
+      _flutterTts.setStartHandler(() => speaking.value = true);
+      _flutterTts.setCompletionHandler(() => speaking.value = false);
+      _flutterTts.setCancelHandler(() => speaking.value = false);
+      _flutterTts.setErrorHandler((_) => speaking.value = false);
+    } on Object {
+      // The pulse is optional. Speech still works without the handlers.
     }
   }
 

@@ -26,6 +26,7 @@ import '../widgets/aura_llm_setup_scope.dart';
 import '../widgets/aura_llm_setup_sheet.dart';
 import '../widgets/aura_neural_field.dart';
 import '../widgets/aura_presence.dart';
+import 'aura_places.dart';
 import '../widgets/aura_signal_header.dart';
 
 const Color _terminalGreen = Color(0xFF00FF00);
@@ -1111,7 +1112,13 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                             : () => showAuraLlmSetupSheet(context, llmSetup),
                         metrics: presenceMetrics,
                       ),
-                      SizedBox(height: compactLayout ? 12 : 18),
+                      SizedBox(height: compactLayout ? 8 : 12),
+                      AuraPlaceRail(
+                        onCommand: _dispatch,
+                        commandsEnabled: quickActionsEnabled,
+                        onTelemetry: _showTelemetrySettings,
+                      ),
+                      SizedBox(height: compactLayout ? 10 : 16),
                       AuraIntentConstellation(intents: intents),
                       SizedBox(height: compactLayout ? 10 : 18),
                       _FindingsCenter(
