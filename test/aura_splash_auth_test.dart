@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -36,6 +37,9 @@ void main() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     final state = AuraStateProvider();
     FlutterSecureStorage.setMockInitialValues(<String, String>{});
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'aura_intro_seen_v1': true,
+    });
     messenger.setMockMethodCallHandler(biometricChannel, (call) async {
       calls.add(call.method);
       switch (call.method) {
@@ -110,6 +114,7 @@ void main() {
 
     expect(calls, contains('authenticateFingerprint'));
     expect(find.byType(AuraCoreScreen), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
     expect(find.text('CONFIGURAR BLOQUEO DEL TELÉFONO'), findsNothing);
   });
 
@@ -180,9 +185,7 @@ void main() {
       reason: 'Estado real al agotar la espera: $bootText',
     );
     expect(find.text('Hola, soy Aura.'), findsOneWidget);
-    final overview = find.byKey(const ValueKey<String>('aura-overview-scroll'));
-    expect(overview, findsOneWidget);
-    await tester.drag(overview, const Offset(0, -220));
+    await tester.tap(find.byKey(const ValueKey<String>('aura-open-chat')));
     await tester.pump();
     final vpnBounds = tester.getRect(
       find.byKey(const ValueKey<String>('vpn-toggle')),

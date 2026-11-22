@@ -407,6 +407,8 @@ class AgentController {
     ]);
   }
 
+  Future<void> speakAloud(String text) => _voiceEngine.speak(text);
+
   void initGreeting() {
     _emit(
       AgentEvent(
@@ -793,39 +795,59 @@ class AgentController {
             : null,
         stateProvider: _securityState,
         cancellationToken: cancellationToken,
-        onToolStarted: (toolName, arguments) => _emit(
-          AgentEvent(
-            kind: AgentEventKind.thought,
-            message: 'El motor local inició $toolName.',
-            data: <String, dynamic>{
-              'tool': toolName,
-              'argument_names': arguments.keys
-                  .map((key) => key.toString())
-                  .toList(growable: false),
-              'argument_count': arguments.length,
-              'operation_id': operationId,
-            },
-          ),
-        ),
-        onToolCompleted: (toolName, arguments, toolResult) => _emit(
-          AgentEvent(
-            kind: toolResult['ok'] == true
-                ? AgentEventKind.success
-                : AgentEventKind.warning,
-            message: toolResult['ok'] == true
-                ? 'El motor local completó $toolName.'
-                : 'El motor local no confirmó $toolName; revisa el resultado.',
-            data: <String, dynamic>{
-              'tool': toolName,
-              'argument_names': arguments.keys
-                  .map((key) => key.toString())
-                  .toList(growable: false),
-              'argument_count': arguments.length,
-              'operation_id': operationId,
-              ...toolResult,
-            },
-          ),
-        ),
+        onToolStarted: (toolName, arguments) {
+          _emit(
+            AgentEvent(
+              kind: AgentEventKind.thought,
+              message: 'El motor local inició $toolName.',
+              data: <String, dynamic>{
+                'tool': toolName,
+                'argument_names': arguments.keys
+                    .map((key) => key.toString())
+                    .toList(growable: false),
+                'argument_count': arguments.length,
+                'operation_id': operationId,
+              },
+            ),
+          );
+          if (!AuraVoiceEngine.muted.value) {
+            unawaited(
+              _voiceEngine.announceToolExecution(
+                toolName,
+                arguments.map((key, value) => MapEntry(key, value)),
+              ),
+            );
+          }
+        },
+        onToolCompleted: (toolName, arguments, toolResult) {
+          _emit(
+            AgentEvent(
+              kind: toolResult['ok'] == true
+                  ? AgentEventKind.success
+                  : AgentEventKind.warning,
+              message: toolResult['ok'] == true
+                  ? 'El motor local completó $toolName.'
+                  : 'El motor local no confirmó $toolName; revisa el resultado.',
+              data: <String, dynamic>{
+                'tool': toolName,
+                'argument_names': arguments.keys
+                    .map((key) => key.toString())
+                    .toList(growable: false),
+                'argument_count': arguments.length,
+                'operation_id': operationId,
+                ...toolResult,
+              },
+            ),
+          );
+          if (!AuraVoiceEngine.muted.value) {
+            unawaited(
+              _voiceEngine.announceToolResult(
+                toolName,
+                toolResult.map((key, value) => MapEntry(key, value)),
+              ),
+            );
+          }
+        },
       );
       if (intent.kind == AuraIntentKind.scanApps) {
         _securityState?.recordAppScanResult(result.data);

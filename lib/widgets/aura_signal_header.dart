@@ -78,14 +78,17 @@ class AuraSignalHeader extends StatelessWidget {
                   ),
                 ),
                 SizedBox(height: 1),
-                Text(
-                  'NÚCLEO DE INTELIGENCIA',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AuraTokens.accent,
-                    fontSize: 6.5,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.3,
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'INTELIGENCIA QUE TE DEFIENDE',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AuraTokens.accent,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.1,
+                    ),
                   ),
                 ),
               ],

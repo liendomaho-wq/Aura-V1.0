@@ -135,7 +135,7 @@ class AuraPresence extends StatelessWidget {
           children: [
             _CapabilityGlyph(label: 'MODELO', state: model),
             _CapabilityGlyph(label: 'CLASIFICADOR', state: classifier),
-            _CapabilityGlyph(label: 'ESCUDO', state: defense),
+            _CapabilityGlyph(label: 'TÚNEL', state: defense),
           ],
         ),
         const SizedBox(height: 10),

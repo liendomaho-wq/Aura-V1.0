@@ -763,6 +763,10 @@ class AuraAIBrain {
               decisionThreshold: inference.decisionThreshold,
               source: 'ml',
               signatureVerified: _loadedModelSignatureVerified,
+              threatScore:
+                  threatScore.isFinite && threatScore >= 0 && threatScore <= 1
+                  ? threatScore
+                  : null,
             ),
           );
         }

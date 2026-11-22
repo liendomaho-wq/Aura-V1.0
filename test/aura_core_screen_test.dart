@@ -3,6 +3,7 @@ import 'support/mock_underlying_network.dart';
 import 'package:aura_mobile_defens/services/aura_local_telemetry.dart';
 import 'package:aura_mobile_defens/screens/aura_core_screen.dart';
 import 'package:aura_mobile_defens/widgets/aura_avatar.dart';
+import 'package:aura_mobile_defens/widgets/aura_neural_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -33,7 +34,9 @@ void main() {
   testWidgets('activates and stops VPN through the native shield channel', (
     tester,
   ) async {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'aura_intro_seen_v1': true,
+    });
     FlutterSecureStorage.setMockInitialValues(<String, String>{});
     const shieldChannel = MethodChannel('com.ciberdefensa.aura/shield');
     const telemetryChannel = MethodChannel('com.ciberdefensa.aura/telemetry');
@@ -136,9 +139,8 @@ void main() {
     await _pumpAuraFrames(tester);
     expect(state.telemetryEvents.single['requested_domain'], 'example.com');
 
-    // The local telemetry panel sits below the findings and console content.
-    // Scroll the lazy ListView until it is built instead of assuming that an
-    // off-screen widget remains mounted.
+    await tester.tap(find.byKey(const ValueKey<String>('aura-open-console')));
+    await tester.pump();
     final eventList = find.byKey(const ValueKey<String>('aura-event-list'));
     final telemetryPanel = find.byKey(
       const ValueKey<String>('local-telemetry-panel'),
@@ -158,27 +160,21 @@ void main() {
     // they must not be persisted in local telemetry storage.
     expect(await AuraLocalTelemetry.loadEvents(), isEmpty);
 
-    // Inspecting the console scrolls the overview off stage. A real downward
-    // gesture must restore it; do not bypass the visible-widget assertions.
-    await tester.dragUntilVisible(
-      find.text('Hola, soy Aura.'),
-      eventList,
-      const Offset(0, 240),
-    );
+    await tester.tap(find.byKey(const ValueKey<String>('aura-close-panel')));
     await tester.pump();
 
     expect(find.text('DEFENSA: OFF'), findsOneWidget);
     expect(find.text('WiFi'), findsOneWidget);
     expect(find.text('Hola, soy Aura.'), findsOneWidget);
-    expect(find.byType(AuraAvatar), findsOneWidget);
+    expect(find.byType(AuraNeuralCore), findsOneWidget);
     expect(find.textContaining('Escudo local'), findsOneWidget);
     await _pumpUntilVpnEnabled(tester);
 
     state.setSecurityLevel(AuraSecurityLevel.warning);
     await tester.pump();
     expect(
-      tester.widget<AuraAvatar>(find.byType(AuraAvatar)).effectiveMode,
-      AuraAvatarMode.warning,
+      tester.widget<AuraNeuralCore>(find.byType(AuraNeuralCore)).state,
+      AuraCoreVisualState.alert,
     );
     state.setSecurityLevel(AuraSecurityLevel.safe);
     await tester.pump();
@@ -264,6 +260,8 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await _pumpAuraFrames(tester);
     expect(find.text('DEFENSA: OFF'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey<String>('aura-open-console')));
+    await tester.pump();
     expect(
       find.textContaining(
         '[CRIT] TÚNEL REVOCADO POR ANDROID O POR EL OPERADOR',

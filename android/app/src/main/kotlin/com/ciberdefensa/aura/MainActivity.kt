@@ -1075,6 +1075,56 @@ class MainActivity: FlutterFragmentActivity() {
 
                 "getShieldStatus" -> result.success(AuraVpnService.shieldStatus())
 
+                "setFirewallPolicy" -> {
+                    val raw = call.arguments
+                    if (raw !is Map<*, *>) {
+                        result.error("FIREWALL_POLICY", "La política no es un mapa.", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val policy = AuraFirewallPlan.parse(raw)
+                        AuraFirewallPlan.extraDisallowed(packageName, policy)
+                        AuraVpnService.firewallPolicy = policy
+                        val active = AuraVpnService.shieldStatus()["service_active"] == true
+                        result.success(mapOf("saved" to true, "restart_required" to active))
+                    } catch (exception: IllegalArgumentException) {
+                        result.error(
+                            "FIREWALL_POLICY",
+                            exception.message ?: "Política de firewall rechazada.",
+                            null,
+                        )
+                    }
+                }
+
+                "listUserApps" -> {
+                    genomeScannerExecutor.execute {
+                        val listed = try {
+                            val manager = packageManager
+                            manager.getInstalledApplications(0)
+                                .filter { info ->
+                                    info.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM == 0 &&
+                                        info.packageName != packageName
+                                }
+                                .map { info ->
+                                    mapOf(
+                                        "package" to info.packageName,
+                                        "label" to manager.getApplicationLabel(info).toString(),
+                                    )
+                                }
+                                .sortedBy { it["label"] }
+                        } catch (exception: Exception) {
+                            null
+                        }
+                        runOnUiThread {
+                            if (listed == null) {
+                                result.error("APP_LIST", "No se pudo leer las apps instaladas.", null)
+                            } else {
+                                result.success(listed)
+                            }
+                        }
+                    }
+                }
+
                 "getUnderlyingNetwork" -> {
                     AuraUnderlyingNetwork.ensureStarted(applicationContext)
                     result.success(AuraUnderlyingNetwork.snapshot())
@@ -1207,6 +1257,7 @@ class MainActivity: FlutterFragmentActivity() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-ES")
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Habla con Aura")
         }
         try {

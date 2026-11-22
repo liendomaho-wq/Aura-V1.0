@@ -25,6 +25,7 @@ class AuraVerdictExplanation {
     required List<AuraSignal> signals,
     this.signatureVerified = false,
     this.reportedFalsePositive = false,
+    this.threatScore,
   }) : signals = List<AuraSignal>.unmodifiable(signals);
 
   final String id;
@@ -38,6 +39,9 @@ class AuraVerdictExplanation {
   final List<AuraSignal> signals;
   final bool signatureVerified;
   final bool reportedFalsePositive;
+
+  /// Vote fraction from the local forest, when that run produced one.
+  final double? threatScore;
 
   AuraVerdictExplanation copyWith({bool? reportedFalsePositive}) =>
       AuraVerdictExplanation(
@@ -53,5 +57,6 @@ class AuraVerdictExplanation {
         signatureVerified: signatureVerified,
         reportedFalsePositive:
             reportedFalsePositive ?? this.reportedFalsePositive,
+        threatScore: threatScore,
       );
 }

@@ -1,7 +1,19 @@
 // voice_engine.dart - Motor de Voz Nativo de Aura
+import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 class AuraVoiceEngine {
+  /// True only while the device TTS engine is actually speaking.
+  static final ValueNotifier<bool> speaking = ValueNotifier<bool>(false);
+
+  /// When true, Aura stays silent. The text replies remain.
+  static final ValueNotifier<bool> muted = ValueNotifier<bool>(false);
+
+  /// True when a Spanish female voice was actually selected on this device.
+  static final ValueNotifier<bool> femaleVoiceSelected = ValueNotifier<bool>(
+    false,
+  );
+
   final FlutterTts _flutterTts = FlutterTts();
   late final Future<void> _initialization;
   bool _available = true;
@@ -16,14 +28,51 @@ class AuraVoiceEngine {
       await _flutterTts.setSpeechRate(0.55);
       await _flutterTts.setVolume(1.0);
       await _flutterTts.setPitch(1.05);
+      await _preferFemaleSpanishVoice();
     } on Object {
       // Tests, desktop targets and devices without a TTS plugin remain usable.
       _available = false;
+      return;
+    }
+    try {
+      _flutterTts.setStartHandler(() => speaking.value = true);
+      _flutterTts.setCompletionHandler(() => speaking.value = false);
+      _flutterTts.setCancelHandler(() => speaking.value = false);
+      _flutterTts.setErrorHandler((_) => speaking.value = false);
+    } on Object {
+      // The pulse is optional. Speech still works without the handlers.
+    }
+  }
+
+  Future<void> _preferFemaleSpanishVoice() async {
+    final raw = await _flutterTts.getVoices;
+    if (raw is! List) return;
+    for (final voice in raw) {
+      if (voice is! Map) continue;
+      final locale = '${voice['locale'] ?? ''}'.toLowerCase();
+      final gender = '${voice['gender'] ?? ''}'.toLowerCase();
+      final name = '${voice['name'] ?? ''}'.toLowerCase();
+      final spanish = locale.startsWith('es');
+      final female =
+          gender == 'female' ||
+          name.contains('female') ||
+          name.contains('mujer') ||
+          name.contains('es-es-x-');
+      if (!spanish || !female) continue;
+      final voiceName = voice['name'];
+      final voiceLocale = voice['locale'];
+      if (voiceName is! String || voiceLocale is! String) continue;
+      await _flutterTts.setVoice(<String, String>{
+        'name': voiceName,
+        'locale': voiceLocale,
+      });
+      femaleVoiceSelected.value = true;
+      return;
     }
   }
 
   Future<void> speak(String text) async {
-    if (text.isEmpty) return;
+    if (muted.value || text.isEmpty) return;
     await _initialization;
     if (!_available) return;
     try {

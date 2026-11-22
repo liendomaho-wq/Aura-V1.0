@@ -20,7 +20,9 @@ void main() {
   testWidgets('muestra hallazgos verificables y su evidencia en solo lectura', (
     tester,
   ) async {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'aura_intro_seen_v1': true,
+    });
     FlutterSecureStorage.setMockInitialValues(<String, String>{});
     const shieldChannel = MethodChannel('com.ciberdefensa.aura/shield');
     const securityChannel = MethodChannel('com.ciberdefensa.aura/security');
@@ -123,6 +125,8 @@ void main() {
     );
     await _pumpAuraFrames(tester);
 
+    await tester.tap(find.byKey(const ValueKey<String>('aura-open-console')));
+    await tester.pump();
     final eventList = find.byKey(const ValueKey<String>('aura-event-list'));
     expect(eventList, findsOneWidget);
     final findingsCenter = find.byKey(

@@ -7,7 +7,7 @@ import '../agent/agent_controller.dart';
 import '../ai_brain.dart';
 import '../secure_vault.dart';
 import '../theme/aura_tokens.dart';
-import '../widgets/aura_avatar.dart';
+import '../widgets/aura_neural_core.dart';
 import 'aura_core_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -38,8 +38,8 @@ class _SplashScreenState extends State<SplashScreen>
     _aiBrain = AuraAIBrain(secureVault: _secureVault);
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat(reverse: true);
+      duration: const Duration(milliseconds: 1400),
+    )..forward();
     unawaited(_initializeSystem());
   }
 
@@ -141,7 +141,7 @@ class _SplashScreenState extends State<SplashScreen>
       setState(() {
         _loadingProgress = 1;
         _bootStatusText =
-            'AURA LISTA; EL ESCUDO REQUIERE EL PERMISO VPN DE ANDROID.';
+            'AURA LISTA. LA DEFENSA REQUIERE EL PERMISO VPN DE ANDROID.';
       });
       await Future<void>.delayed(const Duration(milliseconds: 350));
       _navigateToCore();
@@ -239,47 +239,10 @@ class _SplashScreenState extends State<SplashScreen>
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: RadialGradient(
-                center: Alignment(0, -0.18),
-                radius: 1.18,
-                colors: [
-                  Color(0xFF183A70),
-                  Color(0xFF0A1730),
-                  Color(0xFF030711),
-                ],
-                stops: [0, 0.48, 1],
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: Opacity(
-                opacity: 0.09,
-                child: GridPaper(
-                  color: AuraTokens.accent,
-                  interval: 26,
-                  divisions: 1,
-                  subdivisions: 1,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: -150,
-            right: -120,
-            child: IgnorePointer(
-              child: Container(
-                width: 360,
-                height: 360,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AuraTokens.accentViolet.withValues(alpha: 0.22),
-                      blurRadius: 130,
-                      spreadRadius: 35,
-                    ),
-                  ],
-                ),
+                center: Alignment(0, -0.2),
+                radius: 1.2,
+                colors: [Color(0xFF10182E), Color(0xFF03050C)],
+                stops: [0, 1],
               ),
             ),
           ),
@@ -353,10 +316,24 @@ class _SplashScreenState extends State<SplashScreen>
                             ],
                           ),
                           SizedBox(height: compact ? 4 : 26),
-                          AuraAvatar(size: coreSize),
+                          AnimatedBuilder(
+                            animation: _animationController,
+                            builder: (context, _) {
+                              final reduced = MediaQuery.disableAnimationsOf(
+                                context,
+                              );
+                              return AuraNeuralCore(
+                                state: AuraCoreVisualState.calm,
+                                size: coreSize,
+                                assemble: reduced
+                                    ? 1
+                                    : _animationController.value,
+                              );
+                            },
+                          ),
                           SizedBox(height: compact ? 2 : 18),
                           Text(
-                            'A U R A',
+                            'AURA',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: AuraTokens.textPrimary,
@@ -369,7 +346,7 @@ class _SplashScreenState extends State<SplashScreen>
                           ),
                           const SizedBox(height: 10),
                           const Text(
-                            'INTELIGENCIA QUE PROTEGE',
+                            'Despertando tu defensa…',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: AuraTokens.accent,
@@ -418,7 +395,7 @@ class _SplashScreenState extends State<SplashScreen>
                             child: Column(
                               children: [
                                 const Text(
-                                  'TU CENTRO DE CIBERDEFENSA',
+                                  'INTELIGENCIA QUE TE DEFIENDE',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: AuraTokens.textPrimary,

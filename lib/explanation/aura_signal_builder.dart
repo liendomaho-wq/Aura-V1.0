@@ -32,6 +32,7 @@ class AuraSignalBuilder {
     double decisionThreshold = 0.5,
     String source = 'ml',
     bool signatureVerified = false,
+    double? threatScore,
   }) {
     if (features.length != featureOrder.length || features.isEmpty) {
       throw const FormatException(
@@ -50,6 +51,12 @@ class AuraSignalBuilder {
     if (!RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(modelSha256)) {
       throw const FormatException(
         'El SHA-256 del modelo debe contener 64 dígitos hexadecimales.',
+      );
+    }
+    if (threatScore != null &&
+        (!threatScore.isFinite || threatScore < 0 || threatScore > 1)) {
+      throw const FormatException(
+        'La puntuación del bosque debe estar entre 0 y 1.',
       );
     }
 
@@ -231,6 +238,7 @@ class AuraSignalBuilder {
       decisionThreshold: decisionThreshold,
       signals: selectedSignals,
       signatureVerified: signatureVerified,
+      threatScore: threatScore,
     );
   }
 

@@ -57,6 +57,9 @@ class AuraVpnService : VpnService() {
         private val dnsMetricsLock = Any()
         @Volatile private var activeService: AuraVpnService? = null
         @Volatile private var lastShutdownConfirmed = true
+        /** Last policy received from SecureVault. Default keeps today's behavior. */
+        @Volatile
+        var firewallPolicy: AuraFirewallPlan.Policy = AuraFirewallPlan.Policy()
         private var auditedDnsRequests = 0L
         private var blockedDnsRequests = 0L
         /**
@@ -873,6 +876,21 @@ class AuraVpnService : VpnService() {
             builder.addDisallowedApplication(packageName)
         } catch (exception: android.content.pm.PackageManager.NameNotFoundException) {
             Log.w("AuraVPN", "No se pudo excluir la propia app del túnel.", exception)
+        }
+        val extraDisallowed = try {
+            AuraFirewallPlan.extraDisallowed(packageName, firewallPolicy)
+        } catch (exception: IllegalArgumentException) {
+            Log.w("AuraVPN", "Política de firewall rechazada; no se excluye ninguna app extra.", exception)
+            emptyList()
+        }
+        for (packageToExclude in extraDisallowed) {
+            try {
+                // These apps leave directly. They are not filtered and they
+                // are not blocked.
+                builder.addDisallowedApplication(packageToExclude)
+            } catch (exception: android.content.pm.PackageManager.NameNotFoundException) {
+                Log.w("AuraVPN", "No se pudo excluir $packageToExclude del túnel.", exception)
+            }
         }
         if (includeIpv6) {
             builder.addAddress("fd00::2", 64)

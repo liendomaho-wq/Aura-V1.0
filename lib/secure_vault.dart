@@ -210,6 +210,14 @@ class AuraSecureVault {
         : records;
   }
 
+  static const String _firewallPolicyKey = 'aura_firewall_policy_v1';
+
+  Future<String?> readFirewallPolicy() =>
+      _enqueue(() => _storage.read(key: _firewallPolicyKey));
+
+  Future<void> writeFirewallPolicy(String encoded) =>
+      _enqueue(() => _storage.write(key: _firewallPolicyKey, value: encoded));
+
   Future<void> writeLogSecurely(String logText) => writeLogsSecurely([logText]);
 
   Future<void> writeLogsSecurely(Iterable<String> logTexts) {

@@ -24,7 +24,9 @@ void main() {
   testWidgets('muestra explicación, marca localmente y abre auditoría', (
     tester,
   ) async {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'aura_intro_seen_v1': true,
+    });
     const shieldChannel = MethodChannel('com.ciberdefensa.aura/shield');
     const securityChannel = MethodChannel('com.ciberdefensa.aura/security');
     const biometricChannel = MethodChannel('com.aura.cyberdefense/biometrics');
@@ -109,13 +111,14 @@ void main() {
     }
     await _pumpAuraFrames(tester);
 
-    // Authentication and telemetry initialization are asynchronous. Wait
-    // for the authenticated console's event list instead of assuming eight
-    // frames are always enough on slower CI workers.
-    final eventList = find.byKey(const ValueKey<String>('aura-event-list'));
-    for (var frame = 0; frame < 40 && eventList.evaluate().isEmpty; frame++) {
+    final openConsole = find.byKey(const ValueKey<String>('aura-open-console'));
+    for (var frame = 0; frame < 40 && openConsole.evaluate().isEmpty; frame++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
+    expect(openConsole, findsOneWidget);
+    await tester.tap(openConsole);
+    await tester.pump();
+    final eventList = find.byKey(const ValueKey<String>('aura-event-list'));
     expect(eventList, findsOneWidget);
 
     // Add verdict evidence only after authentication has completed. Startup may
