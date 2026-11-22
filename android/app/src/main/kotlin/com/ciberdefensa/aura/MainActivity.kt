@@ -1083,7 +1083,7 @@ class MainActivity: FlutterFragmentActivity() {
                     }
                     try {
                         val policy = AuraFirewallPlan.parse(raw)
-                        AuraFirewallPlan.decide(packageName, policy)
+                        AuraFirewallPlan.extraDisallowed(packageName, policy)
                         AuraVpnService.firewallPolicy = policy
                         val active = AuraVpnService.shieldStatus()["service_active"] == true
                         result.success(mapOf("saved" to true, "restart_required" to active))

@@ -1047,9 +1047,10 @@ class AuraSettingsPlace extends StatelessWidget {
           const _SettingTile(
             title: 'Modo de defensa',
             detail:
-                'La defensa es el túnel VPN: activa o inactiva, con el control DEFENSA de Inicio. '
-                'No hay modos Normal, Estricto ni Paranoico, ni bloqueo por aplicación. '
-                'El túnel solo se excluye a sí mismo para no reentrar en su propia VPN.',
+                'La defensa se enciende con DEFENSA en Inicio. '
+                'En Firewall, Normal puede dejar apps fuera del túnel (siguen con internet, sin filtro) '
+                'y Estricto mete todas menos Aura. No hay modo Paranoico: Android no deja una lista blanca '
+                'y a la vez mantener a Aura fuera de su propio túnel. Ningún modo bloquea el internet de una app.',
           ),
           _SettingTile(
             title: 'Modelo local de IA',

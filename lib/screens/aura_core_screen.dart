@@ -224,7 +224,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
       final policy = AuraFirewallPolicy.parse(
         Map<String, dynamic>.from(decoded),
       );
-      policy.decide('com.ciberdefensa.aura');
+      policy.extraDisallowed('com.ciberdefensa.aura');
       await _shieldChannel.invokeMethod<Object>(
         'setFirewallPolicy',
         policy.toJson(),

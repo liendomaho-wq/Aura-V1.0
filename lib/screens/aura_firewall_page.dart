@@ -80,39 +80,27 @@ class _AuraFirewallPageState extends State<AuraFirewallPage> {
     if (mounted) setState(() => _loaded = true);
   }
 
-  bool _selected(String packageName) => switch (_policy.mode) {
-    AuraFirewallMode.normal => _policy.bypass.contains(packageName),
-    AuraFirewallMode.estricto => false,
-    AuraFirewallMode.paranoico => _policy.tunnelOnly.contains(packageName),
-  };
+  bool _selected(String packageName) =>
+      _policy.mode == AuraFirewallMode.normal &&
+      _policy.bypass.contains(packageName);
 
   void _toggleApp(String packageName) {
     if (_policy.mode == AuraFirewallMode.estricto) return;
-    final current = _policy.mode == AuraFirewallMode.paranoico
-        ? List<String>.of(_policy.tunnelOnly)
-        : List<String>.of(_policy.bypass);
+    final current = List<String>.of(_policy.bypass);
     if (current.contains(packageName)) {
       current.remove(packageName);
     } else {
       current.add(packageName);
     }
     setState(() {
-      _policy = AuraFirewallPolicy(
-        mode: _policy.mode,
-        bypass: _policy.mode == AuraFirewallMode.normal
-            ? current
-            : _policy.bypass,
-        tunnelOnly: _policy.mode == AuraFirewallMode.paranoico
-            ? current
-            : _policy.tunnelOnly,
-      );
+      _policy = AuraFirewallPolicy(mode: _policy.mode, bypass: current);
     });
   }
 
   Future<void> _apply() async {
     if (!widget.commandsEnabled || _busy) return;
     try {
-      _policy.decide('com.ciberdefensa.aura');
+      _policy.extraDisallowed('com.ciberdefensa.aura');
     } on FormatException catch (error) {
       setState(() => _note = error.message);
       return;
@@ -198,7 +186,6 @@ class _AuraFirewallPageState extends State<AuraFirewallPage> {
                           _policy = AuraFirewallPolicy(
                             mode: mode,
                             bypass: _policy.bypass,
-                            tunnelOnly: _policy.tunnelOnly,
                           );
                         }),
                       ),
@@ -229,9 +216,7 @@ class _AuraFirewallPageState extends State<AuraFirewallPage> {
                         style: const TextStyle(color: AuraTokens.textPrimary),
                       ),
                       subtitle: Text(
-                        _policy.mode == AuraFirewallMode.paranoico
-                            ? '${app.packageName}\nEncendida: entra al túnel.'
-                            : _policy.mode == AuraFirewallMode.estricto
+                        _policy.mode == AuraFirewallMode.estricto
                             ? '${app.packageName}\nEn Estricto todas entran al túnel.'
                             : '${app.packageName}\nEncendida: sale directa, sin filtro.',
                         style: const TextStyle(

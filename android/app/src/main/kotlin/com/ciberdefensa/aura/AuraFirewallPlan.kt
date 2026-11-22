@@ -1,26 +1,18 @@
 package com.ciberdefensa.aura
 
 /**
- * Decides which packages Android's VPN builder will allow or exclude.
- *
- * An excluded app is not filtered and is not blocked: its traffic leaves
- * directly. An allow-list app is the only traffic that enters the tunnel.
- * Android rejects mixing both calls on one builder, so a mode uses only one.
- * Aura itself stays outside the tunnel whenever the builder uses exclusions,
- * so its own sockets cannot loop back into the TUN.
+ * Extra packages that leave the tunnel directly. They are not filtered and
+ * they are not blocked. Aura itself is always excluded by a separate,
+ * unconditional call so its sockets cannot re-enter the TUN. Android rejects
+ * mixing that exclusion with an allow-list, so this plan never calls
+ * addAllowedApplication.
  */
 object AuraFirewallPlan {
-    enum class Mode { NORMAL, ESTRICTO, PARANOICO }
+    enum class Mode { NORMAL, ESTRICTO }
 
     data class Policy(
         val mode: Mode = Mode.NORMAL,
         val bypass: Set<String> = emptySet(),
-        val tunnelOnly: Set<String> = emptySet(),
-    )
-
-    data class Decision(
-        val disallowed: List<String>,
-        val allowed: List<String>,
     )
 
     private val packagePattern =
@@ -30,43 +22,30 @@ object AuraFirewallPlan {
 
     fun isPackageName(value: String): Boolean = packagePattern.matches(value)
 
-    fun decide(selfPackage: String, policy: Policy): Decision {
+    /** Packages besides Aura that Normal lets around the tunnel. Estricto returns none. */
+    fun extraDisallowed(selfPackage: String, policy: Policy): List<String> {
         if (!isPackageName(selfPackage)) {
             throw IllegalArgumentException("El paquete de Aura no es válido.")
         }
-        return when (policy.mode) {
-            Mode.NORMAL -> Decision(
-                disallowed = distinctValid(listOf(selfPackage) + policy.bypass, selfPackage, keepSelf = true),
-                allowed = emptyList(),
-            )
-            Mode.ESTRICTO -> Decision(
-                disallowed = listOf(selfPackage),
-                allowed = emptyList(),
-            )
-            Mode.PARANOICO -> {
-                val allowed = distinctValid(policy.tunnelOnly.toList(), selfPackage, keepSelf = false)
-                if (allowed.isEmpty()) {
-                    throw IllegalArgumentException(
-                        "Paranoico necesita al menos una app que entre al túnel.",
-                    )
-                }
-                Decision(disallowed = emptyList(), allowed = allowed)
-            }
+        if (policy.mode != Mode.NORMAL) return emptyList()
+        val seen = LinkedHashSet<String>()
+        for (packageName in policy.bypass) {
+            if (packageName == selfPackage || !isPackageName(packageName)) continue
+            seen.add(packageName)
         }
+        return seen.toList()
     }
 
     fun parse(raw: Map<*, *>): Policy {
         val mode = when (raw["mode"]) {
             "normal" -> Mode.NORMAL
             "estricto" -> Mode.ESTRICTO
-            "paranoico" -> Mode.PARANOICO
+            "paranoico" -> throw IllegalArgumentException(
+                "Paranoico no se aplica: Android no permite una lista blanca y, a la vez, dejar a Aura fuera del túnel.",
+            )
             else -> throw IllegalArgumentException("Modo de firewall desconocido.")
         }
-        return Policy(
-            mode = mode,
-            bypass = stringSet(raw["bypass"]),
-            tunnelOnly = stringSet(raw["tunnelOnly"]),
-        )
+        return Policy(mode = mode, bypass = stringSet(raw["bypass"]))
     }
 
     private fun stringSet(raw: Any?): Set<String> {
@@ -81,20 +60,5 @@ object AuraFirewallPlan {
             }
             value
         }.toSet()
-    }
-
-    private fun distinctValid(
-        packages: List<String>,
-        selfPackage: String,
-        keepSelf: Boolean,
-    ): List<String> {
-        val seen = LinkedHashSet<String>()
-        for (packageName in packages) {
-            if (!isPackageName(packageName)) continue
-            if (!keepSelf && packageName == selfPackage) continue
-            seen.add(packageName)
-        }
-        if (keepSelf) seen.add(selfPackage)
-        return seen.toList()
     }
 }
