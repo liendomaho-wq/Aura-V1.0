@@ -149,6 +149,7 @@ class AuraCorePainter extends CustomPainter {
     final ordered = List<_Projected>.of(projected)
       ..sort((a, b) => a.z.compareTo(b.z));
     final dot = Paint();
+    final spark = Paint()..color = AuraTokens.gold;
     for (final point in ordered) {
       final depth = (point.z + 1) / 2;
       final color = Color.lerp(secondary, primary, depth)!;
@@ -158,6 +159,10 @@ class AuraCorePainter extends CustomPainter {
         math.max(0.8, unit * (0.008 + 0.008 * depth)),
         dot,
       );
+      if (point.index % 6 == (phase * 6).floor() % 6) {
+        spark.color = AuraTokens.gold.withValues(alpha: 0.9 * gather);
+        canvas.drawCircle(point.offset, math.max(1.2, unit * 0.016), spark);
+      }
     }
 
     final core = Paint()

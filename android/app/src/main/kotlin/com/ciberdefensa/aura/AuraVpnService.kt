@@ -57,6 +57,9 @@ class AuraVpnService : VpnService() {
         private val dnsMetricsLock = Any()
         @Volatile private var activeService: AuraVpnService? = null
         @Volatile private var lastShutdownConfirmed = true
+        /** Last policy received from SecureVault. Default keeps today's behavior. */
+        @Volatile
+        var firewallPolicy: AuraFirewallPlan.Policy = AuraFirewallPlan.Policy()
         private var auditedDnsRequests = 0L
         private var blockedDnsRequests = 0L
         /**
@@ -867,12 +870,29 @@ class AuraVpnService : VpnService() {
             // Full routes capture TCP and UDP for tunnel inspection.
             .addRoute("0.0.0.0", 0)
             .addDnsServer("10.0.0.3")
-        try {
-            // Aura's own sockets (local SOCKS5 relay upstreams, threat feed,
-            // DNS on the physical network) must never re-enter its own TUN.
-            builder.addDisallowedApplication(packageName)
-        } catch (exception: android.content.pm.PackageManager.NameNotFoundException) {
-            Log.w("AuraVPN", "No se pudo excluir la propia app del túnel.", exception)
+        val decision = try {
+            AuraFirewallPlan.decide(packageName, firewallPolicy)
+        } catch (exception: IllegalArgumentException) {
+            Log.w("AuraVPN", "Política de firewall rechazada; se usa Normal.", exception)
+            AuraFirewallPlan.decide(packageName, AuraFirewallPlan.Policy())
+        }
+        for (packageToExclude in decision.disallowed) {
+            try {
+                // Excluded apps leave directly. They are not filtered and
+                // they are not blocked. Aura is always in this list when the
+                // builder is not in allow-list mode, so its sockets cannot
+                // re-enter the TUN.
+                builder.addDisallowedApplication(packageToExclude)
+            } catch (exception: android.content.pm.PackageManager.NameNotFoundException) {
+                Log.w("AuraVPN", "No se pudo excluir $packageToExclude del túnel.", exception)
+            }
+        }
+        for (packageToAllow in decision.allowed) {
+            try {
+                builder.addAllowedApplication(packageToAllow)
+            } catch (exception: android.content.pm.PackageManager.NameNotFoundException) {
+                Log.w("AuraVPN", "No se pudo limitar el túnel a $packageToAllow.", exception)
+            }
         }
         if (includeIpv6) {
             builder.addAddress("fd00::2", 64)

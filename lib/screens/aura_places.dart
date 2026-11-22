@@ -14,6 +14,7 @@ import '../widgets/aura_llm_setup_scope.dart';
 import '../widgets/aura_llm_setup_sheet.dart';
 import '../widgets/aura_neural_core.dart';
 import '../widgets/aura_neural_field.dart';
+import 'aura_firewall_page.dart';
 
 /// Entry points that sit on Inicio. Each one opens a real screen.
 class AuraPlaceRail extends StatelessWidget {
@@ -22,11 +23,21 @@ class AuraPlaceRail extends StatelessWidget {
     required this.onCommand,
     required this.commandsEnabled,
     required this.onTelemetry,
+    required this.defenseActive,
+    required this.onRestartDefense,
+    required this.onShowIntro,
+    required this.voiceMuted,
+    required this.onVoiceMuted,
   });
 
   final Future<void> Function(String command) onCommand;
   final bool commandsEnabled;
   final VoidCallback onTelemetry;
+  final bool defenseActive;
+  final Future<void> Function() onRestartDefense;
+  final VoidCallback onShowIntro;
+  final bool voiceMuted;
+  final ValueChanged<bool> onVoiceMuted;
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +64,23 @@ class AuraPlaceRail extends StatelessWidget {
         'Bóveda',
         AuraVaultPlace(onCommand: onCommand, commandsEnabled: commandsEnabled),
       ),
-      _PlaceLink('Ajustes', AuraSettingsPlace(onTelemetry: onTelemetry)),
+      _PlaceLink(
+        'Firewall',
+        AuraFirewallPage(
+          defenseActive: defenseActive,
+          commandsEnabled: commandsEnabled,
+          onRestartDefense: onRestartDefense,
+        ),
+      ),
+      _PlaceLink(
+        'Ajustes',
+        AuraSettingsPlace(
+          onTelemetry: onTelemetry,
+          onShowIntro: onShowIntro,
+          voiceMuted: voiceMuted,
+          onVoiceMuted: onVoiceMuted,
+        ),
+      ),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -975,9 +1002,18 @@ class AuraVaultPlace extends StatelessWidget {
 }
 
 class AuraSettingsPlace extends StatelessWidget {
-  const AuraSettingsPlace({super.key, required this.onTelemetry});
+  const AuraSettingsPlace({
+    super.key,
+    required this.onTelemetry,
+    required this.onShowIntro,
+    required this.voiceMuted,
+    required this.onVoiceMuted,
+  });
 
   final VoidCallback onTelemetry;
+  final VoidCallback onShowIntro;
+  final bool voiceMuted;
+  final ValueChanged<bool> onVoiceMuted;
 
   @override
   Widget build(BuildContext context) {
@@ -990,8 +1026,15 @@ class AuraSettingsPlace extends StatelessWidget {
         children: [
           _SettingTile(
             title: 'Voz de Aura',
-            detail:
-                'Español, con el motor de texto a voz del teléfono. Aura no elige otra voz.',
+            detail: voiceMuted
+                ? 'Silenciada. Las respuestas siguen en pantalla.'
+                : 'Español. Si el teléfono tiene una voz femenina, Aura la usa. Si no, usa la voz española del sistema.',
+            onTap: () => onVoiceMuted(!voiceMuted),
+          ),
+          _SettingTile(
+            title: 'Bienvenida',
+            detail: 'Volver a ver la introducción.',
+            onTap: onShowIntro,
           ),
           _SettingTile(
             title: 'Listas de amenazas',
