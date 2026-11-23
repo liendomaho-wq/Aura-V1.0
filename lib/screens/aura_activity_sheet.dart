@@ -190,6 +190,13 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
+                      _NucleusBadge(
+                        color: maxSeverity == null
+                            ? AuraTokens.accent
+                            : _severityColor(maxSeverity),
+                        active: running > 0,
+                      ),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -402,6 +409,53 @@ Color _severityColor(AuraFindingSeverity severity) => switch (severity) {
   AuraFindingSeverity.medium => AuraTokens.warning,
   AuraFindingSeverity.high || AuraFindingSeverity.critical => AuraTokens.danger,
 };
+
+class _NucleusBadge extends StatelessWidget {
+  const _NucleusBadge({required this.color, required this.active});
+
+  final Color color;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: <Color>[
+            color.withValues(alpha: 0.85),
+            color.withValues(alpha: 0.20),
+            Colors.transparent,
+          ],
+          stops: const <double>[0, 0.42, 1],
+        ),
+        border: Border.all(color: color.withValues(alpha: 0.32)),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: color.withValues(alpha: active ? 0.28 : 0.14),
+            blurRadius: active ? 18 : 10,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Center(
+        child: Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white,
+            boxShadow: <BoxShadow>[
+              BoxShadow(color: color, blurRadius: 8, spreadRadius: 2),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
 
 class _ThreatRibbon extends StatelessWidget {
   const _ThreatRibbon({

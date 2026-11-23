@@ -135,3 +135,33 @@ un servidor.
 
 Cada corte debe pasar por CI y por una prueba en dispositivo antes de decir que
 está terminado.
+
+## Corte implementado (2026-11-22)
+
+- `lib/security/aura_threat_case.dart` convierte alertas del correlador y
+  hallazgos del motor local en casos con evidencia, límites y acción sugerida.
+  No crea señales nuevas ni duplica los hallazgos de red que ya cubre una
+  alerta.
+- `lib/screens/aura_activity_sheet.dart` muestra el número de detecciones, un
+  acceso directo a la lista de amenazas y el detalle de evidencia de cada caso.
+- Las acciones se ejecutan solo después de un diálogo explícito y pasan por
+  `AgentController.run(..., confirmedByUser: true)`, es decir, por el mismo
+  parser, las mismas guardas y la misma auditoría que una orden escrita.
+- «Revisar app» abre la ficha de Android; Aura no desinstala ni modifica la
+  aplicación. «Cortar red» solicita el aislamiento de emergencia existente.
+- Una conexión bloqueada por DNS se muestra como **contenida en DNS**, no como
+  amenaza eliminada. La limitación QUIC/ECH/IP directa queda visible.
+
+Verificación: workflow `Aura Flutter Quality` **45269906973 = success**,
+**382 pruebas Flutter aprobadas, 1 omitida**, `flutter analyze` sin hallazgos,
+234 pruebas Python + 132 subtests.
+
+### Lo que este corte no hace
+
+- No desinstala ni fuerza la detención de otras apps: Android no lo permite a
+  una app ordinaria. Solo puede abrir la ficha del sistema para que el usuario
+  decida.
+- No bloquea selectivamente el tráfico de una sola app: el túnel es global.
+  «Cortar red» afecta a todo el dispositivo.
+- No persiste casos entre sesiones todavía: se recalculan de las alertas y
+  hallazgos disponibles. La auditoría cifrada de operaciones sí persiste.
