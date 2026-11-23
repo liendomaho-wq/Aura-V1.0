@@ -9,13 +9,14 @@ import '../agent/agent_controller.dart';
 import '../agent/agent_event.dart';
 import '../ai_brain.dart';
 import '../explanation/aura_verdict_explanation.dart';
+import '../inference/aura_host_policy.dart';
 import '../infrastructure/agent/aura_intent_parser.dart';
+import '../llm/aura_llm_setup_controller.dart';
 import '../models/aura_model_integrity_report.dart';
 import '../network/underlying_network_label.dart';
 import '../network_auditor.dart';
-import '../llm/aura_llm_setup_controller.dart';
-import '../security/aura_finding.dart';
 import '../providers/aura_state_provider.dart';
+import '../security/aura_finding.dart';
 import '../services/aura_local_telemetry.dart';
 import '../theme/aura_tokens.dart';
 import '../widgets/aura_avatar.dart';
@@ -27,6 +28,7 @@ import '../widgets/aura_llm_setup_sheet.dart';
 import '../widgets/aura_neural_field.dart';
 import '../widgets/aura_presence.dart';
 import '../widgets/aura_signal_header.dart';
+import 'aura_activity_sheet.dart';
 
 const Color _terminalGreen = Color(0xFF00FF00);
 const Color _terminalYellow = Color(0xFFFFFF00);
@@ -1079,6 +1081,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                   vpnActive: vpnActive,
                   networkLabel: _underlyingNetworkLabel,
                   onToggleShield: _toggleShield,
+                  onActivity: () => showAuraActivitySheet(context),
                 ),
                 Expanded(
                   key: const ValueKey<String>('aura-overview-scroll'),
@@ -1870,9 +1873,11 @@ class _ExplanationCardState extends State<_ExplanationCard> {
             key: ValueKey<String>(
               'verdict-explanation-title-${explanation.id}',
             ),
-            explanation.isThreat
-                ? '¿Por qué se bloqueó?'
-                : '¿Por qué se consideró seguro?',
+            switch (explanation.riskBand) {
+              AuraRiskBand.high => '¿Por qué es prioridad alta?',
+              AuraRiskBand.review => '¿Por qué requiere revisión?',
+              AuraRiskBand.clear => '¿Por qué se consideró seguro?',
+            },
             style: TextStyle(
               color: AuraTokens.accent,
               fontWeight: FontWeight.bold,
@@ -1880,7 +1885,7 @@ class _ExplanationCardState extends State<_ExplanationCard> {
           ),
           subtitle: Text(
             '${explanation.host} · '
-            '${explanation.isThreat ? 'amenaza' : 'seguro'} · '
+            '${AuraHostPolicy.label(explanation.riskBand)} · '
             '${explanation.source}',
             style: const TextStyle(
               color: AuraTokens.textPrimary,
@@ -1992,7 +1997,7 @@ class _ExplanationCardState extends State<_ExplanationCard> {
                     foregroundColor: AuraTokens.accent,
                   ),
                 ),
-                if (explanation.isThreat)
+                if (explanation.riskBand != AuraRiskBand.clear)
                   TextButton.icon(
                     key: ValueKey<String>(
                       'report-false-positive-${explanation.id}',
@@ -2012,7 +2017,7 @@ class _ExplanationCardState extends State<_ExplanationCard> {
                   ),
               ],
             ),
-            if (explanation.isThreat)
+            if (explanation.riskBand != AuraRiskBand.clear)
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text(

@@ -1,4 +1,5 @@
 import '../inference/aura_ai_inference.dart';
+import '../inference/aura_host_policy.dart';
 import 'aura_verdict_explanation.dart';
 
 class AuraSignalBuilder {
@@ -32,6 +33,7 @@ class AuraSignalBuilder {
     double decisionThreshold = 0.5,
     String source = 'ml',
     bool signatureVerified = false,
+    AuraRiskBand? riskBand,
   }) {
     if (features.length != featureOrder.length || features.isEmpty) {
       throw const FormatException(
@@ -231,6 +233,7 @@ class AuraSignalBuilder {
       decisionThreshold: decisionThreshold,
       signals: selectedSignals,
       signatureVerified: signatureVerified,
+      riskBand: riskBand,
     );
   }
 

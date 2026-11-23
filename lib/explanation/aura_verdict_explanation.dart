@@ -1,3 +1,5 @@
+import '../inference/aura_host_policy.dart';
+
 class AuraSignal {
   const AuraSignal({
     required this.featureName,
@@ -25,7 +27,11 @@ class AuraVerdictExplanation {
     required List<AuraSignal> signals,
     this.signatureVerified = false,
     this.reportedFalsePositive = false,
-  }) : signals = List<AuraSignal>.unmodifiable(signals);
+    AuraRiskBand? riskBand,
+  }) : signals = List<AuraSignal>.unmodifiable(signals),
+       riskBand =
+           riskBand ??
+           (isThreat ? AuraRiskBand.high : AuraRiskBand.clear);
 
   final String id;
   final String host;
@@ -38,6 +44,10 @@ class AuraVerdictExplanation {
   final List<AuraSignal> signals;
   final bool signatureVerified;
   final bool reportedFalsePositive;
+
+  /// Banda mostrada al usuario. `isThreat` se conserva por compatibilidad con
+  /// consumidores anteriores; la UI debe usar esta banda para el texto.
+  final AuraRiskBand riskBand;
 
   AuraVerdictExplanation copyWith({bool? reportedFalsePositive}) =>
       AuraVerdictExplanation(
@@ -53,5 +63,6 @@ class AuraVerdictExplanation {
         signatureVerified: signatureVerified,
         reportedFalsePositive:
             reportedFalsePositive ?? this.reportedFalsePositive,
+        riskBand: riskBand,
       );
 }

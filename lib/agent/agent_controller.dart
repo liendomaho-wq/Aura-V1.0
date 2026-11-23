@@ -798,6 +798,9 @@ class AgentController {
             kind: AgentEventKind.thought,
             message: 'El motor local inició $toolName.',
             data: <String, dynamic>{
+              // Fase explícita para que la pantalla de actividad no dependa
+              // del texto en español del mensaje.
+              'phase': 'started',
               'tool': toolName,
               'argument_names': arguments.keys
                   .map((key) => key.toString())
@@ -816,6 +819,7 @@ class AgentController {
                 ? 'El motor local completó $toolName.'
                 : 'El motor local no confirmó $toolName; revisa el resultado.',
             data: <String, dynamic>{
+              'phase': 'completed',
               'tool': toolName,
               'argument_names': arguments.keys
                   .map((key) => key.toString())

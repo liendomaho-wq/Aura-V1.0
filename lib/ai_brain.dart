@@ -11,6 +11,7 @@ import 'agent/aura_whitelist.dart';
 import 'explanation/aura_signal_builder.dart';
 import 'inference/aura_evasion_endpoints.dart';
 import 'inference/aura_ai_inference.dart' as shared_features;
+import 'inference/aura_host_policy.dart';
 import 'infrastructure/security/aura_dynamic_whitelist.dart';
 import 'models/aura_ai_brain.dart';
 import 'models/aura_model_integrity_report.dart';
@@ -719,15 +720,20 @@ class AuraAIBrain {
       for (final inference in inferenceResults) {
         final domain = inference.host;
         final threatScore = inference.threatScore;
-        final isThreat = inference.isThreat;
+        final band = inference.riskBand;
+        final registrableDomain =
+            inference.registrableDomain ?? domain;
+        final registrableScore =
+            inference.registrableScore ?? threatScore;
+        final hostPercent = (threatScore * 100).toStringAsFixed(0);
+        final registrablePercent =
+            (registrableScore * 100).toStringAsFixed(0);
         if (AuraWhitelist.isSafe(domain)) {
           await _recordDomainOutcome(
             domain,
             'allowed',
             source: 'allowlist',
-            modelVersion: model['model_version'] is String
-                ? model['model_version'] as String
-                : null,
+            modelVersion: _modelVersion(model),
           );
           results.add(
             'Dominio seguro por allowlist: $domain (0% de votos de amenaza).',
@@ -735,8 +741,10 @@ class AuraAIBrain {
           continue;
         }
         // A model score is a finding, not authorization to change device
-        // networking. Threat candidates remain unresolved until user approval.
-        if (!isThreat) {
+        // networking. Only an observation with no signal is recorded as
+        // allowed; a review is deliberately left unclassified instead of being
+        // stored as a benign verdict.
+        if (band == AuraRiskBand.clear) {
           await _recordDomainOutcome(
             domain,
             'allowed',
@@ -755,7 +763,8 @@ class AuraAIBrain {
           _stateProvider?.addExplanation(
             AuraSignalBuilder.buildExplanation(
               host: domain,
-              esThreat: isThreat,
+              esThreat: band != AuraRiskBand.clear,
+              riskBand: band,
               features: inference.featureVector,
               featureOrder: inference.featureOrder,
               modelVersion: _modelVersion(model),
@@ -767,7 +776,7 @@ class AuraAIBrain {
           );
         }
 
-        if (isThreat) {
+        if (band == AuraRiskBand.high) {
           _stateProvider?.setSecurityLevel(AuraSecurityLevel.warning);
           final arguments = <String, Object?>{'domain': domain};
           _onToolStarted?.call('mitigate_network_threat', arguments);
@@ -781,14 +790,27 @@ class AuraAIBrain {
           };
           _onToolCompleted?.call('mitigate_network_threat', arguments, result);
           results.add(
-            'POSIBLE AMENAZA: $domain (${(threatScore * 100).toStringAsFixed(0)}% '
-            'de votos del modelo). No se bloqueó automáticamente; requiere revisión '
-            'y confirmación explícita para aplicar una regla DNS local.',
+            'PRIORIDAD ALTA: $domain ($hostPercent% del host, '
+            '$registrablePercent% de $registrableDomain). '
+            'No se bloqueó automáticamente; cualquier bloqueo DNS requiere '
+            'tu confirmación explícita.',
+          );
+        } else if (band == AuraRiskBand.review) {
+          // A long or dense subdomain can raise the host score while the
+          // registrable domain stays clean. That is a review signal, not a
+          // threat, and it never emits a mitigation proposal.
+          results.add(
+            'REQUIERE REVISIÓN: $domain ($hostPercent% del host, '
+            '$registrablePercent% de $registrableDomain). '
+            'El dominio registrable no superó el umbral alto; no se aplicó '
+            'ningún bloqueo ni se elevó el estado del Escudo.',
           );
         } else {
           results.add(
-            'Sin amenaza según el modelo local: $domain '
-            '(${(threatScore * 100).toStringAsFixed(0)}% de votos de amenaza).',
+            'Sin señal local: $domain ($hostPercent% del host, '
+            '$registrablePercent% de $registrableDomain). '
+            'El modelo no observó una señal de riesgo en el nombre; no '
+            'inspecciona el contenido del sitio.',
           );
         }
       }
@@ -847,13 +869,18 @@ class AuraAIBrain {
         source: source,
         modelVersion: modelVersion,
       );
-      await _telemetryChannel
-          .invokeMethod<bool>('recordDomainOutcome', <String, Object>{
-            'domain_hash': domainHash,
-            'outcome': outcome,
-            'source': source,
-            if (modelVersion != null) 'model_version': modelVersion,
-          });
+      // El contrato nativo solo admite "blocked" o "allowed". Una detección
+      // sin bloqueo se guarda localmente, pero no se envía como si hubiera
+      // bloqueado: eso sería telemetría falsa.
+      if (outcome == 'blocked' || outcome == 'allowed') {
+        await _telemetryChannel
+            .invokeMethod<bool>('recordDomainOutcome', <String, Object>{
+              'domain_hash': domainHash,
+              'outcome': outcome,
+              'source': source,
+              if (modelVersion != null) 'model_version': modelVersion,
+            });
+      }
     } on Object catch (error, stackTrace) {
       developer.log(
         'No se pudo encolar el evento opcional de telemetría.',

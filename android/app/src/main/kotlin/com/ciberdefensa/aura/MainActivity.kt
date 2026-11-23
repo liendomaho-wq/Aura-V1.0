@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.net.VpnService
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Debug
 import android.os.Handler
 import android.os.Looper
@@ -172,6 +173,19 @@ class MainActivity: FlutterFragmentActivity() {
     private val NOTIFICATIONS_CHANNEL = "com.aura.cyberdefense/notifications"
     private val VOICE_CHANNEL = "com.ciberdefensa.aura/voice"
     private val NETWORK_STREAM_CHANNEL = "com.aura.cyberdefense/network_stream"
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Tapjacking: cuando otra ventana tapa la nuestra, Android marca el
+        // toque como "obscured". Descartarlo evita que una superposición pueda
+        // activar el Escudo, confirmar una purga o abrir una hoja sensible.
+        window.decorView.filterTouchesWhenObscured = true
+        // La miniatura de "recientes" no debe conservar dominios, hallazgos ni
+        // estados del dispositivo. Disponible desde Android 13 (API 33).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            setRecentsScreenshotEnabled(false)
+        }
+    }
+
     private val genomeScannerExecutor = Executors.newSingleThreadExecutor()
     private val blocklistExecutor = Executors.newSingleThreadExecutor()
     private val MAX_BLOCKLIST_QUERY_DOMAINS = 10_000
