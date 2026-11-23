@@ -392,9 +392,8 @@ class AgentController {
   Future<List<Map<String, dynamic>>> readStoredThreatCases() =>
       _agentAuditVault.getThreatCases();
 
-  Future<void> writeStoredThreatCases(
-    List<Map<String, dynamic>> cases,
-  ) => _agentAuditVault.saveThreatCases(cases);
+  Future<void> writeStoredThreatCases(List<Map<String, dynamic>> cases) =>
+      _agentAuditVault.saveThreatCases(cases);
 
   Future<void> _persistOperationAudit({
     required String operationId,

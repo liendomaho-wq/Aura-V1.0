@@ -18,7 +18,10 @@ AuraThreatCase _case({
   state: AuraThreatCaseState.dnsContained,
   title: 'Navegador intentó conectarse a evil.example',
   summary: 'Se bloquearon 3 conexiones al dominio evil.example.',
-  evidence: const <String>['Dominio bloqueado: evil.example', 'Paquete: com.example.app'],
+  evidence: const <String>[
+    'Dominio bloqueado: evil.example',
+    'Paquete: com.example.app',
+  ],
   limitations: const <String>['El bloqueo DNS no cubre QUIC ni IP directa.'],
   recommendedAction: 'Revisa la app de origen en Ajustes.',
   action: AuraThreatCaseAction.reviewApp,
@@ -39,24 +42,30 @@ void main() {
     FlutterSecureStorage.setMockInitialValues(<String, String>{});
   });
 
-  test('un caso se serializa y se reconstruye sin perder evidencia ni estado', () {
-    final original = _case(disposition: AuraThreatDisposition.dismissed);
-    final restored = AuraThreatCase.fromMap(original.toMap());
+  test(
+    'un caso se serializa y se reconstruye sin perder evidencia ni estado',
+    () {
+      final original = _case(disposition: AuraThreatDisposition.dismissed);
+      final restored = AuraThreatCase.fromMap(original.toMap());
 
-    expect(restored, isNotNull);
-    expect(restored!.id, original.id);
-    expect(restored.title, original.title);
-    expect(restored.domain, 'evil.example');
-    expect(restored.packageName, 'com.example.app');
-    expect(restored.evidence, original.evidence);
-    expect(restored.limitations, original.limitations);
-    expect(restored.disposition, AuraThreatDisposition.dismissed);
-    expect(restored.firstSeenAt, original.firstSeenAt);
-  });
+      expect(restored, isNotNull);
+      expect(restored!.id, original.id);
+      expect(restored.title, original.title);
+      expect(restored.domain, 'evil.example');
+      expect(restored.packageName, 'com.example.app');
+      expect(restored.evidence, original.evidence);
+      expect(restored.limitations, original.limitations);
+      expect(restored.disposition, AuraThreatDisposition.dismissed);
+      expect(restored.firstSeenAt, original.firstSeenAt);
+    },
+  );
 
   test('un registro con esquema o tipos inválidos no se acepta', () {
     final map = _case().toMap();
-    expect(AuraThreatCase.fromMap(<String, dynamic>{...map, 'schema': 2}), isNull);
+    expect(
+      AuraThreatCase.fromMap(<String, dynamic>{...map, 'schema': 2}),
+      isNull,
+    );
     expect(
       AuraThreatCase.fromMap(<String, dynamic>{
         ...map,
@@ -65,37 +74,43 @@ void main() {
       isNull,
     );
     expect(
-      AuraThreatCase.fromMap(<String, dynamic>{...map, 'domain': 'no es dominio'}),
+      AuraThreatCase.fromMap(<String, dynamic>{
+        ...map,
+        'domain': 'no es dominio',
+      }),
       isNull,
     );
   });
 
-  test('la fusión conserva la decisión del usuario y la primera observación', () {
-    final now = 1700000100000;
-    final stored = _case(
-      observedAt: now - 1000,
-      firstSeenAt: 1699999900000,
-      updatedAt: now - 1000,
-      disposition: AuraThreatDisposition.dismissed,
-    );
-    final live = _case(
-      observedAt: now,
-      firstSeenAt: now - 500,
-      updatedAt: now,
-    );
+  test(
+    'la fusión conserva la decisión del usuario y la primera observación',
+    () {
+      final now = 1700000100000;
+      final stored = _case(
+        observedAt: now - 1000,
+        firstSeenAt: 1699999900000,
+        updatedAt: now - 1000,
+        disposition: AuraThreatDisposition.dismissed,
+      );
+      final live = _case(
+        observedAt: now,
+        firstSeenAt: now - 500,
+        updatedAt: now,
+      );
 
-    final merged = AuraThreatCaseBuilder.merge(
-      live: <AuraThreatCase>[live],
-      stored: <AuraThreatCase>[stored],
-      now: now,
-    );
+      final merged = AuraThreatCaseBuilder.merge(
+        live: <AuraThreatCase>[live],
+        stored: <AuraThreatCase>[stored],
+        now: now,
+      );
 
-    expect(merged, hasLength(1));
-    expect(merged.single.disposition, AuraThreatDisposition.dismissed);
-    expect(merged.single.isDismissed, isTrue);
-    expect(merged.single.firstSeenAt, stored.firstSeenAt);
-    expect(merged.single.updatedAt, now);
-  });
+      expect(merged, hasLength(1));
+      expect(merged.single.disposition, AuraThreatDisposition.dismissed);
+      expect(merged.single.isDismissed, isTrue);
+      expect(merged.single.firstSeenAt, stored.firstSeenAt);
+      expect(merged.single.updatedAt, now);
+    },
+  );
 
   test('la fusión descarta casos fuera de la retención', () {
     final now = 1700000100000;
@@ -114,16 +129,22 @@ void main() {
     expect(merged, isEmpty);
   });
 
-  test('el almacén guarda y recupera casos, y rechaza un payload corrupto', () async {
-    final vault = AuraSecureVault();
-    await vault.saveThreatCases(<Map<String, dynamic>>[_case().toMap()]);
-    final restored = await vault.getThreatCases();
-    expect(restored, hasLength(1));
-    expect(restored.single['id'], 'network:evil.example:com.example.app');
+  test(
+    'el almacén guarda y recupera casos, y rechaza un payload corrupto',
+    () async {
+      final vault = AuraSecureVault();
+      await vault.saveThreatCases(<Map<String, dynamic>>[_case().toMap()]);
+      final restored = await vault.getThreatCases();
+      expect(restored, hasLength(1));
+      expect(restored.single['id'], 'network:evil.example:com.example.app');
 
-    FlutterSecureStorage.setMockInitialValues(<String, String>{
-      'aura_threat_cases_v1': '{"no":"es una lista"}',
-    });
-    await expectLater(AuraSecureVault().getThreatCases(), throwsFormatException);
-  });
+      FlutterSecureStorage.setMockInitialValues(<String, String>{
+        'aura_threat_cases_v1': '{"no":"es una lista"}',
+      });
+      await expectLater(
+        AuraSecureVault().getThreatCases(),
+        throwsFormatException,
+      );
+    },
+  );
 }

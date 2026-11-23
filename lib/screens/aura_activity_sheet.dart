@@ -178,9 +178,7 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
       ];
     });
     await AgentController.instance.writeStoredThreatCases(
-      _latestThreats
-          .map((threat) => threat.toMap())
-          .toList(growable: false),
+      _latestThreats.map((threat) => threat.toMap()).toList(growable: false),
     );
   }
 
