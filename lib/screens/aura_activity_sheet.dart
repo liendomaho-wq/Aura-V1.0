@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -41,11 +43,28 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
   List<Map<String, dynamic>> _auditEvents = const <Map<String, dynamic>>[];
   String? _expandedThreatId;
   String? _runningThreatId;
+  List<AuraThreatCase> _storedThreats = const <AuraThreatCase>[];
+  List<AuraThreatCase> _latestThreats = const <AuraThreatCase>[];
+  bool _threatStoreLoaded = false;
 
   @override
   void initState() {
     super.initState();
     _loadAudit();
+    _loadStoredThreats();
+  }
+
+  @override
+  void dispose() {
+    final snapshot = _latestThreats;
+    if (_threatStoreLoaded && snapshot.isNotEmpty) {
+      unawaited(
+        AgentController.instance.writeStoredThreatCases(
+          snapshot.map((threat) => threat.toMap()).toList(growable: false),
+        ),
+      );
+    }
+    super.dispose();
   }
 
   /// La auditoría cifrada vive en disco y sobrevive a la sesión. Si el
@@ -122,23 +141,76 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
     }
   }
 
+  /// Carga los casos persistidos y descarta registros que no cumplan el
+  /// esquema. Un almacén corrupto no se interpreta como «sin amenazas».
+  Future<void> _loadStoredThreats() async {
+    try {
+      final records = await AgentController.instance.readStoredThreatCases();
+      final restored = <AuraThreatCase>[];
+      for (final record in records) {
+        final threat = AuraThreatCase.fromMap(record);
+        if (threat != null) restored.add(threat);
+      }
+      if (mounted) setState(() => _storedThreats = restored);
+    } on Object {
+      // La UI conserva los casos vivos; no inventa historial ni borra el
+      // contenido que no pudo leer.
+    } finally {
+      _threatStoreLoaded = true;
+    }
+  }
+
+  Future<void> _setThreatDisposition(AuraThreatCase threatCase) async {
+    final updated = threatCase.copyWith(
+      disposition: threatCase.isDismissed
+          ? AuraThreatDisposition.open
+          : AuraThreatDisposition.dismissed,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    setState(() {
+      _storedThreats = <AuraThreatCase>[
+        ..._storedThreats.where((stored) => stored.id != updated.id),
+        updated,
+      ];
+      _latestThreats = <AuraThreatCase>[
+        ..._latestThreats.where((stored) => stored.id != updated.id),
+        updated,
+      ];
+    });
+    await AgentController.instance.writeStoredThreatCases(
+      _latestThreats
+          .map((threat) => threat.toMap())
+          .toList(growable: false),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AuraStateProvider>();
     final findings = state.findingsReport;
-    final threats = AuraThreatCaseBuilder.build(
+    final liveThreats = AuraThreatCaseBuilder.build(
       alerts: state.threatAlerts,
       report: findings,
     );
-    final containedThreats = threats
+    final threats = AuraThreatCaseBuilder.merge(
+      live: liveThreats,
+      stored: _storedThreats,
+      now: DateTime.now().millisecondsSinceEpoch,
+    );
+    _latestThreats = threats;
+    final activeThreats = threats
+        .where((threat) => !threat.isDismissed)
+        .toList(growable: false);
+    final containedThreats = activeThreats
         .where((threat) => threat.state == AuraThreatCaseState.dnsContained)
         .length;
-    final reviewThreats = threats
+    final reviewThreats = activeThreats
         .where((threat) => threat.state == AuraThreatCaseState.needsReview)
         .length;
-    final maxSeverity = threats.isEmpty
+    final dismissedThreats = threats.length - activeThreats.length;
+    final maxSeverity = activeThreats.isEmpty
         ? null
-        : threats
+        : activeThreats
               .map((threat) => threat.severity)
               .reduce(
                 (left, right) => left.index >= right.index ? left : right,
@@ -255,14 +327,14 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
                           color: AuraTokens.danger,
                         ),
                       _SummaryChip(
-                        label: threats.isEmpty
+                        label: activeThreats.isEmpty
                             ? 'sin detecciones'
-                            : '${threats.length} detecciones',
+                            : '${activeThreats.length} detecciones',
                         color: maxSeverity == null
                             ? AuraTokens.textMuted
                             : _severityColor(maxSeverity),
                       ),
-                      if (entries.isEmpty && threats.isEmpty)
+                      if (entries.isEmpty && activeThreats.isEmpty)
                         const _SummaryChip(
                           label: 'sin actividad',
                           color: AuraTokens.textMuted,
@@ -270,13 +342,14 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
                     ],
                   ),
                 ),
-                if (threats.isNotEmpty)
+                if (activeThreats.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
                     child: _ThreatRibbon(
-                      threats: threats,
+                      threats: activeThreats,
                       contained: containedThreats,
                       review: reviewThreats,
+                      dismissed: dismissedThreats,
                       maxSeverity: maxSeverity!,
                       onOpen: () =>
                           setState(() => _filter = _ActivityFilter.threats),
@@ -352,6 +425,8 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
                                     onAction: threat.isActionable
                                         ? () => _runThreatAction(threat)
                                         : null,
+                                    onDismiss: () =>
+                                        _setThreatDisposition(threat),
                                   );
                                 },
                               )
@@ -462,6 +537,7 @@ class _ThreatRibbon extends StatelessWidget {
     required this.threats,
     required this.contained,
     required this.review,
+    required this.dismissed,
     required this.maxSeverity,
     required this.onOpen,
   });
@@ -469,8 +545,52 @@ class _ThreatRibbon extends StatelessWidget {
   final List<AuraThreatCase> threats;
   final int contained;
   final int review;
+  final int dismissed;
   final AuraFindingSeverity maxSeverity;
   final VoidCallback onOpen;
+
+  /// Carga los casos persistidos y descarta registros que no cumplan el
+  /// esquema. Un almacén corrupto no se interpreta como «sin amenazas».
+  Future<void> _loadStoredThreats() async {
+    try {
+      final records = await AgentController.instance.readStoredThreatCases();
+      final restored = <AuraThreatCase>[];
+      for (final record in records) {
+        final threat = AuraThreatCase.fromMap(record);
+        if (threat != null) restored.add(threat);
+      }
+      if (mounted) setState(() => _storedThreats = restored);
+    } on Object {
+      // La UI conserva los casos vivos; no inventa historial ni borra el
+      // contenido que no pudo leer.
+    } finally {
+      _threatStoreLoaded = true;
+    }
+  }
+
+  Future<void> _setThreatDisposition(AuraThreatCase threatCase) async {
+    final updated = threatCase.copyWith(
+      disposition: threatCase.isDismissed
+          ? AuraThreatDisposition.open
+          : AuraThreatDisposition.dismissed,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    setState(() {
+      _storedThreats = <AuraThreatCase>[
+        ..._storedThreats.where((stored) => stored.id != updated.id),
+        updated,
+      ];
+      _latestThreats = <AuraThreatCase>[
+        ..._latestThreats.where((stored) => stored.id != updated.id),
+        updated,
+      ];
+    });
+    await AgentController.instance.writeStoredThreatCases(
+      _latestThreats
+          .map((threat) => threat.toMap())
+          .toList(growable: false),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -508,7 +628,8 @@ class _ThreatRibbon extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '$contained con DNS bloqueado · $review por revisar',
+                      '$contained con DNS bloqueado · $review por revisar'
+                      '${dismissed > 0 ? ' · $dismissed descartadas' : ''}',
                       style: const TextStyle(
                         color: AuraTokens.textMuted,
                         fontSize: 10.5,
@@ -588,6 +709,7 @@ class _ThreatCaseTile extends StatelessWidget {
     required this.busy,
     required this.onToggle,
     required this.onAction,
+    required this.onDismiss,
   });
 
   final AuraThreatCase threatCase;
@@ -595,15 +717,61 @@ class _ThreatCaseTile extends StatelessWidget {
   final bool busy;
   final VoidCallback onToggle;
   final VoidCallback? onAction;
+  final VoidCallback onDismiss;
+
+  /// Carga los casos persistidos y descarta registros que no cumplan el
+  /// esquema. Un almacén corrupto no se interpreta como «sin amenazas».
+  Future<void> _loadStoredThreats() async {
+    try {
+      final records = await AgentController.instance.readStoredThreatCases();
+      final restored = <AuraThreatCase>[];
+      for (final record in records) {
+        final threat = AuraThreatCase.fromMap(record);
+        if (threat != null) restored.add(threat);
+      }
+      if (mounted) setState(() => _storedThreats = restored);
+    } on Object {
+      // La UI conserva los casos vivos; no inventa historial ni borra el
+      // contenido que no pudo leer.
+    } finally {
+      _threatStoreLoaded = true;
+    }
+  }
+
+  Future<void> _setThreatDisposition(AuraThreatCase threatCase) async {
+    final updated = threatCase.copyWith(
+      disposition: threatCase.isDismissed
+          ? AuraThreatDisposition.open
+          : AuraThreatDisposition.dismissed,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    setState(() {
+      _storedThreats = <AuraThreatCase>[
+        ..._storedThreats.where((stored) => stored.id != updated.id),
+        updated,
+      ];
+      _latestThreats = <AuraThreatCase>[
+        ..._latestThreats.where((stored) => stored.id != updated.id),
+        updated,
+      ];
+    });
+    await AgentController.instance.writeStoredThreatCases(
+      _latestThreats
+          .map((threat) => threat.toMap())
+          .toList(growable: false),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final color = _severityColor(threatCase.severity);
-    final stateColor = switch (threatCase.state) {
-      AuraThreatCaseState.dnsContained => AuraTokens.success,
-      AuraThreatCaseState.needsReview => AuraTokens.warning,
-      AuraThreatCaseState.informational => AuraTokens.textMuted,
-    };
+    final stateColor = threatCase.isDismissed
+        ? AuraTokens.textMuted
+        : switch (threatCase.state) {
+            AuraThreatCaseState.dnsContained => AuraTokens.success,
+            AuraThreatCaseState.needsReview => AuraTokens.warning,
+            AuraThreatCaseState.informational => AuraTokens.textMuted,
+          };
     return Container(
       decoration: BoxDecoration(
         color: AuraTokens.surface.withValues(alpha: 0.78),
@@ -645,7 +813,12 @@ class _ThreatCaseTile extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    _MiniTag(label: threatCase.stateLabel, color: stateColor),
+                    _MiniTag(
+                      label: threatCase.isDismissed
+                          ? 'descartada'
+                          : threatCase.stateLabel,
+                      color: stateColor,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 5),
@@ -755,7 +928,19 @@ class _ThreatCaseTile extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
-                    if (onAction != null)
+                    TextButton(
+                      onPressed: onDismiss,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AuraTokens.textMuted,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        minimumSize: const Size(0, 32),
+                      ),
+                      child: Text(
+                        threatCase.isDismissed ? 'Restaurar' : 'Descartar',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                    ),
+                    if (onAction != null && !threatCase.isDismissed)
                       TextButton(
                         onPressed: busy ? null : onAction,
                         style: TextButton.styleFrom(
@@ -919,6 +1104,49 @@ class _ActivityTile extends StatelessWidget {
   const _ActivityTile({required this.entry});
 
   final AuraActivityEntry entry;
+
+  /// Carga los casos persistidos y descarta registros que no cumplan el
+  /// esquema. Un almacén corrupto no se interpreta como «sin amenazas».
+  Future<void> _loadStoredThreats() async {
+    try {
+      final records = await AgentController.instance.readStoredThreatCases();
+      final restored = <AuraThreatCase>[];
+      for (final record in records) {
+        final threat = AuraThreatCase.fromMap(record);
+        if (threat != null) restored.add(threat);
+      }
+      if (mounted) setState(() => _storedThreats = restored);
+    } on Object {
+      // La UI conserva los casos vivos; no inventa historial ni borra el
+      // contenido que no pudo leer.
+    } finally {
+      _threatStoreLoaded = true;
+    }
+  }
+
+  Future<void> _setThreatDisposition(AuraThreatCase threatCase) async {
+    final updated = threatCase.copyWith(
+      disposition: threatCase.isDismissed
+          ? AuraThreatDisposition.open
+          : AuraThreatDisposition.dismissed,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    setState(() {
+      _storedThreats = <AuraThreatCase>[
+        ..._storedThreats.where((stored) => stored.id != updated.id),
+        updated,
+      ];
+      _latestThreats = <AuraThreatCase>[
+        ..._latestThreats.where((stored) => stored.id != updated.id),
+        updated,
+      ];
+    });
+    await AgentController.instance.writeStoredThreatCases(
+      _latestThreats
+          .map((threat) => threat.toMap())
+          .toList(growable: false),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

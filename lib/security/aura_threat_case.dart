@@ -9,6 +9,9 @@ enum AuraThreatCaseAction { none, reviewApp, emergencyIsolation }
 /// ese canal, no «eliminada» del dispositivo.
 enum AuraThreatCaseState { dnsContained, needsReview, informational }
 
+/// Decisión del usuario sobre el caso. No cambia la evidencia ni la severidad.
+enum AuraThreatDisposition { open, dismissed }
+
 /// Caso de amenaza derivado de evidencia real.
 ///
 /// No inventa señales ni agrega datos que el correlador o el motor de hallazgos
@@ -27,11 +30,15 @@ class AuraThreatCase {
     required this.recommendedAction,
     required this.action,
     required this.observedAt,
+    int? firstSeenAt,
     this.domain,
     this.packageName,
     this.appName,
     this.signalCount = 1,
-  });
+    this.disposition = AuraThreatDisposition.open,
+    int? updatedAt,
+  }) : firstSeenAt = firstSeenAt ?? observedAt,
+       updatedAt = updatedAt ?? observedAt;
 
   final String id;
   final AuraFindingCategory category;
@@ -44,10 +51,15 @@ class AuraThreatCase {
   final String recommendedAction;
   final AuraThreatCaseAction action;
   final int observedAt;
+  final int firstSeenAt;
+  final int updatedAt;
   final String? domain;
   final String? packageName;
   final String? appName;
   final int signalCount;
+  final AuraThreatDisposition disposition;
+
+  bool get isDismissed => disposition == AuraThreatDisposition.dismissed;
 
   bool get isActionable =>
       action != AuraThreatCaseAction.none &&
@@ -67,6 +79,178 @@ class AuraThreatCase {
   };
 
   String get subjectLabel => appName ?? packageName ?? domain ?? 'dispositivo';
+
+  AuraThreatCase copyWith({
+    AuraThreatDisposition? disposition,
+    int? observedAt,
+    int? firstSeenAt,
+    int? updatedAt,
+    int? signalCount,
+  }) => AuraThreatCase(
+    id: id,
+    category: category,
+    severity: severity,
+    state: state,
+    title: title,
+    summary: summary,
+    evidence: evidence,
+    limitations: limitations,
+    recommendedAction: recommendedAction,
+    action: action,
+    observedAt: observedAt ?? this.observedAt,
+    firstSeenAt: firstSeenAt ?? this.firstSeenAt,
+    domain: domain,
+    packageName: packageName,
+    appName: appName,
+    signalCount: signalCount ?? this.signalCount,
+    disposition: disposition ?? this.disposition,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+
+  Map<String, Object?> toMap() => <String, Object?>{
+    'schema': 1,
+    'id': id,
+    'category': category.name,
+    'severity': severity.name,
+    'state': state.name,
+    'title': title,
+    'summary': summary,
+    'evidence': evidence,
+    'limitations': limitations,
+    'recommended_action': recommendedAction,
+    'action': action.name,
+    'observed_at': observedAt,
+    'first_seen_at': firstSeenAt,
+    'updated_at': updatedAt,
+    'signal_count': signalCount,
+    'disposition': disposition.name,
+    if (domain != null) 'domain': domain!,
+    if (packageName != null) 'package_name': packageName!,
+    if (appName != null) 'app_name': appName!,
+  };
+
+  /// Reconstruye un caso almacenado y rechaza cualquier registro que no cumpla
+  /// el esquema. El almacén es privado, pero no se confía en su contenido.
+  static AuraThreatCase? fromMap(Map<String, dynamic> map) {
+    if (map['schema'] != 1) return null;
+    final id = _boundedString(map['id'], 120);
+    final title = _boundedString(map['title'], 300);
+    final summary = _boundedString(map['summary'], 2000);
+    final recommendedAction = _boundedString(map['recommended_action'], 1000);
+    final observedAt = _positiveInt(map['observed_at']);
+    final firstSeenAt = _positiveInt(map['first_seen_at']);
+    final updatedAt = _positiveInt(map['updated_at']);
+    final signalCount = _positiveInt(map['signal_count']);
+    final category = _enumByName(AuraFindingCategory.values, map['category']);
+    final severity = _enumByName(AuraFindingSeverity.values, map['severity']);
+    final state = _enumByName(AuraThreatCaseState.values, map['state']);
+    final action = _enumByName(AuraThreatCaseAction.values, map['action']);
+    final disposition = _enumByName(
+      AuraThreatDisposition.values,
+      map['disposition'],
+    );
+    if (id == null ||
+        title == null ||
+        summary == null ||
+        recommendedAction == null ||
+        observedAt == null ||
+        firstSeenAt == null ||
+        updatedAt == null ||
+        signalCount == null ||
+        category == null ||
+        severity == null ||
+        state == null ||
+        action == null ||
+        disposition == null) {
+      return null;
+    }
+    final evidence = _boundedStrings(map['evidence'], 8, 500);
+    final limitations = _boundedStrings(map['limitations'], 12, 500);
+    if (evidence == null || limitations == null) return null;
+    final domain = _optionalDomain(map['domain']);
+    final packageName = _optionalPackage(map['package_name']);
+    final appName = _boundedString(map['app_name'], 80);
+    if (map['domain'] != null && domain == null) return null;
+    if (map['package_name'] != null && packageName == null) return null;
+    if (map['app_name'] != null && appName == null) return null;
+    return AuraThreatCase(
+      id: id,
+      category: category,
+      severity: severity,
+      state: state,
+      title: title,
+      summary: summary,
+      evidence: List<String>.unmodifiable(evidence),
+      limitations: List<String>.unmodifiable(limitations),
+      recommendedAction: recommendedAction,
+      action: action,
+      observedAt: observedAt,
+      firstSeenAt: firstSeenAt,
+      domain: domain,
+      packageName: packageName,
+      appName: appName,
+      signalCount: signalCount,
+      disposition: disposition,
+      updatedAt: updatedAt,
+    );
+  }
+
+  static String? _boundedString(Object? value, int maxLength) {
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    if (trimmed.isEmpty || trimmed.length > maxLength) return null;
+    return trimmed;
+  }
+
+  static int? _positiveInt(Object? value) {
+    if (value is! int || value <= 0) return null;
+    return value;
+  }
+
+  static T? _enumByName<T extends Enum>(List<T> values, Object? name) {
+    if (name is! String) return null;
+    for (final value in values) {
+      if (value.name == name) return value;
+    }
+    return null;
+  }
+
+  static List<String>? _boundedStrings(
+    Object? value,
+    int maxItems,
+    int maxLength,
+  ) {
+    if (value is! List || value.length > maxItems) return null;
+    final output = <String>[];
+    for (final entry in value) {
+      final text = _boundedString(entry, maxLength);
+      if (text == null) return null;
+      output.add(text);
+    }
+    return output;
+  }
+
+  static final RegExp _storedDomainPattern = RegExp(
+    r'^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+'
+    r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$',
+  );
+  static final RegExp _storedPackagePattern = RegExp(
+    r'^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$',
+  );
+
+  static String? _optionalDomain(Object? value) {
+    if (value == null) return null;
+    if (value is! String) return null;
+    final normalized = value.trim().toLowerCase();
+    return _storedDomainPattern.hasMatch(normalized) ? normalized : null;
+  }
+
+  static String? _optionalPackage(Object? value) {
+    if (value == null) return null;
+    if (value is! String) return null;
+    final normalized = value.trim();
+    return _storedPackagePattern.hasMatch(normalized) ? normalized : null;
+  }
 }
 
 /// Convierte alertas correlacionadas y hallazgos del motor local en una lista
@@ -120,9 +304,7 @@ class AuraThreatCaseBuilder {
           : severity == AuraFindingSeverity.high
           ? AuraThreatCaseAction.emergencyIsolation
           : AuraThreatCaseAction.none;
-      final id =
-          'network:${domain ?? packageName ?? 'unknown'}:'
-          '${alert.firstSeenTimestamp}';
+      final id = 'network:${domain ?? ''}:${packageName ?? ''}';
       cases[id] = AuraThreatCase(
         id: id,
         category: AuraFindingCategory.networkActivity,
@@ -143,6 +325,7 @@ class AuraThreatCaseBuilder {
                   'mientras revisas el dispositivo.',
         action: action,
         observedAt: alert.lastSeenTimestamp,
+        firstSeenAt: alert.firstSeenTimestamp,
         domain: domain,
         packageName: packageName,
         appName: appName,
@@ -183,6 +366,7 @@ class AuraThreatCaseBuilder {
         recommendedAction: finding.recommendedAction,
         action: action,
         observedAt: finding.observedAt,
+        firstSeenAt: finding.observedAt,
         packageName: packageName,
         signalCount: finding.evidence.length,
       );
@@ -193,6 +377,46 @@ class AuraThreatCaseBuilder {
         final bySeverity = right.severity.index.compareTo(left.severity.index);
         if (bySeverity != 0) return bySeverity;
         final byTime = right.observedAt.compareTo(left.observedAt);
+        return byTime != 0 ? byTime : left.id.compareTo(right.id);
+      });
+    return List<AuraThreatCase>.unmodifiable(ordered.take(maxCases));
+  }
+
+  /// Combina los casos vivos con los persistidos. Conserva la decisión del
+  /// usuario y la primera observación; descarta lo que excedió la retención.
+  static List<AuraThreatCase> merge({
+    required List<AuraThreatCase> live,
+    required List<AuraThreatCase> stored,
+    required int now,
+    Duration retention = const Duration(days: 30),
+  }) {
+    final cutoff = now - retention.inMilliseconds;
+    final merged = <String, AuraThreatCase>{};
+    for (final storedCase in stored) {
+      if (storedCase.updatedAt >= cutoff) {
+        merged[storedCase.id] = storedCase;
+      }
+    }
+    for (final liveCase in live) {
+      final previous = merged[liveCase.id];
+      merged[liveCase.id] = liveCase.copyWith(
+        firstSeenAt: previous == null
+            ? liveCase.firstSeenAt
+            : (previous.firstSeenAt < liveCase.firstSeenAt
+                  ? previous.firstSeenAt
+                  : liveCase.firstSeenAt),
+        disposition: previous?.disposition ?? liveCase.disposition,
+        updatedAt: now,
+      );
+    }
+    final ordered = merged.values.toList(growable: false)
+      ..sort((left, right) {
+        if (left.isDismissed != right.isDismissed) {
+          return left.isDismissed ? 1 : -1;
+        }
+        final bySeverity = right.severity.index.compareTo(left.severity.index);
+        if (bySeverity != 0) return bySeverity;
+        final byTime = right.updatedAt.compareTo(left.updatedAt);
         return byTime != 0 ? byTime : left.id.compareTo(right.id);
       });
     return List<AuraThreatCase>.unmodifiable(ordered.take(maxCases));

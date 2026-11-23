@@ -387,6 +387,15 @@ class AgentController {
   Future<List<Map<String, dynamic>>> readSecureOperationAudit() =>
       _agentAuditVault.getAuditLogs();
 
+  /// Casos de amenaza persistidos por la pantalla de actividad. El almacén es
+  /// el mismo SecureVault protegido por Android; no se envía nada fuera.
+  Future<List<Map<String, dynamic>>> readStoredThreatCases() =>
+      _agentAuditVault.getThreatCases();
+
+  Future<void> writeStoredThreatCases(
+    List<Map<String, dynamic>> cases,
+  ) => _agentAuditVault.saveThreatCases(cases);
+
   Future<void> _persistOperationAudit({
     required String operationId,
     required String tool,
