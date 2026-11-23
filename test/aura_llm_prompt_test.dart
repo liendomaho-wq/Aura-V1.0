@@ -13,10 +13,7 @@ void main() {
     expect(prompt, contains('<<<CONTEXTO'));
     expect(prompt, contains('ultimo_dominio=tracker.example'));
     expect(prompt, contains('CONTEXTO>>>'));
-    expect(
-      prompt.indexOf('<<<CONTEXTO'),
-      lessThan(prompt.indexOf('<<<ORDEN')),
-    );
+    expect(prompt.indexOf('<<<CONTEXTO'), lessThan(prompt.indexOf('<<<ORDEN')));
   });
 
   test('sin contexto no agrega un bloque vacío', () {

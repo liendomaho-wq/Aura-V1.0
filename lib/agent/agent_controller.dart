@@ -1056,7 +1056,9 @@ class AgentController {
   /// Explica el último veredicto con los datos que ya están en memoria.
   Future<void> _explainLastOutcome() async {
     final history = _securityState?.explanationHistory;
-    final explanation = history == null || history.isEmpty ? null : history.last;
+    final explanation = history == null || history.isEmpty
+        ? null
+        : history.last;
     if (explanation == null) {
       final last = AuraConversationMemory.instance.lastAuraMessage;
       final message = last == null
@@ -1077,9 +1079,7 @@ class AgentController {
     }
     final signals = explanation.signals
         .take(3)
-        .map(
-          (signal) => '${signal.label} (${signal.value.toStringAsFixed(2)})',
-        )
+        .map((signal) => '${signal.label} (${signal.value.toStringAsFixed(2)})')
         .join(', ');
     final message =
         'Sobre ${explanation.host}: la banda es '
@@ -1154,7 +1154,10 @@ class AgentController {
         AgentEvent(
           kind: AgentEventKind.thought,
           message: message,
-          data: const <String, dynamic>{'intent': 'repeat', 'has_answer': false},
+          data: const <String, dynamic>{
+            'intent': 'repeat',
+            'has_answer': false,
+          },
         ),
       );
       await _speakResponse(message);

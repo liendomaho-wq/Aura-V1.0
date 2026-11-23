@@ -246,9 +246,7 @@ class AuraConversationMemory {
   static final RegExp _denialPattern = RegExp(
     r'^(?:no|no,? gracias|cancela|cancelalo|cancelala|cancelar|mejor no|detente|para|aborta|rechazo|rechazar|no lo hagas|olvidalo|olvidalo ya)(?: (?:por favor|ahora|eso))?$',
   );
-  static final RegExp _hostPattern = RegExp(
-    r'\b[a-z0-9-]+(?:\.[a-z0-9-]+)+\b',
-  );
+  static final RegExp _hostPattern = RegExp(r'\b[a-z0-9-]+(?:\.[a-z0-9-]+)+\b');
   static final RegExp _blockPattern = RegExp(
     r'^(?:si,? )?(?:bloquea|bloquealo|bloqueala|bloqueame|ponle un bloqueo|ponle bloqueo)\b',
   );

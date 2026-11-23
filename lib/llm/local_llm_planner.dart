@@ -76,11 +76,7 @@ abstract final class AuraLlmPrompt {
     required String instruction,
     String? conversationContext,
   }) {
-    final data = _sanitize(
-      instruction,
-      _delimiters,
-      maxLength: 2048,
-    );
+    final data = _sanitize(instruction, _delimiters, maxLength: 2048);
     final context = conversationContext == null
         ? null
         : _sanitize(
@@ -649,5 +645,4 @@ class LocalLlmPlanner {
     }
     return null;
   }
-
 }

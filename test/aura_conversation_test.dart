@@ -44,18 +44,22 @@ void main() {
         'analizar dominio tracker.example',
       );
       expect(memory.followUpFor('analiza evil.example'), isNull);
-      expect(memory.followUpFor('¿y ese dominio?')?.kind, AuraFollowUpKind.analyzeLastHost);
+      expect(
+        memory.followUpFor('¿y ese dominio?')?.kind,
+        AuraFollowUpKind.analyzeLastHost,
+      );
     });
 
     test('la consulta de estado conserva el último dominio', () {
       final memory = AuraConversationMemory.instance;
       memory.recordIntent(_intent(domain: 'tracker.example'));
-      memory.recordIntent(
-        _intent(name: 'status', kind: AuraIntentKind.status),
-      );
+      memory.recordIntent(_intent(name: 'status', kind: AuraIntentKind.status));
 
       expect(memory.lastHost, 'tracker.example');
-      expect(memory.followUpFor('bloquéalo')?.instruction, 'bloquear tracker.example');
+      expect(
+        memory.followUpFor('bloquéalo')?.instruction,
+        'bloquear tracker.example',
+      );
     });
 
     test('el contexto del planificador solo usa datos estructurados', () {
@@ -103,7 +107,10 @@ void main() {
       final memory = AuraConversationMemory.instance;
       memory.recordAuraMessage('Todavía no hay bloqueos en esta sesión.');
 
-      expect(memory.followUpFor('¿qué has hecho?')?.kind, AuraFollowUpKind.summarize);
+      expect(
+        memory.followUpFor('¿qué has hecho?')?.kind,
+        AuraFollowUpKind.summarize,
+      );
       expect(memory.followUpFor('repítelo')?.kind, AuraFollowUpKind.repeat);
     });
 
