@@ -375,7 +375,7 @@ void main() {
         'DESACTIVAR DEFENSAS · BLOQUEAR <dominio> · REVISAR APP <paquete> · '
         'AISLAMIENTO DE EMERGENCIA · REANUDAR LA RED · ACTUALIZAR '
         'DEFENSAS · AUDITAR DISPOSITIVO · ESCANEAR APLICACIONES · ANALIZAR DOMINIO <host> · ESTADO · PURGA CRIPTOGRÁFICA. '
-        'REVISAR APP solo abre Ajustes de Android; no aísla automáticamente otras apps. Para confirmar cambios de VPN, bloqueos, revisión de apps o purga, responde únicamente CONFIRMO a la solicitud pendiente.';
+        'REVISAR APP solo abre Ajustes de Android; no aísla automáticamente otras apps. Para confirmar una acción pendiente responde CONFIRMO; en acciones reversibles también acepto SÍ, DALE o ADELANTE. La purga criptográfica y el aislamiento de emergencia exigen CONFIRMO escrito.';
     final controller = AgentController.instance;
     final previousLength = controller.history.length;
 
