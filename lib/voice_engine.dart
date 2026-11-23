@@ -1,4 +1,6 @@
 // voice_engine.dart - Motor de Voz Nativo de Aura
+import 'dart:async';
+
 import 'package:flutter_tts/flutter_tts.dart';
 
 /// Texto listo para leer en voz alta.
@@ -33,17 +35,31 @@ abstract final class AuraSpeechText {
   }
 }
 
+enum AuraSpeechState { idle, speaking }
+
 class AuraVoiceEngine {
   final FlutterTts _flutterTts = FlutterTts();
+  final StreamController<AuraSpeechState> _stateController =
+      StreamController<AuraSpeechState>.broadcast();
   late final Future<void> _initialization;
   bool _available = true;
+  bool _speaking = false;
+  Completer<void>? _completion;
 
   AuraVoiceEngine() {
     _initialization = _initializeVoice();
   }
 
+  bool get isSpeaking => _speaking;
+
+  Stream<AuraSpeechState> get states => _stateController.stream;
+
   Future<void> _initializeVoice() async {
     try {
+      _flutterTts.setStartHandler(_handleStart);
+      _flutterTts.setCompletionHandler(_handleDone);
+      _flutterTts.setCancelHandler(_handleDone);
+      _flutterTts.setErrorHandler((_) => _handleDone());
       await _selectSpanishVoice();
       await _flutterTts.setSpeechRate(0.55);
       await _flutterTts.setVolume(1.0);
@@ -51,7 +67,23 @@ class AuraVoiceEngine {
     } on Object {
       // Tests, desktop targets and devices without a TTS plugin remain usable.
       _available = false;
+      _handleDone();
     }
+  }
+
+  void _handleStart() {
+    if (_speaking) return;
+    _speaking = true;
+    _stateController.add(AuraSpeechState.speaking);
+  }
+
+  void _handleDone() {
+    final wasSpeaking = _speaking;
+    _speaking = false;
+    final completion = _completion;
+    _completion = null;
+    if (completion != null && !completion.isCompleted) completion.complete();
+    if (wasSpeaking) _stateController.add(AuraSpeechState.idle);
   }
 
   /// Prefiere español latinoamericano y cae a es-US o es-ES solo si el motor
@@ -77,11 +109,28 @@ class AuraVoiceEngine {
     await _initialization;
     if (!_available) return;
     try {
+      final previous = _completion;
+      _completion = null;
+      if (previous != null && !previous.isCompleted) previous.complete();
       await _flutterTts.stop();
+      _completion = Completer<void>();
       await _flutterTts.speak(spoken);
     } on Object {
       // Voice is optional; never interrupt the text-based agent response.
       _available = false;
+      _handleDone();
+    }
+  }
+
+  /// Completa cuando el motor informa el final, la cancelación o un error.
+  /// Un motor que no emite eventos no bloquea el turno: hay un límite de 30 s.
+  Future<void> waitForSpeech() async {
+    final completion = _completion;
+    if (completion == null) return;
+    try {
+      await completion.future.timeout(const Duration(seconds: 30));
+    } on TimeoutException {
+      // El turno sigue; el siguiente comando puede detener la voz igualmente.
     }
   }
 
@@ -126,11 +175,15 @@ class AuraVoiceEngine {
 
   Future<void> stop() async {
     await _initialization;
-    if (!_available) return;
+    if (!_available) {
+      _handleDone();
+      return;
+    }
     try {
       await _flutterTts.stop();
     } on Object {
       _available = false;
     }
+    _handleDone();
   }
 }

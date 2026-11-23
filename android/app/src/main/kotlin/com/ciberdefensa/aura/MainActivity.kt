@@ -1212,14 +1212,25 @@ class MainActivity: FlutterFragmentActivity() {
         }
     }
 
+    /**
+     * El reconocedor debe escuchar el español que el usuario ya tiene
+     * configurado (es-VE, es-MX, es-ES...), no un es-ES fijo, para que el
+     * dictado coincida con la voz es-419 que usa el TTS.
+     */
+    private fun preferredSpeechLanguage(): String {
+        val locale = resources.configuration.locales[0]
+        return if (locale.language == "es") locale.toLanguageTag() else "es-419"
+    }
+
     private fun launchVoiceRecognition() {
+        val language = preferredSpeechLanguage()
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(
                 RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
             )
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-ES")
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, language)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Habla con Aura")
         }

@@ -1,0 +1,1320 @@
+{
+  "version": 1,
+  "description": "Corpus curado de frases naturales en español para medir intención, seguimiento y confirmación. No son datos de usuarios.",
+  "intents": [
+    {
+      "text": "hola",
+      "expected": "greet"
+    },
+    {
+      "text": "buenos días",
+      "expected": "greet"
+    },
+    {
+      "text": "buenas tardes",
+      "expected": "greet"
+    },
+    {
+      "text": "buenas noches",
+      "expected": "greet"
+    },
+    {
+      "text": "saludos",
+      "expected": "greet"
+    },
+    {
+      "text": "hey aura",
+      "expected": "greet"
+    },
+    {
+      "text": "buen día",
+      "expected": "greet"
+    },
+    {
+      "text": "hola aura",
+      "expected": "greet"
+    },
+    {
+      "text": "quién eres",
+      "expected": "identity"
+    },
+    {
+      "text": "quién sos",
+      "expected": "identity"
+    },
+    {
+      "text": "tu nombre",
+      "expected": "identity"
+    },
+    {
+      "text": "cómo te llamas",
+      "expected": "identity"
+    },
+    {
+      "text": "qué eres",
+      "expected": "identity"
+    },
+    {
+      "text": "identidad",
+      "expected": "identity"
+    },
+    {
+      "text": "cuál es tu nombre",
+      "expected": "identity"
+    },
+    {
+      "text": "decime quién eres",
+      "expected": "identity"
+    },
+    {
+      "text": "capacidades",
+      "expected": "capabilities"
+    },
+    {
+      "text": "funciones",
+      "expected": "capabilities"
+    },
+    {
+      "text": "qué sabes hacer",
+      "expected": "capabilities"
+    },
+    {
+      "text": "cómo me ayudas",
+      "expected": "capabilities"
+    },
+    {
+      "text": "herramientas",
+      "expected": "capabilities"
+    },
+    {
+      "text": "muéstrame tus capacidades",
+      "expected": "capabilities"
+    },
+    {
+      "text": "estado",
+      "expected": "status"
+    },
+    {
+      "text": "status",
+      "expected": "status"
+    },
+    {
+      "text": "salud",
+      "expected": "status"
+    },
+    {
+      "text": "cómo está el sistema",
+      "expected": "status"
+    },
+    {
+      "text": "estado del sistema",
+      "expected": "status"
+    },
+    {
+      "text": "salud del sistema",
+      "expected": "status"
+    },
+    {
+      "text": "cuál es el estado",
+      "expected": "status"
+    },
+    {
+      "text": "state",
+      "expected": "status"
+    },
+    {
+      "text": "estoy seguro",
+      "expected": "securityCheck"
+    },
+    {
+      "text": "yo estoy protegido",
+      "expected": "securityCheck"
+    },
+    {
+      "text": "la verdad es que estoy protegida",
+      "expected": "securityCheck"
+    },
+    {
+      "text": "revisa mi seguridad",
+      "expected": "securityCheck"
+    },
+    {
+      "text": "revisa mi seguridad ahora",
+      "expected": "securityCheck"
+    },
+    {
+      "text": "me parece que estoy seguro",
+      "expected": "securityCheck"
+    },
+    {
+      "text": "ayuda",
+      "expected": "help"
+    },
+    {
+      "text": "help",
+      "expected": "help"
+    },
+    {
+      "text": "comandos",
+      "expected": "help"
+    },
+    {
+      "text": "órdenes",
+      "expected": "help"
+    },
+    {
+      "text": "qué puedes hacer",
+      "expected": "help"
+    },
+    {
+      "text": "lista de comandos",
+      "expected": "help"
+    },
+    {
+      "text": "analiza el dominio example.com",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "analizar el host example.net",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "revisa el sitio example.org",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "evalúa el dominio tracker.example",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "evaluar el host ads.example",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "verifica el dominio login.example",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "comprueba el sitio example.com",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "chequea la url example.net",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "chequear el enlace example.org",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "inspecciona el dominio example.com",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "inspeccionar el host example.net",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "examina el sitio example.org",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "analiza la url example.com/login",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "revisa el website example.net",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "verificar el dominio banco.example",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "analiza el dominio noticias.caracoltv.com",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "revisa el dominio pubmed.ncbi.nlm.nih.gov",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "verifica el host api.example.org",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "comprueba el dominio www.example.com",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "evalúa el sitio example.net",
+      "expected": "analyzeDomain"
+    },
+    {
+      "text": "bloquea example.com",
+      "expected": "block"
+    },
+    {
+      "text": "bloquear ads.example",
+      "expected": "block"
+    },
+    {
+      "text": "bloquea el dominio tracker.example",
+      "expected": "block"
+    },
+    {
+      "text": "bloquea el host example.net",
+      "expected": "block"
+    },
+    {
+      "text": "bloquea el sitio example.org",
+      "expected": "block"
+    },
+    {
+      "text": "bloquear la url example.com/path",
+      "expected": "block"
+    },
+    {
+      "text": "deniega example.com",
+      "expected": "block"
+    },
+    {
+      "text": "denegar example.net",
+      "expected": "block"
+    },
+    {
+      "text": "quiero bloquear example.org",
+      "expected": "block"
+    },
+    {
+      "text": "necesito bloquear tracker.example",
+      "expected": "block"
+    },
+    {
+      "text": "bloquea ya example.com",
+      "expected": "block"
+    },
+    {
+      "text": "bloquear este dominio example.net",
+      "expected": "block"
+    },
+    {
+      "text": "bloquear dominio example.org",
+      "expected": "block"
+    },
+    {
+      "text": "bloquea example.com ahora",
+      "expected": "block"
+    },
+    {
+      "text": "deniega el dominio example.net",
+      "expected": "block"
+    },
+    {
+      "text": "bloquear el host example.org",
+      "expected": "block"
+    },
+    {
+      "text": "bloquea la web example.com",
+      "expected": "block"
+    },
+    {
+      "text": "bloquea example.net de inmediato",
+      "expected": "block"
+    },
+    {
+      "text": "audita el dispositivo",
+      "expected": "auditDevice"
+    },
+    {
+      "text": "auditar el teléfono",
+      "expected": "auditDevice"
+    },
+    {
+      "text": "audita el celular",
+      "expected": "auditDevice"
+    },
+    {
+      "text": "auditar el móvil",
+      "expected": "auditDevice"
+    },
+    {
+      "text": "audita mi equipo",
+      "expected": "auditDevice"
+    },
+    {
+      "text": "auditar el android",
+      "expected": "auditDevice"
+    },
+    {
+      "text": "comprueba el dispositivo",
+      "expected": "auditDevice"
+    },
+    {
+      "text": "comprobar el teléfono",
+      "expected": "auditDevice"
+    },
+    {
+      "text": "verifica el dispositivo",
+      "expected": "auditDevice"
+    },
+    {
+      "text": "verificar la seguridad del dispositivo",
+      "expected": "auditDevice"
+    },
+    {
+      "text": "revisa el móvil",
+      "expected": "auditDevice"
+    },
+    {
+      "text": "inspecciona el entorno",
+      "expected": "auditDevice"
+    },
+    {
+      "text": "escanea aplicaciones",
+      "expected": "scanApps"
+    },
+    {
+      "text": "escanear apps",
+      "expected": "scanApps"
+    },
+    {
+      "text": "analiza las apps",
+      "expected": "scanApps"
+    },
+    {
+      "text": "analizar las aplicaciones",
+      "expected": "scanApps"
+    },
+    {
+      "text": "revisa las apps",
+      "expected": "scanApps"
+    },
+    {
+      "text": "revisar las aplicaciones",
+      "expected": "scanApps"
+    },
+    {
+      "text": "verifica las apps",
+      "expected": "scanApps"
+    },
+    {
+      "text": "verificar las aplicaciones",
+      "expected": "scanApps"
+    },
+    {
+      "text": "chequea las apps",
+      "expected": "scanApps"
+    },
+    {
+      "text": "inspecciona las aplicaciones",
+      "expected": "scanApps"
+    },
+    {
+      "text": "escaneo de apps",
+      "expected": "scanApps"
+    },
+    {
+      "text": "análisis de aplicaciones",
+      "expected": "scanApps"
+    },
+    {
+      "text": "aisla la app com.example.app",
+      "expected": "isolate"
+    },
+    {
+      "text": "aislar la aplicación com.example.app",
+      "expected": "isolate"
+    },
+    {
+      "text": "aisla app com.example.app",
+      "expected": "isolate"
+    },
+    {
+      "text": "aislar app com.example.app",
+      "expected": "isolate"
+    },
+    {
+      "text": "revisar la app com.example.app",
+      "expected": "isolate"
+    },
+    {
+      "text": "revisar la aplicación com.example.app",
+      "expected": "isolate"
+    },
+    {
+      "text": "aisla la aplicación com.example.app",
+      "expected": "isolate"
+    },
+    {
+      "text": "aislar la app com.example.app",
+      "expected": "isolate"
+    },
+    {
+      "text": "revisa la app com.example.app",
+      "expected": "isolate"
+    },
+    {
+      "text": "revisa la aplicación com.example.app",
+      "expected": "isolate"
+    },
+    {
+      "text": "aislamiento de emergencia",
+      "expected": "panicIsolation"
+    },
+    {
+      "text": "pánico",
+      "expected": "panicIsolation"
+    },
+    {
+      "text": "cortar la red",
+      "expected": "panicIsolation"
+    },
+    {
+      "text": "aislar la red",
+      "expected": "panicIsolation"
+    },
+    {
+      "text": "modo pánico",
+      "expected": "panicIsolation"
+    },
+    {
+      "text": "aislamiento de emergencia ya",
+      "expected": "panicIsolation"
+    },
+    {
+      "text": "reanudar la red",
+      "expected": "resumeNetwork"
+    },
+    {
+      "text": "restablecer la red",
+      "expected": "resumeNetwork"
+    },
+    {
+      "text": "reanudar el túnel",
+      "expected": "resumeNetwork"
+    },
+    {
+      "text": "resume network",
+      "expected": "resumeNetwork"
+    },
+    {
+      "text": "restore network",
+      "expected": "resumeNetwork"
+    },
+    {
+      "text": "reanudar la red ahora",
+      "expected": "resumeNetwork"
+    },
+    {
+      "text": "purga criptográfica",
+      "expected": "cryptographicPurge"
+    },
+    {
+      "text": "cryptographic purge",
+      "expected": "cryptographicPurge"
+    },
+    {
+      "text": "purga segura",
+      "expected": "cryptographicPurge"
+    },
+    {
+      "text": "borrado seguro de credenciales",
+      "expected": "cryptographicPurge"
+    },
+    {
+      "text": "actualizar defensas",
+      "expected": "updateDefenses"
+    },
+    {
+      "text": "actualizar el sistema de defensas",
+      "expected": "updateDefenses"
+    },
+    {
+      "text": "update defenses",
+      "expected": "updateDefenses"
+    },
+    {
+      "text": "actualizar",
+      "expected": "updateDefenses"
+    },
+    {
+      "text": "activar defensas",
+      "expected": "toggleDefenses"
+    },
+    {
+      "text": "activa las defensas",
+      "expected": "toggleDefenses"
+    },
+    {
+      "text": "activar el escudo",
+      "expected": "toggleDefenses"
+    },
+    {
+      "text": "activa la vpn",
+      "expected": "toggleDefenses"
+    },
+    {
+      "text": "enciende la vpn",
+      "expected": "toggleDefenses"
+    },
+    {
+      "text": "prender la protección",
+      "expected": "toggleDefenses"
+    },
+    {
+      "text": "habilitar el túnel",
+      "expected": "toggleDefenses"
+    },
+    {
+      "text": "conectar el túnel",
+      "expected": "toggleDefenses"
+    },
+    {
+      "text": "desactivar defensas",
+      "expected": "toggleDefenses"
+    },
+    {
+      "text": "desactiva las defensas",
+      "expected": "toggleDefenses"
+    },
+    {
+      "text": "desactivar el escudo",
+      "expected": "toggleDefenses"
+    },
+    {
+      "text": "apaga la vpn",
+      "expected": "toggleDefenses"
+    },
+    {
+      "text": "apagar la vpn",
+      "expected": "toggleDefenses"
+    },
+    {
+      "text": "desconectar el túnel",
+      "expected": "toggleDefenses"
+    },
+    {
+      "text": "desconecta la protección",
+      "expected": "toggleDefenses"
+    },
+    {
+      "text": "apagar el túnel",
+      "expected": "toggleDefenses"
+    },
+    {
+      "text": "analiza las amenazas",
+      "expected": "analyzeThreats"
+    },
+    {
+      "text": "revisa las amenazas",
+      "expected": "analyzeThreats"
+    },
+    {
+      "text": "muestra las amenazas",
+      "expected": "analyzeThreats"
+    },
+    {
+      "text": "ver las amenazas",
+      "expected": "analyzeThreats"
+    },
+    {
+      "text": "analizar las amenazas",
+      "expected": "analyzeThreats"
+    },
+    {
+      "text": "inútil",
+      "expected": "insult"
+    },
+    {
+      "text": "idiota",
+      "expected": "insult"
+    },
+    {
+      "text": "estúpida",
+      "expected": "insult"
+    },
+    {
+      "text": "estúpido",
+      "expected": "insult"
+    },
+    {
+      "text": "no sirves",
+      "expected": "insult"
+    },
+    {
+      "text": "bien hecho",
+      "expected": "praise"
+    },
+    {
+      "text": "excelente",
+      "expected": "praise"
+    },
+    {
+      "text": "gran trabajo",
+      "expected": "praise"
+    },
+    {
+      "text": "eres genial",
+      "expected": "praise"
+    },
+    {
+      "text": "te felicito",
+      "expected": "praise"
+    },
+    {
+      "text": "tienes conciencia",
+      "expected": "existential"
+    },
+    {
+      "text": "estás viva",
+      "expected": "existential"
+    },
+    {
+      "text": "sientes",
+      "expected": "existential"
+    },
+    {
+      "text": "tienes alma",
+      "expected": "existential"
+    },
+    {
+      "text": "piensas por ti misma",
+      "expected": "existential"
+    },
+    {
+      "text": "tengo miedo",
+      "expected": "fear"
+    },
+    {
+      "text": "estoy asustado",
+      "expected": "fear"
+    },
+    {
+      "text": "me preocupa",
+      "expected": "fear"
+    },
+    {
+      "text": "estoy nervioso",
+      "expected": "fear"
+    },
+    {
+      "text": "hay peligro",
+      "expected": "fear"
+    },
+    {
+      "text": "te reto",
+      "expected": "provocation"
+    },
+    {
+      "text": "te desafío",
+      "expected": "provocation"
+    },
+    {
+      "text": "no puedes",
+      "expected": "provocation"
+    },
+    {
+      "text": "a que no",
+      "expected": "provocation"
+    },
+    {
+      "text": "demuestra lo que vales",
+      "expected": "provocation"
+    },
+    {
+      "text": "cuéntame un chiste",
+      "expected": "humor"
+    },
+    {
+      "text": "hazme reír",
+      "expected": "humor"
+    },
+    {
+      "text": "algo gracioso",
+      "expected": "humor"
+    },
+    {
+      "text": "tienes humor",
+      "expected": "humor"
+    },
+    {
+      "text": "chiste",
+      "expected": "humor"
+    },
+    {
+      "text": "abre la puerta",
+      "expected": "unknown"
+    },
+    {
+      "text": "qué hora es",
+      "expected": "unknown"
+    },
+    {
+      "text": "pon música",
+      "expected": "unknown"
+    },
+    {
+      "text": "llama a mi mamá",
+      "expected": "unknown"
+    },
+    {
+      "text": "cuánto cuesta",
+      "expected": "unknown"
+    },
+    {
+      "text": "dónde está el aeropuerto",
+      "expected": "unknown"
+    },
+    {
+      "text": "traduce esto",
+      "expected": "unknown"
+    },
+    {
+      "text": "escribe un correo",
+      "expected": "unknown"
+    },
+    {
+      "text": "apaga la luz",
+      "expected": "unknown"
+    },
+    {
+      "text": "qué clima hace",
+      "expected": "unknown"
+    }
+  ],
+  "followUps": [
+    {
+      "text": "bloquéalo",
+      "expected": "blockLastHost"
+    },
+    {
+      "text": "bloquealo",
+      "expected": "blockLastHost"
+    },
+    {
+      "text": "bloquéala",
+      "expected": "blockLastHost"
+    },
+    {
+      "text": "bloqueala",
+      "expected": "blockLastHost"
+    },
+    {
+      "text": "bloquea ese dominio",
+      "expected": "blockLastHost"
+    },
+    {
+      "text": "bloquea ese host",
+      "expected": "blockLastHost"
+    },
+    {
+      "text": "ponle un bloqueo",
+      "expected": "blockLastHost"
+    },
+    {
+      "text": "ponle bloqueo",
+      "expected": "blockLastHost"
+    },
+    {
+      "text": "bloquéalo ya",
+      "expected": "blockLastHost"
+    },
+    {
+      "text": "bloquea ese sitio",
+      "expected": "blockLastHost"
+    },
+    {
+      "text": "bloquealo ahora",
+      "expected": "blockLastHost"
+    },
+    {
+      "text": "sí, bloquéalo",
+      "expected": "blockLastHost"
+    },
+    {
+      "text": "analízalo",
+      "expected": "analyzeLastHost"
+    },
+    {
+      "text": "analizalo",
+      "expected": "analyzeLastHost"
+    },
+    {
+      "text": "analízala",
+      "expected": "analyzeLastHost"
+    },
+    {
+      "text": "analizala",
+      "expected": "analyzeLastHost"
+    },
+    {
+      "text": "revisalo",
+      "expected": "analyzeLastHost"
+    },
+    {
+      "text": "revísalo",
+      "expected": "analyzeLastHost"
+    },
+    {
+      "text": "revisa ese dominio",
+      "expected": "analyzeLastHost"
+    },
+    {
+      "text": "revisa ese host",
+      "expected": "analyzeLastHost"
+    },
+    {
+      "text": "revisa ese sitio",
+      "expected": "analyzeLastHost"
+    },
+    {
+      "text": "¿y ese dominio?",
+      "expected": "analyzeLastHost"
+    },
+    {
+      "text": "¿qué es ese dominio?",
+      "expected": "analyzeLastHost"
+    },
+    {
+      "text": "examínalo",
+      "expected": "analyzeLastHost"
+    },
+    {
+      "text": "aislala",
+      "expected": "isolateLastApp"
+    },
+    {
+      "text": "aislalo",
+      "expected": "isolateLastApp"
+    },
+    {
+      "text": "aisla esa app",
+      "expected": "isolateLastApp"
+    },
+    {
+      "text": "aisla la app",
+      "expected": "isolateLastApp"
+    },
+    {
+      "text": "revisa esa app",
+      "expected": "isolateLastApp"
+    },
+    {
+      "text": "revisa la app",
+      "expected": "isolateLastApp"
+    },
+    {
+      "text": "revisa la aplicación",
+      "expected": "isolateLastApp"
+    },
+    {
+      "text": "revisa esa aplicación",
+      "expected": "isolateLastApp"
+    },
+    {
+      "text": "¿qué has hecho?",
+      "expected": "summarize"
+    },
+    {
+      "text": "dame un resumen",
+      "expected": "summarize"
+    },
+    {
+      "text": "hazme un resumen",
+      "expected": "summarize"
+    },
+    {
+      "text": "qué pasó",
+      "expected": "summarize"
+    },
+    {
+      "text": "qué ha pasado",
+      "expected": "summarize"
+    },
+    {
+      "text": "qué encontraste",
+      "expected": "summarize"
+    },
+    {
+      "text": "qué viste",
+      "expected": "summarize"
+    },
+    {
+      "text": "cuéntame qué pasó",
+      "expected": "summarize"
+    },
+    {
+      "text": "resumen",
+      "expected": "summarize"
+    },
+    {
+      "text": "resumen de la sesión",
+      "expected": "summarize"
+    },
+    {
+      "text": "¿por qué?",
+      "expected": "explain"
+    },
+    {
+      "text": "porque sí",
+      "expected": "explain"
+    },
+    {
+      "text": "para qué",
+      "expected": "explain"
+    },
+    {
+      "text": "qué significa",
+      "expected": "explain"
+    },
+    {
+      "text": "explícame",
+      "expected": "explain"
+    },
+    {
+      "text": "explícamelo",
+      "expected": "explain"
+    },
+    {
+      "text": "en simple",
+      "expected": "explain"
+    },
+    {
+      "text": "no entendí",
+      "expected": "explain"
+    },
+    {
+      "text": "no lo entiendo",
+      "expected": "explain"
+    },
+    {
+      "text": "por qué lo dices",
+      "expected": "explain"
+    },
+    {
+      "text": "repítelo",
+      "expected": "repeat"
+    },
+    {
+      "text": "repitelo",
+      "expected": "repeat"
+    },
+    {
+      "text": "repetilo",
+      "expected": "repeat"
+    },
+    {
+      "text": "otra vez",
+      "expected": "repeat"
+    },
+    {
+      "text": "no escuché",
+      "expected": "repeat"
+    },
+    {
+      "text": "no te escuché",
+      "expected": "repeat"
+    },
+    {
+      "text": "como dijiste",
+      "expected": "repeat"
+    },
+    {
+      "text": "repetir",
+      "expected": "repeat"
+    }
+  ],
+  "confirmations": [
+    {
+      "text": "sí",
+      "expected": true
+    },
+    {
+      "text": "sí.",
+      "expected": true
+    },
+    {
+      "text": "dale",
+      "expected": true
+    },
+    {
+      "text": "dale, por favor",
+      "expected": true
+    },
+    {
+      "text": "adelante",
+      "expected": true
+    },
+    {
+      "text": "ok",
+      "expected": true
+    },
+    {
+      "text": "okay",
+      "expected": true
+    },
+    {
+      "text": "vale",
+      "expected": true
+    },
+    {
+      "text": "hazlo",
+      "expected": true
+    },
+    {
+      "text": "hazlo ahora",
+      "expected": true
+    },
+    {
+      "text": "procede",
+      "expected": true
+    },
+    {
+      "text": "proceda",
+      "expected": true
+    },
+    {
+      "text": "confirmo",
+      "expected": true
+    },
+    {
+      "text": "confirmo.",
+      "expected": true
+    },
+    {
+      "text": "sí, confirmo",
+      "expected": true
+    },
+    {
+      "text": "autorizo",
+      "expected": true
+    },
+    {
+      "text": "apruebo",
+      "expected": true
+    },
+    {
+      "text": "de acuerdo",
+      "expected": true
+    },
+    {
+      "text": "ejecutalo",
+      "expected": true
+    },
+    {
+      "text": "ejecutala",
+      "expected": true
+    },
+    {
+      "text": "aplicalo",
+      "expected": true
+    },
+    {
+      "text": "aplicala",
+      "expected": true
+    },
+    {
+      "text": "sí, dale",
+      "expected": true
+    },
+    {
+      "text": "confirmo la operación",
+      "expected": true
+    },
+    {
+      "text": "confirmo la acción",
+      "expected": true
+    },
+    {
+      "text": "sí, bloquea evil.example",
+      "expected": false
+    },
+    {
+      "text": "no",
+      "expected": false
+    },
+    {
+      "text": "mejor no",
+      "expected": false
+    },
+    {
+      "text": "cancela",
+      "expected": false
+    },
+    {
+      "text": "claro que no",
+      "expected": false
+    },
+    {
+      "text": "no lo hagas",
+      "expected": false
+    },
+    {
+      "text": "sí pero después",
+      "expected": false
+    },
+    {
+      "text": "dale y analiza",
+      "expected": false
+    },
+    {
+      "text": "confirmo pero no",
+      "expected": false
+    },
+    {
+      "text": "no confirmo",
+      "expected": false
+    },
+    {
+      "text": "sí, por favor",
+      "expected": false
+    },
+    {
+      "text": "hazlo después",
+      "expected": false
+    },
+    {
+      "text": "ok pero audita",
+      "expected": false
+    },
+    {
+      "text": "sí, audita el dispositivo",
+      "expected": false
+    },
+    {
+      "text": "no, gracias",
+      "expected": false
+    },
+    {
+      "text": "detente",
+      "expected": false
+    },
+    {
+      "text": "para",
+      "expected": false
+    },
+    {
+      "text": "aborta",
+      "expected": false
+    },
+    {
+      "text": "olvídalo",
+      "expected": false
+    },
+    {
+      "text": "rechazo",
+      "expected": false
+    },
+    {
+      "text": "sí, ahora bloquea evil.example",
+      "expected": false
+    },
+    {
+      "text": "confirmo y purga",
+      "expected": false
+    }
+  ],
+  "denials": [
+    {
+      "text": "no",
+      "expected": true
+    },
+    {
+      "text": "no.",
+      "expected": true
+    },
+    {
+      "text": "no, gracias",
+      "expected": true
+    },
+    {
+      "text": "mejor no",
+      "expected": true
+    },
+    {
+      "text": "cancela",
+      "expected": true
+    },
+    {
+      "text": "cancélalo",
+      "expected": true
+    },
+    {
+      "text": "detente",
+      "expected": true
+    },
+    {
+      "text": "para",
+      "expected": true
+    },
+    {
+      "text": "aborta",
+      "expected": true
+    },
+    {
+      "text": "rechazo",
+      "expected": true
+    },
+    {
+      "text": "no lo hagas",
+      "expected": true
+    },
+    {
+      "text": "olvídalo",
+      "expected": true
+    },
+    {
+      "text": "olvídalo ya",
+      "expected": true
+    },
+    {
+      "text": "cancelar",
+      "expected": true
+    },
+    {
+      "text": "no gracias",
+      "expected": true
+    },
+    {
+      "text": "no.example",
+      "expected": false
+    },
+    {
+      "text": "no quiero",
+      "expected": false
+    },
+    {
+      "text": "para qué",
+      "expected": false
+    },
+    {
+      "text": "no sé",
+      "expected": false
+    },
+    {
+      "text": "cancela la purga",
+      "expected": false
+    },
+    {
+      "text": "no, bloquea evil.example",
+      "expected": false
+    },
+    {
+      "text": "no gracias por nada",
+      "expected": false
+    },
+    {
+      "text": "detente ahora y audita",
+      "expected": false
+    },
+    {
+      "text": "rechazo la idea",
+      "expected": false
+    },
+    {
+      "text": "para siempre",
+      "expected": false
+    }
+  ]
+}

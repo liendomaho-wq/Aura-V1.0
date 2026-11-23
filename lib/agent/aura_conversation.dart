@@ -164,17 +164,19 @@ class AuraConversationMemory {
         instruction: 'bloquear $host',
       );
     }
-    if (host != null && _analyzePattern.hasMatch(normalized)) {
-      return AuraFollowUp(
-        AuraFollowUpKind.analyzeLastHost,
-        instruction: 'analizar dominio $host',
-      );
-    }
+    // El aislamiento se evalúa antes que el análisis: "revisa la app" no debe
+    // convertirse en "revisa el dominio".
     final packageName = _lastPackage;
     if (packageName != null && _isolatePattern.hasMatch(normalized)) {
       return AuraFollowUp(
         AuraFollowUpKind.isolateLastApp,
         instruction: 'aislar app $packageName',
+      );
+    }
+    if (host != null && _analyzePattern.hasMatch(normalized)) {
+      return AuraFollowUp(
+        AuraFollowUpKind.analyzeLastHost,
+        instruction: 'analizar dominio $host',
       );
     }
     return null;
@@ -251,10 +253,10 @@ class AuraConversationMemory {
     r'^(?:si,? )?(?:bloquea|bloquealo|bloqueala|bloqueame|ponle un bloqueo|ponle bloqueo)\b',
   );
   static final RegExp _analyzePattern = RegExp(
-    r'^(?:y )?(?:analiza|analizalo|analizala|revisa|revisalo|revisala|chequealo|chequeala|examina|examinalo)\b|^y ese (?:dominio|host|sitio)\b|^que es ese (?:dominio|host|sitio)\b',
+    r'^(?:y )?(?:analiza|analizalo|analizala|revisalo|revisala|chequealo|chequeala|examina|examinalo)\b|^revisa (?:el |ese |este |mi |la )?(?:dominio|host|sitio|website|url|enlace)\b|^y ese (?:dominio|host|sitio)\b|^que es ese (?:dominio|host|sitio)\b',
   );
   static final RegExp _isolatePattern = RegExp(
-    r'^(?:aisla|aislalo|aislala|revisa esa app|revisa la app|revisa esa aplicacion)\b',
+    r'^(?:aisla|aislalo|aislala|revisa esa app|revisa la app|revisa esa aplicacion|revisa la aplicacion)\b',
   );
   static final RegExp _explainPattern = RegExp(
     r'^(?:y )?(?:por que|porque|para que|que significa|explicame|explica|explicamelo|en simple|no entendi|no lo entiendo|por que lo dices|como asi)\b',

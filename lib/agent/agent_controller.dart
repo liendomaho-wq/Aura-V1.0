@@ -1198,6 +1198,27 @@ class AgentController {
     }
   }
 
+  /// Detiene la voz en curso. La interfaz lo llama al abrir el micrófono para
+  /// que el usuario pueda interrumpir (barge-in) sin esperar a que termine.
+  Future<void> stopSpeaking() => _voiceEngine.stop();
+
+  /// Espera al final de la voz con un límite de 30 s, o vuelve de inmediato si
+  /// no hay voz en curso. La interfaz lo usa para reabrir el micrófono tras una
+  /// confirmación hablada.
+  Future<void> waitForSpeech() => _voiceEngine.waitForSpeech();
+
+  bool get isSpeaking => _voiceEngine.isSpeaking;
+
+  /// La ventana de confirmación es de 60 s; pasado ese plazo la operación
+  /// pendiente ya no puede autorizarse y la interfaz no debe reabrir el micrófono.
+  bool get hasPendingConfirmation {
+    final created = _pendingConfirmationCreatedAt;
+    if (_pendingConfirmationInstruction == null || created == null) return false;
+    return DateTime.now().difference(created) <= const Duration(seconds: 60);
+  }
+
+  Stream<AuraSpeechState> get speechStates => _voiceEngine.states;
+
   Future<void> _speakResponse(String response) async {
     try {
       await _voiceEngine.speak(response);

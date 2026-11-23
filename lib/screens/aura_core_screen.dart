@@ -609,6 +609,8 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
   Future<void> _dispatch(String text) async {
     var instruction = text.trim();
     if (instruction.isEmpty || _isRunning) return;
+    // Cualquier entrada nueva interrumpe la voz: el usuario tiene prioridad.
+    await AgentController.instance.stopSpeaking();
     final instructionRunes = instruction.runes.toList(growable: false);
     if (instructionRunes.length > maxInstructionLength) {
       instruction = String.fromCharCodes(
@@ -670,14 +672,34 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
 
   Future<void> _captureVoice() async {
     if (_isListening || _isRunning) return;
-    setState(() => _isListening = true);
     try {
-      final transcript = await _voiceChannel.invokeMethod<String>(
-        'startListening',
-      );
-      if (!mounted || transcript == null || transcript.trim().isEmpty) return;
-      _inputController.text = transcript.trim();
-      await _dispatch(transcript);
+      // Barge-in: si Aura está hablando, el micrófono la detiene primero.
+      await AgentController.instance.stopSpeaking();
+      // Un segundo turno solo se habilita para responder una confirmación
+      // pendiente; así el micrófono no queda abierto indefinidamente.
+      var canRearm = true;
+      while (mounted) {
+        String? transcript;
+        setState(() => _isListening = true);
+        try {
+          transcript = await _voiceChannel.invokeMethod<String>(
+            'startListening',
+          );
+        } finally {
+          if (mounted) setState(() => _isListening = false);
+        }
+        if (!mounted || transcript == null || transcript.trim().isEmpty) return;
+        _inputController.text = transcript.trim();
+        await _dispatch(transcript);
+        if (!mounted ||
+            !canRearm ||
+            !AgentController.instance.hasPendingConfirmation) {
+          return;
+        }
+        canRearm = false;
+        await AgentController.instance.waitForSpeech();
+        if (!mounted) return;
+      }
     } on PlatformException catch (error) {
       if (mounted) {
         context.read<AuraStateProvider>().setSecurityLevel(
