@@ -78,3 +78,18 @@ estricta.
 - El corpus mide el parser determinista, no la calidad del modelo local. Una
   frase ambigua fuera del corpus puede seguir cayendo en `unknown`; el
   planificador local es el respaldo, no una garantía.
+
+## Verificación final
+
+- Workflow `Aura Flutter Quality`, ejecución **45263876307**: **success**.
+- Flutter: **375 pruebas aprobadas, 1 omitida**.
+- Python: **234 pruebas + 132 subtests aprobados**.
+- `flutter analyze`: sin hallazgos. `dart format`: sin cambios.
+- Commit verificado: `ed266e6` (`fix(voz): ignorar cancelaciones tardías de una locución anterior`).
+
+El bucle implementado es **por turnos, no siempre encendido**: Aura habla, el
+usuario puede interrumpir en cualquier momento con el micrófono, y tras una
+confirmación pendiente el micrófono se reabre una vez. No se mantiene el
+reconocedor abierto de forma permanente porque Android lo limitaría en segundo
+plano y porque un micrófono siempre activo no es un comportamiento que el
+usuario haya pedido para el resto de la aplicación.
