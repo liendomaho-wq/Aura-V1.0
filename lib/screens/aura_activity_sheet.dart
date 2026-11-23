@@ -5,10 +5,13 @@ import '../agent/agent_controller.dart';
 import '../agent/agent_event.dart';
 import '../agent/aura_activity.dart';
 import '../providers/aura_state_provider.dart';
+import '../security/aura_finding.dart';
+import '../security/aura_threat_case.dart';
 import '../theme/aura_tokens.dart';
 
-/// Abre la hoja de actividad. Es una superficie de solo lectura: no pausa el
-/// agente, no detiene el Escudo y no ejecuta ninguna acción.
+/// Abre la hoja de actividad. La bitácora es de solo lectura; las acciones
+/// sobre una amenaza exigen confirmación explícita y pasan por el agente, nunca
+/// por un atajo de la interfaz.
 Future<void> showAuraActivitySheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
@@ -24,7 +27,7 @@ Future<void> showAuraActivitySheet(BuildContext context) {
   );
 }
 
-enum _ActivityFilter { all, engine, network, issues }
+enum _ActivityFilter { all, engine, network, threats, issues }
 
 class AuraActivitySheet extends StatefulWidget {
   const AuraActivitySheet({super.key});
@@ -36,6 +39,8 @@ class AuraActivitySheet extends StatefulWidget {
 class _AuraActivitySheetState extends State<AuraActivitySheet> {
   _ActivityFilter _filter = _ActivityFilter.all;
   List<Map<String, dynamic>> _auditEvents = const <Map<String, dynamic>>[];
+  String? _expandedThreatId;
+  String? _runningThreatId;
 
   @override
   void initState() {
@@ -55,9 +60,90 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
     }
   }
 
+  Future<bool> _confirmThreatAction(AuraThreatCase threatCase) async {
+    final isPanic =
+        threatCase.action == AuraThreatCaseAction.emergencyIsolation;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AuraTokens.surface,
+        title: Text(
+          isPanic ? '¿Cortar toda la red?' : '¿Abrir Ajustes de la app?',
+          style: const TextStyle(
+            color: AuraTokens.textPrimary,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          isPanic
+              ? 'Se descartará todo el tráfico del dispositivo hasta que '
+                    'reanudes la red. Las conexiones actuales se interrumpirán.'
+              : 'Se abrirá la ficha de ${threatCase.subjectLabel} en Ajustes. '
+                    'Aura no desinstala ni modifica la aplicación: Android exige '
+                    'que la decisión final la tome el usuario.',
+          style: const TextStyle(
+            color: AuraTokens.textMuted,
+            fontSize: 13,
+            height: 1.5,
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(isPanic ? 'Cortar red' : 'Abrir Ajustes'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  Future<void> _runThreatAction(AuraThreatCase threatCase) async {
+    if (_runningThreatId != null || !threatCase.isActionable) return;
+    final packageName = threatCase.packageName;
+    if (threatCase.action == AuraThreatCaseAction.reviewApp &&
+        (packageName == null || packageName.isEmpty)) {
+      return;
+    }
+    if (!await _confirmThreatAction(threatCase) || !mounted) return;
+    setState(() => _runningThreatId = threatCase.id);
+    try {
+      final instruction =
+          threatCase.action == AuraThreatCaseAction.reviewApp
+          ? 'revisar la app $packageName'
+          : 'aislamiento de emergencia';
+      await AgentController.instance.run(instruction, confirmedByUser: true);
+    } finally {
+      if (mounted) setState(() => _runningThreatId = null);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AuraStateProvider>();
+    final findings = state.findingsReport;
+    final threats = AuraThreatCaseBuilder.build(
+      alerts: state.threatAlerts,
+      report: findings,
+    );
+    final containedThreats = threats
+        .where((threat) => threat.state == AuraThreatCaseState.dnsContained)
+        .length;
+    final reviewThreats = threats
+        .where((threat) => threat.state == AuraThreatCaseState.needsReview)
+        .length;
+    final maxSeverity = threats.isEmpty
+        ? null
+        : threats
+              .map((threat) => threat.severity)
+              .reduce(
+                (left, right) => left.index >= right.index ? left : right,
+              );
     return StreamBuilder<AgentEvent>(
       stream: AgentController.instance.events,
       builder: (context, snapshot) {
@@ -162,7 +248,15 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
                           label: '$failed con fallo',
                           color: AuraTokens.danger,
                         ),
-                      if (entries.isEmpty)
+                      _SummaryChip(
+                        label: threats.isEmpty
+                            ? 'sin detecciones'
+                            : '${threats.length} detecciones',
+                        color: maxSeverity == null
+                            ? AuraTokens.textMuted
+                            : _severityColor(maxSeverity),
+                      ),
+                      if (entries.isEmpty && threats.isEmpty)
                         const _SummaryChip(
                           label: 'sin actividad',
                           color: AuraTokens.textMuted,
@@ -170,6 +264,19 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
                     ],
                   ),
                 ),
+                if (threats.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                    child: _ThreatRibbon(
+                      threats: threats,
+                      contained: containedThreats,
+                      review: reviewThreats,
+                      maxSeverity: maxSeverity!,
+                      onOpen: () => setState(
+                        () => _filter = _ActivityFilter.threats,
+                      ),
+                    ),
+                  ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
                   child: SingleChildScrollView(
@@ -195,6 +302,12 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
                               setState(() => _filter = _ActivityFilter.network),
                         ),
                         _FilterChip(
+                          label: 'Amenazas',
+                          selected: _filter == _ActivityFilter.threats,
+                          onTap: () =>
+                              setState(() => _filter = _ActivityFilter.threats),
+                        ),
+                        _FilterChip(
                           label: 'Incidencias',
                           selected: _filter == _ActivityFilter.issues,
                           onTap: () =>
@@ -205,7 +318,39 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
                   ),
                 ),
                 Expanded(
-                  child: filtered.isEmpty
+                  child: _filter == _ActivityFilter.threats
+                      ? threats.isEmpty
+                            ? const _EmptyThreats()
+                            : ListView.separated(
+                                key: const ValueKey<String>('threat-list'),
+                                padding: const EdgeInsets.fromLTRB(
+                                  14,
+                                  0,
+                                  14,
+                                  14,
+                                ),
+                                itemCount: threats.length,
+                                separatorBuilder: (_, _) =>
+                                    const SizedBox(height: 8),
+                                itemBuilder: (context, index) {
+                                  final threat = threats[index];
+                                  return _ThreatCaseTile(
+                                    threatCase: threat,
+                                    expanded: _expandedThreatId == threat.id,
+                                    busy: _runningThreatId == threat.id,
+                                    onToggle: () => setState(
+                                      () => _expandedThreatId =
+                                          _expandedThreatId == threat.id
+                                          ? null
+                                          : threat.id,
+                                    ),
+                                    onAction: threat.isActionable
+                                        ? () => _runThreatAction(threat)
+                                        : null,
+                                  );
+                                },
+                              )
+                      : filtered.isEmpty
                       ? _EmptyActivity(filtered: _filter != _ActivityFilter.all)
                       : ListView.separated(
                           key: const ValueKey<String>('activity-list'),
@@ -225,7 +370,8 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
                   child: const Text(
                     'Solo se muestra lo que el agente y el Escudo registraron. '
                     'Una operación sigue «en curso» hasta que el motor informa su '
-                    'resultado; no hay progreso simulado.',
+                    'resultado; no hay progreso simulado. Las acciones sobre '
+                    'amenazas piden confirmación y usan el mismo agente.',
                     style: TextStyle(
                       color: AuraTokens.textMuted,
                       fontSize: 10.5,
@@ -245,10 +391,352 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
     _ActivityFilter.all => true,
     _ActivityFilter.engine => entry.source == AuraActivitySource.agent,
     _ActivityFilter.network => entry.source == AuraActivitySource.network,
+    _ActivityFilter.threats => true,
     _ActivityFilter.issues =>
       entry.status == AuraActivityStatus.failed ||
           entry.evidence['requires_user_confirmation'] == true,
   };
+}
+
+Color _severityColor(AuraFindingSeverity severity) => switch (severity) {
+  AuraFindingSeverity.info => AuraTokens.textMuted,
+  AuraFindingSeverity.low => AuraTokens.accentBlue,
+  AuraFindingSeverity.medium => AuraTokens.warning,
+  AuraFindingSeverity.high || AuraFindingSeverity.critical => AuraTokens.danger,
+};
+
+class _ThreatRibbon extends StatelessWidget {
+  const _ThreatRibbon({
+    required this.threats,
+    required this.contained,
+    required this.review,
+    required this.maxSeverity,
+    required this.onOpen,
+  });
+
+  final List<AuraThreatCase> threats;
+  final int contained;
+  final int review;
+  final AuraFindingSeverity maxSeverity;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _severityColor(maxSeverity);
+    return Semantics(
+      button: true,
+      label:
+          '${threats.length} detecciones locales. $contained con DNS bloqueado, '
+          '$review por revisar.',
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withValues(alpha: 0.32)),
+          ),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.radar_rounded, size: 18, color: color),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      '${threats.length} detecciones locales',
+                      style: const TextStyle(
+                        color: AuraTokens.textPrimary,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$contained con DNS bloqueado · $review por revisar',
+                      style: const TextStyle(
+                        color: AuraTokens.textMuted,
+                        fontSize: 10.5,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: onOpen,
+                style: TextButton.styleFrom(
+                  foregroundColor: color,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 34),
+                ),
+                child: const Text(
+                  'Ver',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyThreats extends StatelessWidget {
+  const _EmptyThreats();
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 34),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const Icon(
+            Icons.radar_rounded,
+            size: 30,
+            color: AuraTokens.textMuted,
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'No hay amenazas correlacionadas.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AuraTokens.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Esto no certifica que el dispositivo esté libre de riesgos. '
+            'El detector solo muestra lo que el Escudo, el escáner y la '
+            'postura del dispositivo reportaron.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AuraTokens.textMuted,
+              fontSize: 11.5,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _ThreatCaseTile extends StatelessWidget {
+  const _ThreatCaseTile({
+    required this.threatCase,
+    required this.expanded,
+    required this.busy,
+    required this.onToggle,
+    required this.onAction,
+  });
+
+  final AuraThreatCase threatCase;
+  final bool expanded;
+  final bool busy;
+  final VoidCallback onToggle;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _severityColor(threatCase.severity);
+    final stateColor = switch (threatCase.state) {
+      AuraThreatCaseState.dnsContained => AuraTokens.success,
+      AuraThreatCaseState.needsReview => AuraTokens.warning,
+      AuraThreatCaseState.informational => AuraTokens.textMuted,
+    };
+    return Container(
+      decoration: BoxDecoration(
+        color: AuraTokens.surface.withValues(alpha: 0.78),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.30)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onToggle,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 11, 12, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Container(
+                      width: 7,
+                      height: 7,
+                      margin: const EdgeInsets.only(top: 5),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: color,
+                      ),
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        threatCase.title,
+                        style: const TextStyle(
+                          color: AuraTokens.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _MiniTag(label: threatCase.stateLabel, color: stateColor),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  threatCase.summary,
+                  maxLines: expanded ? null : 3,
+                  overflow: expanded ? null : TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AuraTokens.textMuted,
+                    fontSize: 11.5,
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: <Widget>[
+                    _MiniTag(
+                      label: threatCase.category.label,
+                      color: AuraTokens.textMuted,
+                    ),
+                    _MiniTag(
+                      label: '${threatCase.signalCount} señales',
+                      color: AuraTokens.textMuted,
+                    ),
+                    if (threatCase.domain != null)
+                      _MiniTag(
+                        label: threatCase.domain!,
+                        color: AuraTokens.accent,
+                      ),
+                  ],
+                ),
+                if (expanded) ...<Widget>[
+                  const SizedBox(height: 10),
+                  Container(height: 1, color: AuraTokens.border),
+                  const SizedBox(height: 9),
+                  const Text(
+                    'Evidencia',
+                    style: TextStyle(
+                      color: AuraTokens.textPrimary,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  for (final line in threatCase.evidence)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
+                      child: Text(
+                        '· $line',
+                        style: const TextStyle(
+                          color: AuraTokens.textMuted,
+                          fontSize: 11,
+                          height: 1.45,
+                        ),
+                      ),
+                    ),
+                  if (threatCase.limitations.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Límites',
+                      style: TextStyle(
+                        color: AuraTokens.textPrimary,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    for (final line in threatCase.limitations)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 3),
+                        child: Text(
+                          '· $line',
+                          style: const TextStyle(
+                            color: AuraTokens.textMuted,
+                            fontSize: 11,
+                            height: 1.45,
+                          ),
+                        ),
+                      ),
+                  ],
+                  const SizedBox(height: 7),
+                  Text(
+                    threatCase.recommendedAction,
+                    style: const TextStyle(
+                      color: AuraTokens.textPrimary,
+                      fontSize: 11.5,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 4),
+                Row(
+                  children: <Widget>[
+                    TextButton(
+                      onPressed: onToggle,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AuraTokens.textMuted,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        minimumSize: const Size(0, 32),
+                      ),
+                      child: Text(
+                        expanded ? 'Ocultar evidencia' : 'Ver evidencia',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                    ),
+                    const Spacer(),
+                    if (onAction != null)
+                      TextButton(
+                        onPressed: busy ? null : onAction,
+                        style: TextButton.styleFrom(
+                          foregroundColor: color,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: const Size(0, 32),
+                        ),
+                        child: busy
+                            ? SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.6,
+                                  color: color,
+                                ),
+                              )
+                            : Text(
+                                threatCase.actionLabel,
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _SummaryChip extends StatelessWidget {
