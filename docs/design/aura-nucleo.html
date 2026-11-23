@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Aura · Núcleo — prototipo visual</title>
+<style>
+  :root {
+    --void: #03050a;
+    --ink: #eef7ff;
+    --muted: #8ea6c4;
+    --cyan: #46e3ff;
+    --violet: #a98bff;
+    --amber: #ffc46b;
+    --rose: #ff6d8f;
+    --hair: rgba(122, 205, 255, .14);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background:
+      radial-gradient(900px 600px at 18% 0%, rgba(70, 227, 255, .08), transparent 60%),
+      radial-gradient(800px 600px at 84% 12%, rgba(169, 139, 255, .08), transparent 62%),
+      var(--void);
+    color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+    display: grid;
+    place-items: center;
+    padding: 34px 18px;
+    gap: 22px;
+  }
+  .stage { display: grid; place-items: center; gap: 18px; }
+  .kicker {
+    font-size: 10px; letter-spacing: .34em; text-transform: uppercase;
+    color: var(--cyan); text-align: center; font-weight: 700;
+  }
+  .phone {
+    position: relative;
+    width: min(390px, 94vw);
+    height: min(844px, 88vh);
+    min-height: 620px;
+    border-radius: 46px;
+    background: #05070d;
+    border: 1px solid rgba(140, 190, 235, .22);
+    box-shadow:
+      0 46px 110px rgba(0, 0, 0, .72),
+      0 0 0 7px rgba(9, 13, 22, .9),
+      0 0 0 8px rgba(120, 170, 220, .12),
+      inset 0 1px 0 rgba(255, 255, 255, .05);
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .phone::after {
+    content: "";
+    position: absolute; inset: 0; z-index: 6; pointer-events: none;
+    border-radius: inherit;
+    box-shadow: inset 0 0 130px rgba(0, 0, 0, .55), inset 0 0 24px rgba(70, 227, 255, .05);
+  }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
+  .glow {
+    position: absolute; z-index: 0; inset: -20%;
+    background:
+      radial-gradient(circle at 50% 36%, rgba(70, 227, 255, .13), transparent 46%),
+      radial-gradient(circle at 54% 44%, rgba(169, 139, 255, .09), transparent 58%);
+    filter: blur(6px);
+    pointer-events: none;
+  }
+  .copy {
+    position: absolute; z-index: 3; left: 0; right: 0; top: 56%;
+    text-align: center; padding: 0 30px;
+    transition: opacity .4s ease;
+  }
+  .brand {
+    font-size: 11px; letter-spacing: .48em; color: var(--cyan);
+    font-weight: 700; margin: 0 0 12px; padding-left: .48em;
+  }
+  h1 {
+    margin: 0; font-size: clamp(30px, 7.4vw, 40px); line-height: 1.06;
+    letter-spacing: -.03em; font-weight: 400;
+    text-shadow: 0 0 34px rgba(70, 227, 255, .22);
+  }
+  h1 em { font-style: normal; color: #fff; }
+  .sub {
+    margin: 14px auto 0; max-width: 280px;
+    font-size: 13.5px; line-height: 1.5; color: var(--muted); font-weight: 400;
+  }
+  .evidence {
+    display: inline-flex; align-items: center; gap: 7px;
+    margin-top: 15px; padding: 6px 2px;
+    border: 0; border-bottom: 1px solid rgba(70, 227, 255, .35);
+    background: transparent; color: var(--cyan);
+    font: inherit; font-size: 12.5px; letter-spacing: .01em;
+    cursor: pointer; opacity: 0; transform: translateY(4px);
+    transition: opacity .35s ease, transform .35s ease;
+  }
+  .evidence.show { opacity: 1; transform: none; }
+  .dock {
+    position: absolute; z-index: 5; left: 0; right: 0; bottom: 30px;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+  .mic {
+    width: 52px; height: 52px; border-radius: 50%;
+    display: grid; place-items: center;
+    border: 1px solid rgba(70, 227, 255, .30);
+    background: radial-gradient(circle at 50% 30%, rgba(70, 227, 255, .14), rgba(4, 9, 16, .7));
+    color: var(--cyan); cursor: pointer;
+    box-shadow: 0 0 30px rgba(70, 227, 255, .12);
+    transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mic:hover { transform: translateY(-1px); border-color: rgba(70, 227, 255, .55); }
+  .mic:active { transform: scale(.96); }
+  .mic svg { width: 21px; height: 21px; }
+  .mic.listening {
+    border-color: rgba(255, 109, 143, .55);
+    color: #ffd8e1;
+    box-shadow: 0 0 34px rgba(255, 109, 143, .24);
+  }
+  .hint {
+    font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+    color: rgba(142, 166, 196, .55);
+  }
+  .caption {
+    max-width: 560px; text-align: center; color: var(--muted);
+    font-size: 12.5px; line-height: 1.6;
+  }
+  .caption b { color: var(--ink); font-weight: 600; }
+  .caption .tag {
+    display: inline-block; margin-bottom: 7px; padding: 3px 9px;
+    border: 1px solid rgba(122, 205, 255, .18); border-radius: 999px;
+    font-size: 9.5px; letter-spacing: .18em; text-transform: uppercase; color: var(--cyan);
+  }
+  .legend {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px;
+    color: rgba(142, 166, 196, .75); font-size: 11px;
+  }
+  .legend kbd {
+    font: inherit; padding: 1px 6px; border-radius: 5px;
+    border: 1px solid var(--hair); color: var(--ink);
+  }
+  @media (max-width: 520px) {
+    body { padding: 18px 12px 28px; }
+    .phone { height: min(844px, 82vh); }
+    .copy { top: 55%; padding: 0 22px; }
+    .dock { bottom: 22px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mic, .evidence, .copy { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="kicker">Aura · Dirección visual 02</div>
+    <div class="phone" id="phone">
+      <div class="glow"></div>
+      <canvas id="field" aria-hidden="true"></canvas>
+
+      <div class="copy" id="copy" aria-live="polite">
+        <p class="brand">AURA</p>
+        <h1 id="headline">Estoy aquí.<br><em>¿Qué revisamos?</em></h1>
+        <p class="sub" id="subline">Todo se analiza en este dispositivo.</p>
+        <button class="evidence" id="evidence" type="button">Ver evidencia</button>
+      </div>
+
+      <div class="dock">
+        <button class="mic" id="mic" type="button" aria-label="Hablar con Aura" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+            <rect x="9" y="3.2" width="6" height="11" rx="3"></rect>
+            <path d="M5.5 11.2a6.5 6.5 0 0 0 13 0M12 17.7V21M8.7 21h6.6"></path>
+          </svg>
+        </button>
+        <p class="hint" id="hint">Toca para hablar</p>
+      </div>
+    </div>
+
+    <div class="caption">
+      <span class="tag">Prototipo visual · no es la app compilada</span><br />
+      <b>Núcleo Aura.</b> Sin escudo, sin paneles, sin pestañas: un solo campo vivo.
+      El orbe responde a los estados reales de la app (en reposo, escuchando, analizando,
+      alerta). La evidencia aparece cuando hace falta, no como un tablero permanente.
+    </div>
+    <div class="legend">
+      <span><kbd>Mic</kbd> alterna escucha</span>
+      <span><kbd>Orbe</kbd> simula una alerta</span>
+      <span>Movimiento reducido respetado</span>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const phone = document.getElementById('phone');
+  const canvas = document.getElementById('field');
+  const ctx = canvas.getContext('2d', { alpha: true });
+  const mic = document.getElementById('mic');
+  const hint = document.getElementById('hint');
+  const headline = document.getElementById('headline');
+  const subline = document.getElementById('subline');
+  const evidence = document.getElementById('evidence');
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const TAU = Math.PI * 2;
+
+  let width = 0, height = 0, dpr = 1;
+  let particles = [];
+  let traces = [];
+  let nodes = [];
+  let listening = false;
+  let alertMode = false;
+  let phase = 0;
+
+  const palette = {
+    calm: ['#46e3ff', '#7ad9ff', '#a98bff', '#d7f6ff'],
+    alert: ['#ffc46b', '#ff9a62', '#ff6d8f', '#ffe3bf'],
+  };
+
+  function rand(min, max) { return min + Math.random() * (max - min); }
+
+  function seed() {
+    const rect = phone.getBoundingClientRect();
+    width = rect.width;
+    height = rect.height;
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const cx = width / 2;
+    const cy = height * 0.375;
+    const radius = Math.min(width * 0.30, height * 0.155);
+
+    particles = Array.from({ length: 168 }, (_, i) => {
+      const orbit = Math.pow(Math.random(), 0.62);
+      return {
+        baseAngle: rand(0, TAU),
+        orbit,
+        radius: radius * (0.30 + orbit * 0.94),
+        speed: rand(0.018, 0.085) * (Math.random() < 0.5 ? -1 : 1),
+        size: rand(0.6, 1.9),
+        depth: rand(0.35, 1),
+        phase: rand(0, TAU),
+        tint: Math.floor(rand(0, 4)),
+      };
+    });
+
+    traces = [];
+    nodes = [];
+    const count = 22;
+    for (let i = 0; i < count; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const spread = rand(0.16, 0.9);
+      const startAngle = -Math.PI / 2 + side * spread * 0.85 + rand(-0.08, 0.08);
+      const startR = radius * rand(0.72, 0.99);
+      const sx = cx + Math.cos(startAngle) * startR;
+      const sy = cy + Math.sin(startAngle) * startR * 0.94;
+      const reach = rand(0.18, 0.46) * width;
+      const ex = cx + Math.cos(startAngle) * (startR + reach);
+      const ey = cy + Math.sin(startAngle) * (startR + reach) * 0.94;
+      const midX = sx + (ex - sx) * rand(0.25, 0.55);
+      const points = [
+        { x: sx, y: sy },
+        { x: midX, y: sy },
+        { x: midX, y: ey },
+        { x: ex, y: ey },
+      ];
+      traces.push({ points, speed: rand(0.3, 1.05), phase: rand(0, TAU), width: rand(0.5, 1.15) });
+      nodes.push({ x: ex, y: ey, r: rand(1.1, 2.3), phase: rand(0, TAU) });
+    }
+
+    draw(0);
+  }
+
+  function hexToRgba(hex, alpha) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+  }
+
+  function draw(time) {
+    const cx = width / 2;
+    const cy = height * 0.375;
+    const radius = Math.min(width * 0.30, height * 0.155);
+    const colors = alertMode ? palette.alert : palette.calm;
+    const breath = listening ? 1 + Math.sin(time * 0.0042) * 0.055 : 1 + Math.sin(time * 0.0011) * 0.022;
+    const energy = listening ? 1.8 : 1;
+
+    ctx.clearRect(0, 0, width, height);
+
+    // Halo
+    const halo = ctx.createRadialGradient(cx, cy, radius * 0.15, cx, cy, radius * 2.25);
+    halo.addColorStop(0, hexToRgba(colors[0], alertMode ? 0.24 : 0.20));
+    halo.addColorStop(0.45, hexToRgba(colors[2], 0.075));
+    halo.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, width, height);
+
+    // Circuit traces
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const trace of traces) {
+      ctx.beginPath();
+      trace.points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+      const grad = ctx.createLinearGradient(trace.points[0].x, trace.points[0].y, trace.points.at(-1).x, trace.points.at(-1).y);
+      grad.addColorStop(0, hexToRgba(colors[0], 0.34));
+      grad.addColorStop(0.55, hexToRgba(colors[2], 0.16));
+      grad.addColorStop(1, hexToRgba(colors[1], 0.05));
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = trace.width;
+      ctx.shadowColor = hexToRgba(colors[0], 0.35);
+      ctx.shadowBlur = 6;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Pulse travelling outwards
+      const p = (time * 0.00016 * trace.speed * energy + trace.phase) % 1;
+      const seg = Math.min(trace.points.length - 2, Math.floor(p * (trace.points.length - 1)));
+      const local = p * (trace.points.length - 1) - seg;
+      const a = trace.points[seg], b = trace.points[seg + 1];
+      const px = a.x + (b.x - a.x) * local;
+      const py = a.y + (b.y - a.y) * local;
+      ctx.beginPath();
+      ctx.arc(px, py, 1.35, 0, TAU);
+      ctx.fillStyle = hexToRgba(colors[3], 0.75);
+      ctx.fill();
+    }
+
+    for (const node of nodes) {
+      const pulse = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(time * 0.0016 + node.phase));
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, node.r * pulse, 0, TAU);
+      ctx.fillStyle = hexToRgba(colors[1], 0.5 * pulse);
+      ctx.fill();
+    }
+
+    // Orbiting particles (behind core)
+    for (const particle of particles) {
+      const angle = particle.baseAngle + time * 0.00006 * particle.speed * energy;
+      const wobble = 1 + Math.sin(time * 0.0012 + particle.phase) * 0.035;
+      const r = particle.radius * breath * wobble;
+      const x = cx + Math.cos(angle) * r;
+      const y = cy + Math.sin(angle) * r * 0.58 + Math.cos(angle * 2.1 + particle.phase) * 3.2;
+      const alpha = (0.14 + particle.depth * 0.62) * (0.7 + 0.3 * Math.sin(time * 0.002 + particle.phase));
+      ctx.beginPath();
+      ctx.arc(x, y, particle.size * (0.7 + particle.depth * 0.5), 0, TAU);
+      ctx.fillStyle = hexToRgba(colors[particle.tint], alpha);
+      ctx.fill();
+
+      if (particle.depth > 0.82) {
+        ctx.beginPath();
+        ctx.arc(x, y, particle.size * 3.2, 0, TAU);
+        ctx.fillStyle = hexToRgba(colors[particle.tint], alpha * 0.10);
+        ctx.fill();
+      }
+    }
+
+    // Core shell
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * breath, 0, TAU);
+    const shell = ctx.createRadialGradient(cx, cy, radius * 0.1, cx, cy, radius);
+    shell.addColorStop(0, 'rgba(255,255,255,0.055)');
+    shell.addColorStop(0.62, hexToRgba(colors[0], 0.045));
+    shell.addColorStop(1, hexToRgba(colors[2], 0.10));
+    ctx.fillStyle = shell;
+    ctx.fill();
+    ctx.strokeStyle = hexToRgba(colors[0], 0.26);
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 0.30 * breath, 0, TAU);
+    ctx.strokeStyle = hexToRgba(colors[0], 0.10);
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+
+    // Core light
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 0.24);
+    core.addColorStop(0, 'rgba(255,255,255,0.95)');
+    core.addColorStop(0.18, hexToRgba(colors[3], 0.85));
+    core.addColorStop(0.55, hexToRgba(colors[0], 0.28));
+    core.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 0.24 * breath, 0, TAU);
+    ctx.fill();
+  }
+
+  function loop(time) {
+    if (!reduceMotion.matches) {
+      phase = time;
+      draw(time);
+      requestAnimationFrame(loop);
+    }
+  }
+
+  function renderOnce() { draw(performance.now()); }
+
+  function setListening(next) {
+    listening = next;
+    mic.classList.toggle('listening', listening);
+    mic.setAttribute('aria-pressed', String(listening));
+    if (listening) {
+      headline.innerHTML = 'Te escucho.';
+      subline.textContent = 'Habla con naturalidad. Puedes interrumpirme cuando quieras.';
+      hint.textContent = 'Escuchando · toca para detener';
+    } else {
+      headline.innerHTML = 'Estoy aquí.<br><em>¿Qué revisamos?</em>';
+      subline.textContent = 'Todo se analiza en este dispositivo.';
+      hint.textContent = 'Toca para hablar';
+    }
+    evidence.classList.remove('show');
+  }
+
+  function setAlert(next) {
+    alertMode = next;
+    if (alertMode) {
+      headline.innerHTML = 'Algo requiere<br><em>tu atención.</em>';
+      subline.textContent = '3 conexiones bloqueadas a tracker.example desde el navegador.';
+      evidence.classList.add('show');
+      hint.textContent = 'Alerta demostrativa · toca el orbe para volver';
+    } else {
+      setListening(false);
+    }
+    renderOnce();
+  }
+
+  mic.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (alertMode) setAlert(false);
+    setListening(!listening);
+  });
+
+  evidence.addEventListener('click', (event) => {
+    event.stopPropagation();
+    subline.textContent = 'Evidencia local: evento DNS bloqueado, app de origen y hora. Sin datos fuera del teléfono.';
+    evidence.classList.remove('show');
+  });
+
+  phone.addEventListener('click', (event) => {
+    if (event.target.closest('.dock') || event.target.closest('.evidence')) return;
+    setAlert(!alertMode);
+  });
+
+  window.addEventListener('keydown', (event) => {
+    if (event.code === 'Space') {
+      event.preventDefault();
+      mic.click();
+    }
+    if (event.key.toLowerCase() === 'a') setAlert(!alertMode);
+  });
+
+  const observer = new ResizeObserver(() => seed());
+  observer.observe(phone);
+  reduceMotion.addEventListener('change', () => {
+    if (reduceMotion.matches) renderOnce();
+    else requestAnimationFrame(loop);
+  });
+
+  seed();
+  if (!reduceMotion.matches) requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
