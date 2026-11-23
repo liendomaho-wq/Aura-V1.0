@@ -1168,7 +1168,7 @@
     },
     {
       "text": "sí, por favor",
-      "expected": false
+      "expected": true
     },
     {
       "text": "hazlo después",
@@ -1212,6 +1212,10 @@
     },
     {
       "text": "confirmo y purga",
+      "expected": false
+    },
+    {
+      "text": "sí, mañana",
       "expected": false
     }
   ],
