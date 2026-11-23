@@ -30,8 +30,9 @@ política explícita:
   recorta en silencio.
 
 El eTLD+1 se calcula sin red y sin Public Suffix List completa: hay una lista
-conservadora de sufijos de dos niveles (`com.ar`, `com.ve`, `co.uk`, …). Los
-sufijos privados (`github.io`) se excluyen a propósito.
+conservadora de sufijos que exigen tres etiquetas (`com.ar`, `com.ve`, `co.uk`,
+`github.io`, …). En los hosting de contenido de terceros, agrupar por las dos
+últimas etiquetas ocultaría el subdominio que la persona realmente visita.
 
 ### Efecto medido (modelo 3.0.0, corpus de 4.959 dominios legítimos)
 

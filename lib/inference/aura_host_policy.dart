@@ -39,11 +39,11 @@ class AuraHostPolicy {
   /// la observación se presenta como prioridad alta.
   static const double highFloor = 0.65;
 
-  /// Sufijos de segundo nivel que requieren tres etiquetas para obtener el
-  /// dominio registrable. No es la Public Suffix List completa: es una lista
-  /// conservadora para las regiones hispanohablantes y los sufijos más comunes.
-  /// Los sufijos privados (`github.io`, `blogspot.com`) se excluyen a propósito
-  /// para agrupar por el dominio que la persona reconoce.
+  /// Sufijos que requieren tres etiquetas para obtener el dominio registrable.
+  /// No es la Public Suffix List completa: es una lista conservadora para las
+  /// regiones hispanohablantes, los sufijos más comunes y los hosting de
+  /// contenido de terceros. En estos últimos, agrupar por las dos últimas
+  /// etiquetas ocultaría el subdominio que realmente se visita.
   static const Set<String> _multiLabelSuffixes = <String>{
     // Reino Unido e Irlanda
     'co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'me.uk', 'ltd.uk', 'plc.uk',
@@ -78,6 +78,11 @@ class AuraHostPolicy {
     'com.cn', 'net.cn', 'org.cn', 'gov.cn', 'edu.cn',
     'com.hk', 'com.tw', 'com.sg', 'com.my', 'com.ph',
     'com.tr', 'com.ua', 'com.ru', 'com.pl', 'com.de', 'com.fr', 'com.it',
+    // Hosting de contenido de terceros: cada subdominio es de otra persona.
+    'github.io', 'gitlab.io', 'blogspot.com', 'wordpress.com',
+    'vercel.app', 'netlify.app', 'pages.dev', 'web.app',
+    'firebaseapp.com', 'herokuapp.com', 'azurewebsites.net',
+    'workers.dev', 'glitch.me', 'onrender.com', 'fly.dev',
   };
 
   static final RegExp _labelPattern = RegExp(
