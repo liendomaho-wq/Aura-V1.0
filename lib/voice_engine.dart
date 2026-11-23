@@ -18,7 +18,10 @@ abstract final class AuraSpeechText {
         )
         .replaceAll(RegExp(r'[*_`#>|]+'), ' ')
         .replaceAll('·', ',')
-        .replaceAll(RegExp(r'\s+([.,;:!?])'), r'$1')
+        .replaceAllMapped(
+          RegExp(r'\s+([.,;:!?])'),
+          (match) => match.group(1) ?? '',
+        )
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     if (value.length <= maxLength) return value;
