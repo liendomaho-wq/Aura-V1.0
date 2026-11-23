@@ -241,7 +241,7 @@ class AuraConversationMemory {
   };
 
   static final RegExp _confirmationPattern = RegExp(
-    r'^(?:si,? )?(?:confirmo|confirmar|autorizo|autoriza|apruebo|aprueba|dale|hazlo|hacelo|adelante|procede|proceda|ok|okay|vale|de acuerdo|ejecutalo|ejecutala|aplicalo|aplicala)(?: (?:por favor|ahora|ya|eso|la operacion|la accion|nomas))?$',
+    r'^(?:si,? )?(?:si|confirmo|confirmar|autorizo|autoriza|apruebo|aprueba|dale|hazlo|hacelo|adelante|procede|proceda|ok|okay|vale|de acuerdo|ejecutalo|ejecutala|aplicalo|aplicala)(?: (?:por favor|ahora|ya|eso|la operacion|la accion|nomas))?$',
   );
   static final RegExp _denialPattern = RegExp(
     r'^(?:no|no,? gracias|cancela|cancelalo|cancelala|cancelar|mejor no|detente|para|aborta|rechazo|rechazar|no lo hagas|olvidalo|olvidalo ya)(?: (?:por favor|ahora|eso))?$',
@@ -263,6 +263,6 @@ class AuraConversationMemory {
     r'^(?:dame un |hazme un )?(?:resumen|que paso|que ha pasado|que has hecho|que encontraste|que viste|cuentame que paso)\b',
   );
   static final RegExp _repeatPattern = RegExp(
-    r'^(?:repite|repetilo|repetir|otra vez|no escuche|no te escuche|como dijiste)\b',
+    r'^(?:repite|repitelo|repetilo|repetirlo|repetir|otra vez|no escuche|no te escuche|como dijiste)\b',
   );
 }
