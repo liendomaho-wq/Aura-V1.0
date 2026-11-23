@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:aura_mobile_defens/inference/aura_ai_inference.dart';
 import 'package:aura_mobile_defens/inference/aura_host_policy.dart';
-import 'package:aura_mobile_defens/models/aura_ai_brain.dart';
+import 'package:aura_mobile_defens/models/aura_ai_brain.dart' as model_inference;
 
 /// Bosque determinista: vota amenaza si el host tiene más de 15 caracteres.
 Map<String, Object> _lengthForest() {
@@ -21,8 +21,8 @@ Map<String, Object> _lengthForest() {
   };
 }
 
-Future<AuraInferenceResult> _analyze(String host) async {
-  final results = await AuraAIInference.analyzeThreatPayload(
+Future<model_inference.AuraInferenceResult> _analyze(String host) async {
+  final results = await model_inference.AuraAIInference.analyzeThreatPayload(
     rawData: host,
     modelStructure: _lengthForest(),
     suspiciousTlds: const <String>[],
