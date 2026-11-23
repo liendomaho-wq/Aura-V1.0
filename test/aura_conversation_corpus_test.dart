@@ -38,10 +38,7 @@ void main() {
       .cast<Map<String, dynamic>>();
   final denials = (corpus['denials'] as List).cast<Map<String, dynamic>>();
   final total =
-      intents.length +
-      followUps.length +
-      confirmations.length +
-      denials.length;
+      intents.length + followUps.length + confirmations.length + denials.length;
 
   test('el corpus contiene al menos 300 frases naturales', () {
     expect(total, greaterThanOrEqualTo(300));
@@ -82,7 +79,9 @@ void main() {
       );
       final followUp = memory.followUpFor(text);
       if (followUp?.kind != expected) {
-        failures.add('$text → ${followUp?.kind.name} (esperado ${expected.name})');
+        failures.add(
+          '$text → ${followUp?.kind.name} (esperado ${expected.name})',
+        );
       }
     }
     // ignore: avoid_print
@@ -121,7 +120,9 @@ void main() {
 
   test('ninguna confirmación positiva contiene un dominio', () {
     final seen = <String>{};
-    for (final entry in confirmations.where((entry) => entry['expected'] == true)) {
+    for (final entry in confirmations.where(
+      (entry) => entry['expected'] == true,
+    )) {
       final text = entry['text'] as String;
       if (RegExp(r'\b[a-z0-9-]+(?:\.[a-z0-9-]+)+\b').hasMatch(text)) {
         seen.add(text);

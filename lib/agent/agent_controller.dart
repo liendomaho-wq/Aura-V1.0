@@ -1213,7 +1213,9 @@ class AgentController {
   /// pendiente ya no puede autorizarse y la interfaz no debe reabrir el micrófono.
   bool get hasPendingConfirmation {
     final created = _pendingConfirmationCreatedAt;
-    if (_pendingConfirmationInstruction == null || created == null) return false;
+    if (_pendingConfirmationInstruction == null || created == null) {
+      return false;
+    }
     return DateTime.now().difference(created) <= const Duration(seconds: 60);
   }
 
