@@ -549,49 +549,6 @@ class _ThreatRibbon extends StatelessWidget {
   final AuraFindingSeverity maxSeverity;
   final VoidCallback onOpen;
 
-  /// Carga los casos persistidos y descarta registros que no cumplan el
-  /// esquema. Un almacén corrupto no se interpreta como «sin amenazas».
-  Future<void> _loadStoredThreats() async {
-    try {
-      final records = await AgentController.instance.readStoredThreatCases();
-      final restored = <AuraThreatCase>[];
-      for (final record in records) {
-        final threat = AuraThreatCase.fromMap(record);
-        if (threat != null) restored.add(threat);
-      }
-      if (mounted) setState(() => _storedThreats = restored);
-    } on Object {
-      // La UI conserva los casos vivos; no inventa historial ni borra el
-      // contenido que no pudo leer.
-    } finally {
-      _threatStoreLoaded = true;
-    }
-  }
-
-  Future<void> _setThreatDisposition(AuraThreatCase threatCase) async {
-    final updated = threatCase.copyWith(
-      disposition: threatCase.isDismissed
-          ? AuraThreatDisposition.open
-          : AuraThreatDisposition.dismissed,
-      updatedAt: DateTime.now().millisecondsSinceEpoch,
-    );
-    setState(() {
-      _storedThreats = <AuraThreatCase>[
-        ..._storedThreats.where((stored) => stored.id != updated.id),
-        updated,
-      ];
-      _latestThreats = <AuraThreatCase>[
-        ..._latestThreats.where((stored) => stored.id != updated.id),
-        updated,
-      ];
-    });
-    await AgentController.instance.writeStoredThreatCases(
-      _latestThreats
-          .map((threat) => threat.toMap())
-          .toList(growable: false),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final color = _severityColor(maxSeverity);
@@ -718,49 +675,6 @@ class _ThreatCaseTile extends StatelessWidget {
   final VoidCallback onToggle;
   final VoidCallback? onAction;
   final VoidCallback onDismiss;
-
-  /// Carga los casos persistidos y descarta registros que no cumplan el
-  /// esquema. Un almacén corrupto no se interpreta como «sin amenazas».
-  Future<void> _loadStoredThreats() async {
-    try {
-      final records = await AgentController.instance.readStoredThreatCases();
-      final restored = <AuraThreatCase>[];
-      for (final record in records) {
-        final threat = AuraThreatCase.fromMap(record);
-        if (threat != null) restored.add(threat);
-      }
-      if (mounted) setState(() => _storedThreats = restored);
-    } on Object {
-      // La UI conserva los casos vivos; no inventa historial ni borra el
-      // contenido que no pudo leer.
-    } finally {
-      _threatStoreLoaded = true;
-    }
-  }
-
-  Future<void> _setThreatDisposition(AuraThreatCase threatCase) async {
-    final updated = threatCase.copyWith(
-      disposition: threatCase.isDismissed
-          ? AuraThreatDisposition.open
-          : AuraThreatDisposition.dismissed,
-      updatedAt: DateTime.now().millisecondsSinceEpoch,
-    );
-    setState(() {
-      _storedThreats = <AuraThreatCase>[
-        ..._storedThreats.where((stored) => stored.id != updated.id),
-        updated,
-      ];
-      _latestThreats = <AuraThreatCase>[
-        ..._latestThreats.where((stored) => stored.id != updated.id),
-        updated,
-      ];
-    });
-    await AgentController.instance.writeStoredThreatCases(
-      _latestThreats
-          .map((threat) => threat.toMap())
-          .toList(growable: false),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1104,49 +1018,6 @@ class _ActivityTile extends StatelessWidget {
   const _ActivityTile({required this.entry});
 
   final AuraActivityEntry entry;
-
-  /// Carga los casos persistidos y descarta registros que no cumplan el
-  /// esquema. Un almacén corrupto no se interpreta como «sin amenazas».
-  Future<void> _loadStoredThreats() async {
-    try {
-      final records = await AgentController.instance.readStoredThreatCases();
-      final restored = <AuraThreatCase>[];
-      for (final record in records) {
-        final threat = AuraThreatCase.fromMap(record);
-        if (threat != null) restored.add(threat);
-      }
-      if (mounted) setState(() => _storedThreats = restored);
-    } on Object {
-      // La UI conserva los casos vivos; no inventa historial ni borra el
-      // contenido que no pudo leer.
-    } finally {
-      _threatStoreLoaded = true;
-    }
-  }
-
-  Future<void> _setThreatDisposition(AuraThreatCase threatCase) async {
-    final updated = threatCase.copyWith(
-      disposition: threatCase.isDismissed
-          ? AuraThreatDisposition.open
-          : AuraThreatDisposition.dismissed,
-      updatedAt: DateTime.now().millisecondsSinceEpoch,
-    );
-    setState(() {
-      _storedThreats = <AuraThreatCase>[
-        ..._storedThreats.where((stored) => stored.id != updated.id),
-        updated,
-      ];
-      _latestThreats = <AuraThreatCase>[
-        ..._latestThreats.where((stored) => stored.id != updated.id),
-        updated,
-      ];
-    });
-    await AgentController.instance.writeStoredThreatCases(
-      _latestThreats
-          .map((threat) => threat.toMap())
-          .toList(growable: false),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
