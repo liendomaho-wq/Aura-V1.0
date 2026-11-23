@@ -158,7 +158,11 @@ void main() {
   test('ordena por severidad y luego por actualidad', () {
     final cases = AuraThreatCaseBuilder.build(
       alerts: <AuraThreatAlert>[
-        _alert(domain: 'low.example', lastSeen: 5000),
+        _alert(
+          domain: 'low.example',
+          severity: AuraThreatSeverity.low,
+          lastSeen: 5000,
+        ),
         _alert(
           domain: 'high.example',
           severity: AuraThreatSeverity.high,
