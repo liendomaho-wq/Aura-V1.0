@@ -58,7 +58,7 @@ class AuraVoiceEngine {
     try {
       _flutterTts.setStartHandler(_handleStart);
       _flutterTts.setCompletionHandler(_handleDone);
-      _flutterTts.setCancelHandler(_handleDone);
+      _flutterTts.setCancelHandler(_handleCancel);
       _flutterTts.setErrorHandler((_) => _handleDone());
       await _selectSpanishVoice();
       await _flutterTts.setSpeechRate(0.55);
@@ -75,6 +75,14 @@ class AuraVoiceEngine {
     if (_speaking) return;
     _speaking = true;
     _stateController.add(AuraSpeechState.speaking);
+  }
+
+  /// Una cancelación solo cierra el turno si la locución ya había empezado.
+  /// Así, el callback tardío del `stop()` previo no completa por error la nueva
+  /// locución que se acaba de encolar.
+  void _handleCancel() {
+    if (!_speaking) return;
+    _handleDone();
   }
 
   void _handleDone() {
