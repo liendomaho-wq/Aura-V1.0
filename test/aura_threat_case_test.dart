@@ -173,9 +173,10 @@ void main() {
       report: _report(const <AuraFinding>[]),
     );
 
-    expect(
-      cases.map((threatCase) => threatCase.domain),
-      <String>['high.example', 'medium.example', 'low.example'],
-    );
+    expect(cases.map((threatCase) => threatCase.domain), <String>[
+      'high.example',
+      'medium.example',
+      'low.example',
+    ]);
   });
 }

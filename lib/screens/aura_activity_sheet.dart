@@ -113,8 +113,7 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
     if (!await _confirmThreatAction(threatCase) || !mounted) return;
     setState(() => _runningThreatId = threatCase.id);
     try {
-      final instruction =
-          threatCase.action == AuraThreatCaseAction.reviewApp
+      final instruction = threatCase.action == AuraThreatCaseAction.reviewApp
           ? 'revisar la app $packageName'
           : 'aislamiento de emergencia';
       await AgentController.instance.run(instruction, confirmedByUser: true);
@@ -272,9 +271,8 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
                       contained: containedThreats,
                       review: reviewThreats,
                       maxSeverity: maxSeverity!,
-                      onOpen: () => setState(
-                        () => _filter = _ActivityFilter.threats,
-                      ),
+                      onOpen: () =>
+                          setState(() => _filter = _ActivityFilter.threats),
                     ),
                   ),
                 Padding(

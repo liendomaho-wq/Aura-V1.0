@@ -111,16 +111,17 @@ class AuraThreatCaseBuilder {
           'También se bloquearon: ${alert.domains.take(5).join(', ')}',
         if (appName != null) 'App de origen: $appName',
         if (packageName != null) 'Paquete: $packageName',
-        ...alert.appScanIndicators.take(4).map(
-          (indicator) => 'Contexto del escáner: $indicator',
-        ),
+        ...alert.appScanIndicators
+            .take(4)
+            .map((indicator) => 'Contexto del escáner: $indicator'),
       ];
       final action = packageName != null
           ? AuraThreatCaseAction.reviewApp
           : severity == AuraFindingSeverity.high
           ? AuraThreatCaseAction.emergencyIsolation
           : AuraThreatCaseAction.none;
-      final id = 'network:${domain ?? packageName ?? 'unknown'}:'
+      final id =
+          'network:${domain ?? packageName ?? 'unknown'}:'
           '${alert.firstSeenTimestamp}';
       cases[id] = AuraThreatCase(
         id: id,
@@ -154,8 +155,9 @@ class AuraThreatCaseBuilder {
       // correlador. Evita duplicar el mismo evento con dos identificadores.
       if (finding.category == AuraFindingCategory.networkActivity) continue;
       final packageName = _packageFromFinding(finding);
-      final action = packageName != null && finding.category ==
-              AuraFindingCategory.installedApps
+      final action =
+          packageName != null &&
+              finding.category == AuraFindingCategory.installedApps
           ? AuraThreatCaseAction.reviewApp
           : AuraThreatCaseAction.none;
       final state = action != AuraThreatCaseAction.none
