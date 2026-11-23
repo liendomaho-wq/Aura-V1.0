@@ -89,12 +89,7 @@ void main() {
     final end = DateTime(2026, 11, 22, 10, 0, 0);
     final feed = AuraActivityFeed.build(
       agentEvents: <AgentEvent>[
-        _toolEnd(
-          tool: 'scan_apps',
-          operationId: 'op-3',
-          ts: end,
-          ok: true,
-        ),
+        _toolEnd(tool: 'scan_apps', operationId: 'op-3', ts: end, ok: true),
       ],
       networkEvents: const <Map<String, dynamic>>[],
     );
@@ -150,15 +145,12 @@ void main() {
     final byTitle = <String, AuraActivityEntry>{
       for (final entry in feed) entry.title: entry,
     };
+    expect(byTitle['Conexión bloqueada']!.status, AuraActivityStatus.succeeded);
+    expect(byTitle['Conexión observada']!.status, AuraActivityStatus.observed);
     expect(
-      byTitle['Conexión bloqueada']!.status,
-      AuraActivityStatus.succeeded,
+      byTitle['Permiso de VPN revocado']!.status,
+      AuraActivityStatus.failed,
     );
-    expect(
-      byTitle['Conexión observada']!.status,
-      AuraActivityStatus.observed,
-    );
-    expect(byTitle['Permiso de VPN revocado']!.status, AuraActivityStatus.failed);
     expect(
       byTitle['Alerta de dominio generado']!.status,
       AuraActivityStatus.info,
@@ -246,10 +238,7 @@ void main() {
 
     expect(feed, hasLength(AuraActivityFeed.maxEntries));
     for (var index = 1; index < feed.length; index++) {
-      expect(
-        feed[index - 1].startedAt.isAfter(feed[index].startedAt),
-        isTrue,
-      );
+      expect(feed[index - 1].startedAt.isAfter(feed[index].startedAt), isTrue);
     }
   });
 

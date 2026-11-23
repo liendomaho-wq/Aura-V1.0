@@ -30,8 +30,7 @@ class AuraVerdictExplanation {
     AuraRiskBand? riskBand,
   }) : signals = List<AuraSignal>.unmodifiable(signals),
        riskBand =
-           riskBand ??
-           (isThreat ? AuraRiskBand.high : AuraRiskBand.clear);
+           riskBand ?? (isThreat ? AuraRiskBand.high : AuraRiskBand.clear);
 
   final String id;
   final String host;

@@ -721,13 +721,10 @@ class AuraAIBrain {
         final domain = inference.host;
         final threatScore = inference.threatScore;
         final band = inference.riskBand;
-        final registrableDomain =
-            inference.registrableDomain ?? domain;
-        final registrableScore =
-            inference.registrableScore ?? threatScore;
+        final registrableDomain = inference.registrableDomain ?? domain;
+        final registrableScore = inference.registrableScore ?? threatScore;
         final hostPercent = (threatScore * 100).toStringAsFixed(0);
-        final registrablePercent =
-            (registrableScore * 100).toStringAsFixed(0);
+        final registrablePercent = (registrableScore * 100).toStringAsFixed(0);
         if (AuraWhitelist.isSafe(domain)) {
           await _recordDomainOutcome(
             domain,

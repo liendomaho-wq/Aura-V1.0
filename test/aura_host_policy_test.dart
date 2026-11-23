@@ -16,18 +16,12 @@ void main() {
         AuraHostPolicy.registrableDomain('api.banco.example.co.uk'),
         'example.co.uk',
       );
-      expect(
-        AuraHostPolicy.registrableDomain('a.b.com.ar'),
-        'b.com.ar',
-      );
+      expect(AuraHostPolicy.registrableDomain('a.b.com.ar'), 'b.com.ar');
       expect(
         AuraHostPolicy.registrableDomain('presidencia.gob.ve'),
         'presidencia.gob.ve',
       );
-      expect(
-        AuraHostPolicy.registrableDomain('example.com.'),
-        'example.com',
-      );
+      expect(AuraHostPolicy.registrableDomain('example.com.'), 'example.com');
       expect(
         AuraHostPolicy.registrableDomain('WWW.Example.COM'),
         'example.com',
@@ -42,10 +36,7 @@ void main() {
       expect(AuraHostPolicy.registrableDomain('-malo.example'), isNull);
       expect(AuraHostPolicy.registrableDomain('malo-.example'), isNull);
       expect(AuraHostPolicy.registrableDomain(''), isNull);
-      expect(
-        AuraHostPolicy.registrableDomain('${'a' * 260}.com'),
-        isNull,
-      );
+      expect(AuraHostPolicy.registrableDomain('${'a' * 260}.com'), isNull);
     });
 
     test('no colapsa sufijos privados como github.io', () {
@@ -101,10 +92,7 @@ void main() {
         throwsArgumentError,
       );
       expect(
-        () => AuraHostPolicy.band(
-          hostScore: double.nan,
-          registrableScore: 0,
-        ),
+        () => AuraHostPolicy.band(hostScore: double.nan, registrableScore: 0),
         throwsArgumentError,
       );
     });

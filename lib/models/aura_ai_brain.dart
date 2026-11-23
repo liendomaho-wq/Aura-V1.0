@@ -96,7 +96,8 @@ abstract final class AuraAIInference {
               rawFeatureVector is! List ||
               rawFeatureOrder is! List ||
               rawDecisionThreshold is! num ||
-              (rawRegistrableDomain != null && rawRegistrableDomain is! String) ||
+              (rawRegistrableDomain != null &&
+                  rawRegistrableDomain is! String) ||
               (rawRegistrableScore != null && rawRegistrableScore is! num) ||
               (rawRiskBand != null && rawRiskBand is! String)) {
             throw const FormatException('Campos de inferencia incompletos.');
@@ -141,8 +142,7 @@ abstract final class AuraAIInference {
               rawFeatureOrder.cast<String>(),
             ),
             decisionThreshold: rawDecisionThreshold.toDouble(),
-            registrableDomain:
-                rawRegistrableDomain as String? ?? host,
+            registrableDomain: rawRegistrableDomain as String? ?? host,
             registrableScore:
                 (rawRegistrableScore as num?)?.toDouble() ?? score.toDouble(),
             riskBand: riskBand,
@@ -209,8 +209,7 @@ abstract final class AuraAIInference {
       // Segunda observación: el dominio que la persona reconoce, no el host
       // completo. Un subdominio largo de un dominio limpio no debe elevar el
       // veredicto a amenaza.
-      final registrableHost =
-          AuraHostPolicy.registrableDomain(host) ?? host;
+      final registrableHost = AuraHostPolicy.registrableDomain(host) ?? host;
       final registrableScore = registrableHost == host
           ? threatScore
           : _scoreFeatures(

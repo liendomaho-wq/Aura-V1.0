@@ -80,7 +80,9 @@ class AuraHostPolicy {
     'com.tr', 'com.ua', 'com.ru', 'com.pl', 'com.de', 'com.fr', 'com.it',
   };
 
-  static final RegExp _labelPattern = RegExp(r'^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$');
+  static final RegExp _labelPattern = RegExp(
+    r'^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$',
+  );
   static final RegExp _allDigits = RegExp(r'^[0-9]+$');
 
   /// Devuelve el dominio registrable de un host ya normalizado, o `null` si no
@@ -90,7 +92,8 @@ class AuraHostPolicy {
   static String? registrableDomain(String rawHost) {
     final host = rawHost.trim().toLowerCase();
     if (host.isEmpty || host.length > 253 || host.contains('/')) return null;
-    if (host.endsWith('.')) return registrableDomain(host.substring(0, host.length - 1));
+    if (host.endsWith('.'))
+      return registrableDomain(host.substring(0, host.length - 1));
 
     final labels = host.split('.');
     if (labels.length < 2) return null;
@@ -135,7 +138,11 @@ class AuraHostPolicy {
 
   static void _requireScore(double value, String name) {
     if (!value.isFinite || value < 0 || value > 1) {
-      throw ArgumentError.value(value, name, 'La puntuación debe estar entre 0 y 1.');
+      throw ArgumentError.value(
+        value,
+        name,
+        'La puntuación debe estar entre 0 y 1.',
+      );
     }
   }
 }

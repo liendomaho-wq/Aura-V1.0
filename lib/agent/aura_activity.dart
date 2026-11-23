@@ -112,8 +112,9 @@ class AuraActivityFeed {
   ) {
     final data = event.data ?? const <String, dynamic>{};
     final tool = data['tool'];
-    final operationId =
-        data['operation_id'] is String ? data['operation_id'] as String : null;
+    final operationId = data['operation_id'] is String
+        ? data['operation_id'] as String
+        : null;
     final phase = data['phase'];
     final message = _clean(event.message, _maxDetailLength) ?? '';
 
@@ -209,8 +210,9 @@ class AuraActivityFeed {
     if (!isStart && !isEnd) return;
     final timestamp = _isoTimestamp(event['timestamp_utc']);
     if (timestamp == null) return;
-    final operationId =
-        event['operation_id'] is String ? event['operation_id'] as String : null;
+    final operationId = event['operation_id'] is String
+        ? event['operation_id'] as String
+        : null;
     final key = 'tool:${operationId ?? '-'}:$tool';
     final previous = entries[key];
     if (isStart) {
@@ -268,12 +270,12 @@ class AuraActivityFeed {
     if (action is! String || action.isEmpty) return;
     final timestamp = _eventTimestamp(event['timestamp']);
     if (timestamp == null) return;
-    final domain =
-        event['requested_domain'] is String
-            ? event['requested_domain'] as String
-            : 'sin dominio';
-    final sourceApp =
-        event['source_app'] is String ? event['source_app'] as String : '';
+    final domain = event['requested_domain'] is String
+        ? event['requested_domain'] as String
+        : 'sin dominio';
+    final sourceApp = event['source_app'] is String
+        ? event['source_app'] as String
+        : '';
     final details = <String>[
       _clean(domain, _maxTextLength) ?? domain,
       if (sourceApp.isNotEmpty) _clean(sourceApp, _maxTextLength) ?? sourceApp,
@@ -283,8 +285,7 @@ class AuraActivityFeed {
         'puerto ${event['destination_port']}',
       if (event['public_dns_resolver'] == true) 'resolutor público',
     ];
-    final id =
-        'network:${timestamp.microsecondsSinceEpoch}:$sequence:$action';
+    final id = 'network:${timestamp.microsecondsSinceEpoch}:$sequence:$action';
     entries[id] = AuraActivityEntry(
       id: id,
       source: AuraActivitySource.network,
@@ -330,7 +331,8 @@ class AuraActivityFeed {
         'argument_names': List<String>.unmodifiable(
           (data['argument_names'] as List).whereType<String>(),
         ),
-      if (data['argument_count'] is int) 'argument_count': data['argument_count'],
+      if (data['argument_count'] is int)
+        'argument_count': data['argument_count'],
     };
   }
 

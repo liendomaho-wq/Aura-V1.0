@@ -44,14 +44,16 @@ void main() {
     expect(result.isThreat, isFalse);
   });
 
-  test('un host opaco con dominio registrable opaco sube a prioridad alta',
-      () async {
-    final result = await _analyze('x921llmzaqp0182ncnw.xyz');
+  test(
+    'un host opaco con dominio registrable opaco sube a prioridad alta',
+    () async {
+      final result = await _analyze('x921llmzaqp0182ncnw.xyz');
 
-    expect(result.registrableDomain, 'x921llmzaqp0182ncnw.xyz');
-    expect(result.riskBand, AuraRiskBand.high);
-    expect(result.isThreat, isTrue);
-  });
+      expect(result.registrableDomain, 'x921llmzaqp0182ncnw.xyz');
+      expect(result.riskBand, AuraRiskBand.high);
+      expect(result.isThreat, isTrue);
+    },
+  );
 
   test('un dominio corto y conocido queda sin señal', () async {
     final result = await _analyze('google.com');
