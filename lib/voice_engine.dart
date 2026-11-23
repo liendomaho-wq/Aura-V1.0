@@ -12,7 +12,10 @@ abstract final class AuraSpeechText {
   static String forSpeech(String text) {
     var value = text
         .replaceAll(RegExp(r'\[[A-ZÁÉÍÓÚÑ ]+\]'), ' ')
-        .replaceAll(RegExp(r'https?://([^/\s]+)\S*'), r'$1')
+        .replaceAllMapped(
+          RegExp(r'https?://([^/\s]+)\S*'),
+          (match) => match.group(1) ?? '',
+        )
         .replaceAll(RegExp(r'[*_`#>|]+'), ' ')
         .replaceAll('·', ',')
         .replaceAll(RegExp(r'\s+([.,;:!?])'), r'$1')
