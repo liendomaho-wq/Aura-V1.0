@@ -4,12 +4,14 @@ import 'package:flutter/services.dart';
 
 import '../ai_brain.dart';
 import '../infrastructure/security/aura_dynamic_whitelist.dart';
+import '../inference/aura_host_policy.dart';
 import '../llm/local_llm_planner.dart';
 import '../providers/aura_state_provider.dart';
 import '../services/aura_local_telemetry.dart';
 import '../services/aura_threat_correlator.dart';
 import '../secure_vault.dart';
 import '../voice_engine.dart';
+import 'aura_conversation.dart';
 import 'aura_intent_parser.dart';
 import 'aura_tools.dart';
 import 'agent_event.dart';
@@ -385,6 +387,14 @@ class AgentController {
   Future<List<Map<String, dynamic>>> readSecureOperationAudit() =>
       _agentAuditVault.getAuditLogs();
 
+  /// Casos de amenaza persistidos por la pantalla de actividad. El almacén es
+  /// el mismo SecureVault protegido por Android; no se envía nada fuera.
+  Future<List<Map<String, dynamic>>> readStoredThreatCases() =>
+      _agentAuditVault.getThreatCases();
+
+  Future<void> writeStoredThreatCases(List<Map<String, dynamic>> cases) =>
+      _agentAuditVault.saveThreatCases(cases);
+
   Future<void> _persistOperationAudit({
     required String operationId,
     required String tool,
@@ -449,16 +459,20 @@ class AgentController {
       return;
     }
 
+    // La memoria conversacional solo observa; nunca autoriza por sí sola.
+    AuraConversationMemory.instance.recordUserMessage(text);
+
     var effectiveInstruction = text;
     var confirmedPendingOperation = false;
-    if (_confirmationOnly.hasMatch(text)) {
-      final pending = _pendingConfirmationInstruction;
-      final createdAt = _pendingConfirmationCreatedAt;
-      _pendingConfirmationInstruction = null;
-      _pendingConfirmationCreatedAt = null;
-      if (pending == null ||
-          createdAt == null ||
-          DateTime.now().difference(createdAt) > const Duration(seconds: 60)) {
+    final pendingInstruction = _pendingConfirmationInstruction;
+    final pendingCreatedAt = _pendingConfirmationCreatedAt;
+    final naturalConfirmation =
+        pendingInstruction != null &&
+        AuraConversationMemory.instance.isConfirmation(text);
+    if (_confirmationOnly.hasMatch(text) || naturalConfirmation) {
+      if (pendingInstruction == null || pendingCreatedAt == null) {
+        _pendingConfirmationInstruction = null;
+        _pendingConfirmationCreatedAt = null;
         _emit(
           AgentEvent(
             kind: AgentEventKind.warning,
@@ -469,15 +483,99 @@ class AgentController {
         );
         return;
       }
+      if (DateTime.now().difference(pendingCreatedAt) >
+          const Duration(seconds: 60)) {
+        _pendingConfirmationInstruction = null;
+        _pendingConfirmationCreatedAt = null;
+        _emit(
+          AgentEvent(
+            kind: AgentEventKind.warning,
+            message:
+                'No hay una operación pendiente de confirmación o la solicitud expiró. Vuelve a emitir la orden.',
+            data: const <String, dynamic>{'error': 'no_pending_confirmation'},
+          ),
+        );
+        return;
+      }
+      // Una acción destructiva exige la palabra CONFIRMO escrita. "sí" o
+      // "dale" solo alcanzan para acciones reversibles. La solicitud sigue
+      // armada para que el usuario pueda confirmar dentro de la ventana.
+      if (!_confirmationOnly.hasMatch(text) &&
+          !_allowsNaturalConfirmation(pendingInstruction)) {
+        _emit(
+          AgentEvent(
+            kind: AgentEventKind.warning,
+            message:
+                'La operación pendiente es destructiva. Para autorizarla escribí CONFIRMO exactamente; no se ejecutó nada.',
+            data: const <String, dynamic>{
+              'error': 'explicit_confirmation_required',
+              'confirmation_pending': true,
+            },
+          ),
+        );
+        return;
+      }
+      _pendingConfirmationInstruction = null;
+      _pendingConfirmationCreatedAt = null;
       // Only this exact, one-shot confirmation authorizes the stored request.
       // Do not trust a confirmation keyword embedded in the instruction itself.
-      effectiveInstruction = pending;
+      effectiveInstruction = pendingInstruction;
       confirmedPendingOperation = true;
+    } else if (pendingInstruction != null &&
+        AuraConversationMemory.instance.isDenial(text)) {
+      _pendingConfirmationInstruction = null;
+      _pendingConfirmationCreatedAt = null;
+      _emit(
+        AgentEvent(
+          kind: AgentEventKind.warning,
+          message:
+              'Operación cancelada. No se guardó ninguna autorización pendiente.',
+          data: const <String, dynamic>{
+            'error': 'user_cancelled_pending_operation',
+            'side_effect_started': false,
+          },
+        ),
+      );
+      return;
     } else {
       // Any new instruction other than the exact confirmation phrase
       // invalidates the previous one-shot authorization request.
       _pendingConfirmationInstruction = null;
       _pendingConfirmationCreatedAt = null;
+    }
+
+    if (!confirmedPendingOperation) {
+      final followUp = AuraConversationMemory.instance.followUpFor(text);
+      if (followUp != null) {
+        switch (followUp.kind) {
+          case AuraFollowUpKind.explain:
+            await _explainLastOutcome();
+            return;
+          case AuraFollowUpKind.summarize:
+            await _summarizeSession();
+            return;
+          case AuraFollowUpKind.repeat:
+            await _repeatLastAnswer();
+            return;
+          case AuraFollowUpKind.analyzeLastHost:
+          case AuraFollowUpKind.blockLastHost:
+          case AuraFollowUpKind.isolateLastApp:
+            final resolved = followUp.instruction;
+            if (resolved != null) {
+              effectiveInstruction = resolved;
+              _emit(
+                AgentEvent(
+                  kind: AgentEventKind.thought,
+                  message: 'Retomo el último objetivo: $resolved',
+                  data: <String, dynamic>{
+                    'follow_up': followUp.kind.name,
+                    'resolved_instruction': resolved,
+                  },
+                ),
+              );
+            }
+        }
+      }
     }
 
     final token = AgentCancellationToken();
@@ -517,6 +615,7 @@ class AgentController {
     );
     try {
       var intent = await AuraIntentParser.parse(text);
+      AuraConversationMemory.instance.recordIntent(intent);
       cancellationToken.throwIfCancelled();
       const confirmationKinds = <AuraIntentKind>{
         AuraIntentKind.block,
@@ -554,11 +653,13 @@ class AgentController {
       if (requiresConfirmation && !hasConfirmation) {
         _pendingConfirmationInstruction = text;
         _pendingConfirmationCreatedAt = DateTime.now();
+        final confirmationHint = _allowsNaturalConfirmation(text)
+            ? 'Responde CONFIRMO, SÍ o DALE dentro de 60 segundos para ejecutar exactamente esta operación.'
+            : 'Responde CONFIRMO dentro de 60 segundos para ejecutar exactamente esta operación.';
         _emit(
           AgentEvent(
             kind: AgentEventKind.warning,
-            message:
-                'La orden requiere confirmación. Responde CONFIRMO dentro de 60 segundos para ejecutar exactamente esta operación.',
+            message: 'La orden requiere confirmación. $confirmationHint',
             data: <String, dynamic>{
               'error': 'user_confirmation_required',
               'confirmation_pending': true,
@@ -655,6 +756,7 @@ class AgentController {
             },
           ),
         );
+        AuraConversationMemory.instance.recordAuraMessage(message);
         await _speakResponse(message);
         return;
       }
@@ -663,6 +765,7 @@ class AgentController {
         final cursor = _responseCursors[responseKind] ?? 0;
         final response = variants[cursor % variants.length];
         _responseCursors[responseKind] = cursor + 1;
+        AuraConversationMemory.instance.recordAuraMessage(response);
         _emit(intent.toEvent());
         _emit(
           AgentEvent(
@@ -696,6 +799,7 @@ class AgentController {
               },
             ),
           );
+          AuraConversationMemory.instance.recordAuraMessage(answer);
           await _speakResponse(answer);
           return;
         }
@@ -742,6 +846,7 @@ class AgentController {
           ),
         );
         intent = plannedIntent;
+        AuraConversationMemory.instance.recordIntent(intent);
       }
 
       if (intent.kind == AuraIntentKind.help) {
@@ -750,7 +855,7 @@ class AgentController {
             'DESACTIVAR DEFENSAS · BLOQUEAR <dominio> · REVISAR APP <paquete> · '
             'AISLAMIENTO DE EMERGENCIA · REANUDAR LA RED · ACTUALIZAR '
             'DEFENSAS · AUDITAR DISPOSITIVO · ESCANEAR APLICACIONES · ANALIZAR DOMINIO <host> · ESTADO · PURGA CRIPTOGRÁFICA. '
-            'REVISAR APP solo abre Ajustes de Android; no aísla automáticamente otras apps. Para confirmar cambios de VPN, bloqueos, revisión de apps o purga, responde únicamente CONFIRMO a la solicitud pendiente.';
+            'REVISAR APP solo abre Ajustes de Android; no aísla automáticamente otras apps. Para confirmar una acción pendiente responde CONFIRMO; en acciones reversibles también acepto SÍ, DALE o ADELANTE. La purga criptográfica y el aislamiento de emergencia exigen CONFIRMO escrito.';
         _emit(intent.toEvent());
         _emit(
           AgentEvent(
@@ -759,6 +864,7 @@ class AgentController {
             data: const <String, dynamic>{'intent': 'help'},
           ),
         );
+        AuraConversationMemory.instance.recordAuraMessage(helpMessage);
         await _speakResponse('Órdenes listadas en pantalla.');
         return;
       }
@@ -798,6 +904,9 @@ class AgentController {
             kind: AgentEventKind.thought,
             message: 'El motor local inició $toolName.',
             data: <String, dynamic>{
+              // Fase explícita para que la pantalla de actividad no dependa
+              // del texto en español del mensaje.
+              'phase': 'started',
               'tool': toolName,
               'argument_names': arguments.keys
                   .map((key) => key.toString())
@@ -816,6 +925,7 @@ class AgentController {
                 ? 'El motor local completó $toolName.'
                 : 'El motor local no confirmó $toolName; revisa el resultado.',
             data: <String, dynamic>{
+              'phase': 'completed',
               'tool': toolName,
               'argument_names': arguments.keys
                   .map((key) => key.toString())
@@ -877,6 +987,7 @@ class AgentController {
         await AuraLocalTelemetry.clearEvents();
         history.clear();
         AuraIntentParser.clearHistory();
+        AuraConversationMemory.instance.reset();
         _securityState?.clearTelemetryHistory();
       }
       final userActionRequired = result.data['user_action_required'] == true;
@@ -906,6 +1017,7 @@ class AgentController {
           },
         ),
       );
+      AuraConversationMemory.instance.recordAuraMessage(result.summary);
       if (intent.kind == AuraIntentKind.updateDefenses && succeeded) {
         await _speakResponse(
           'Actualización completada. El modelo local de 500 árboles fue verificado e instalado.',
@@ -940,15 +1052,149 @@ class AgentController {
     }
   }
 
+  /// Acciones destructivas o difíciles de revertir exigen CONFIRMO escrito.
+  static final RegExp _destructivePending = RegExp(
+    r'\b(?:purga|criptografica|cryptographic|panico|panic|aislamiento de emergencia)\b',
+    caseSensitive: false,
+  );
+
+  static bool _allowsNaturalConfirmation(String pendingInstruction) =>
+      !_destructivePending.hasMatch(pendingInstruction);
+
+  /// Explica el último veredicto con los datos que ya están en memoria.
+  Future<void> _explainLastOutcome() async {
+    final history = _securityState?.explanationHistory;
+    final explanation = history == null || history.isEmpty
+        ? null
+        : history.last;
+    if (explanation == null) {
+      final last = AuraConversationMemory.instance.lastAuraMessage;
+      final message = last == null
+          ? 'Todavía no analicé un dominio en esta sesión. Decime cuál querés revisar.'
+          : 'No tengo un análisis reciente que explicar. Lo último que te dije fue: $last';
+      _emit(
+        AgentEvent(
+          kind: AgentEventKind.thought,
+          message: message,
+          data: const <String, dynamic>{
+            'intent': 'explain',
+            'has_explanation': false,
+          },
+        ),
+      );
+      await _speakResponse(message);
+      return;
+    }
+    final signals = explanation.signals
+        .take(3)
+        .map((signal) => '${signal.label} (${signal.value.toStringAsFixed(2)})')
+        .join(', ');
+    final message =
+        'Sobre ${explanation.host}: la banda es '
+        '${AuraHostPolicy.label(explanation.riskBand)}, con umbral '
+        '${explanation.decisionThreshold.toStringAsFixed(2)}. '
+        '${signals.isEmpty ? 'No hubo señales auxiliares para mostrar.' : 'Señales observadas: $signals.'} '
+        '${explanation.riskBand == AuraRiskBand.clear ? 'No se propuso ningún bloqueo.' : 'Es una observación sobre el nombre del dominio; no inspecciona el contenido de la página.'}';
+    _emit(
+      AgentEvent(
+        kind: AgentEventKind.success,
+        message: message,
+        data: <String, dynamic>{
+          'intent': 'explain',
+          'host': explanation.host,
+          'risk_band': explanation.riskBand.name,
+          'signal_count': explanation.signals.length,
+        },
+      ),
+    );
+    AuraConversationMemory.instance.recordAuraMessage(message);
+    await _speakResponse(message);
+  }
+
+  /// Resume solo lo que la sesión ya registró; no estima ni inventa tráfico.
+  Future<void> _summarizeSession() async {
+    final state = _securityState;
+    final events = state?.telemetryEvents ?? const <Map<String, dynamic>>[];
+    var blocked = 0;
+    var dga = 0;
+    for (final event in events) {
+      final action = event['action'];
+      if (action == 'BLOCKED' ||
+          action == 'ENCRYPTED_DNS_BLOCKED' ||
+          action == 'QUIC_BLOCKED') {
+        blocked++;
+      }
+      if (action == 'DGA_ALERT') dga++;
+    }
+    final explanations = state?.explanationHistory;
+    final last = explanations == null || explanations.isEmpty
+        ? null
+        : explanations.last;
+    final level = state == null ? 'no disponible' : state.securityLevel.name;
+    final message =
+        'En esta sesión tengo ${events.length} eventos de red: $blocked '
+        'bloqueos, $dga alertas de dominio generado y '
+        '${explanations?.length ?? 0} análisis de dominios. '
+        'Nivel actual: $level.'
+        '${last == null ? '' : ' El último dominio analizado fue ${last.host} (${AuraHostPolicy.label(last.riskBand)}).'}';
+    _emit(
+      AgentEvent(
+        kind: AgentEventKind.success,
+        message: message,
+        data: <String, dynamic>{
+          'intent': 'session_summary',
+          'network_events': events.length,
+          'blocked_events': blocked,
+          'dga_events': dga,
+          'explanation_count': explanations?.length ?? 0,
+        },
+      ),
+    );
+    AuraConversationMemory.instance.recordAuraMessage(message);
+    await _speakResponse(message);
+  }
+
+  Future<void> _repeatLastAnswer() async {
+    final last = AuraConversationMemory.instance.lastAuraMessage;
+    if (last == null) {
+      const message = 'Todavía no emití una respuesta en esta sesión.';
+      _emit(
+        AgentEvent(
+          kind: AgentEventKind.thought,
+          message: message,
+          data: const <String, dynamic>{
+            'intent': 'repeat',
+            'has_answer': false,
+          },
+        ),
+      );
+      await _speakResponse(message);
+      return;
+    }
+    _emit(
+      AgentEvent(
+        kind: AgentEventKind.success,
+        message: last,
+        data: const <String, dynamic>{'intent': 'repeat', 'has_answer': true},
+      ),
+    );
+    await _speakResponse(last);
+  }
+
   Future<LocalLlmPlanResult> _planWithLocalModel(
     String instruction,
     AgentCancellationToken cancellationToken,
   ) async {
     try {
       final planner = _localLlmPlanner ??= LocalLlmPlanner();
+      final state = _securityState;
+      final context = AuraConversationMemory.instance.promptContext(
+        securityLevel: state == null ? null : state.securityLevel.name,
+      );
       return await planner.plan(
         instruction,
         cancellationToken: cancellationToken,
+        conversationContext: context,
       );
     } on Object {
       // The planner maps its own failures; this guards against a programming
@@ -959,6 +1205,29 @@ class AgentController {
       );
     }
   }
+
+  /// Detiene la voz en curso. La interfaz lo llama al abrir el micrófono para
+  /// que el usuario pueda interrumpir (barge-in) sin esperar a que termine.
+  Future<void> stopSpeaking() => _voiceEngine.stop();
+
+  /// Espera al final de la voz con un límite de 30 s, o vuelve de inmediato si
+  /// no hay voz en curso. La interfaz lo usa para reabrir el micrófono tras una
+  /// confirmación hablada.
+  Future<void> waitForSpeech() => _voiceEngine.waitForSpeech();
+
+  bool get isSpeaking => _voiceEngine.isSpeaking;
+
+  /// La ventana de confirmación es de 60 s; pasado ese plazo la operación
+  /// pendiente ya no puede autorizarse y la interfaz no debe reabrir el micrófono.
+  bool get hasPendingConfirmation {
+    final created = _pendingConfirmationCreatedAt;
+    if (_pendingConfirmationInstruction == null || created == null) {
+      return false;
+    }
+    return DateTime.now().difference(created) <= const Duration(seconds: 60);
+  }
+
+  Stream<AuraSpeechState> get speechStates => _voiceEngine.states;
 
   Future<void> _speakResponse(String response) async {
     try {

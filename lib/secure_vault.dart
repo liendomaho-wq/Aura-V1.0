@@ -8,12 +8,14 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AuraSecureVault {
   static const String _auditLogsKey = 'aura_audit_logs_v1';
+  static const String _threatCasesKey = 'aura_threat_cases_v1';
   static const String _modelMasterKeyStorageKey = 'aura_model_master_key_v1';
   static const String _domainHashKeyStorageKey = 'aura_domain_hash_key_v1';
   static const MethodChannel _keystoreChannel = MethodChannel(
     'com.ciberdefensa.aura/vault_keystore',
   );
   static const int maxAuditLogs = 500;
+  static const int maxThreatCases = 200;
   // These options request backup-protected v9-to-v10 migration and disable
   // silent reset. They do not guarantee migration: Android instrumentation
   // exposed a v10.3.4 legacy ESP failure (see REVISION_SEGURIDAD_PENDIENTE.md).
@@ -209,6 +211,41 @@ class AuraSecureVault {
         ? records.sublist(records.length - maxAuditLogs)
         : records;
   }
+
+  /// Casos de amenaza ya reducidos a evidencia y estado. Se guardan en el
+  /// almacén protegido por Android, nunca en texto plano ni en la nube.
+  Future<List<Map<String, dynamic>>> getThreatCases() async {
+    final encoded = await _storage.read(key: _threatCasesKey);
+    if (encoded == null || encoded.isEmpty) return <Map<String, dynamic>>[];
+    final decoded = jsonDecode(encoded);
+    if (decoded is! List || decoded.any((entry) => entry is! Map)) {
+      throw const FormatException(
+        'El historial de amenazas almacenado no es válido.',
+      );
+    }
+    final records = decoded
+        .map((entry) => Map<String, dynamic>.from(entry as Map))
+        .toList(growable: false);
+    return records.length > maxThreatCases
+        ? records.sublist(records.length - maxThreatCases)
+        : records;
+  }
+
+  Future<void> saveThreatCases(List<Map<String, dynamic>> cases) =>
+      _enqueue(() async {
+        final bounded = cases.length > maxThreatCases
+            ? cases.sublist(cases.length - maxThreatCases)
+            : cases;
+        await _storage.write(
+          key: _threatCasesKey,
+          value: jsonEncode(
+            bounded.map((entry) => Map<String, dynamic>.from(entry)).toList(),
+          ),
+        );
+      });
+
+  Future<void> clearThreatCases() =>
+      _enqueue(() => _storage.delete(key: _threatCasesKey));
 
   Future<void> writeLogSecurely(String logText) => writeLogsSecurely([logText]);
 

@@ -18,6 +18,7 @@ class AuraSignalHeader extends StatelessWidget {
     required this.vpnActive,
     required this.networkLabel,
     required this.onToggleShield,
+    this.onActivity,
   });
 
   final bool compact;
@@ -31,6 +32,10 @@ class AuraSignalHeader extends StatelessWidget {
   final bool vpnActive;
   final String networkLabel;
   final VoidCallback onToggleShield;
+
+  /// Abre la hoja de actividad real. Es opcional para no romper consumidores
+  /// antiguos de este widget.
+  final VoidCallback? onActivity;
 
   @override
   Widget build(BuildContext context) {
@@ -63,6 +68,13 @@ class AuraSignalHeader extends StatelessWidget {
             onTap: onCoverageAudit,
             highlighted: showCoverageAudit,
           ),
+          if (onActivity != null)
+            _HeaderGlyph(
+              key: const ValueKey<String>('activity-toggle'),
+              icon: Icons.pending_actions_rounded,
+              label: 'Actividad de Aura',
+              onTap: onActivity!,
+            ),
           const Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,

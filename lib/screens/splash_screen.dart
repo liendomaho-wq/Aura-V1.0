@@ -136,14 +136,17 @@ class _SplashScreenState extends State<SplashScreen>
             ? 'BOSQUE LOCAL VALIDADO: 500 ÁRBOLES.'
             : 'MODELO NO VERIFICADO; REGLAS LOCALES ACTIVAS.';
       });
-      await Future<void>.delayed(const Duration(milliseconds: 350));
+      // No se introduce una espera artificial: se espera al siguiente frame
+      // real para que el estado final sea visible sin simular progreso.
+      await WidgetsBinding.instance.endOfFrame;
       if (!mounted) return;
       setState(() {
         _loadingProgress = 1;
         _bootStatusText =
             'AURA LISTA; EL ESCUDO REQUIERE EL PERMISO VPN DE ANDROID.';
       });
-      await Future<void>.delayed(const Duration(milliseconds: 350));
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
       _navigateToCore();
     } on PlatformException catch (error) {
       _showAuthenticationFailure(

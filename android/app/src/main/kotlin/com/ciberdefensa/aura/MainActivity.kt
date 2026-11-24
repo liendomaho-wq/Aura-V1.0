@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.net.VpnService
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Debug
 import android.os.Handler
 import android.os.Looper
@@ -172,6 +173,19 @@ class MainActivity: FlutterFragmentActivity() {
     private val NOTIFICATIONS_CHANNEL = "com.aura.cyberdefense/notifications"
     private val VOICE_CHANNEL = "com.ciberdefensa.aura/voice"
     private val NETWORK_STREAM_CHANNEL = "com.aura.cyberdefense/network_stream"
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Tapjacking: cuando otra ventana tapa la nuestra, Android marca el
+        // toque como "obscured". Descartarlo evita que una superposición pueda
+        // activar el Escudo, confirmar una purga o abrir una hoja sensible.
+        window.decorView.filterTouchesWhenObscured = true
+        // La miniatura de "recientes" no debe conservar dominios, hallazgos ni
+        // estados del dispositivo. Disponible desde Android 13 (API 33).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            setRecentsScreenshotEnabled(false)
+        }
+    }
+
     private val genomeScannerExecutor = Executors.newSingleThreadExecutor()
     private val blocklistExecutor = Executors.newSingleThreadExecutor()
     private val MAX_BLOCKLIST_QUERY_DOMAINS = 10_000
@@ -1198,14 +1212,25 @@ class MainActivity: FlutterFragmentActivity() {
         }
     }
 
+    /**
+     * El reconocedor debe escuchar el español que el usuario ya tiene
+     * configurado (es-VE, es-MX, es-ES...), no un es-ES fijo, para que el
+     * dictado coincida con la voz es-419 que usa el TTS.
+     */
+    private fun preferredSpeechLanguage(): String {
+        val locale = resources.configuration.locales[0]
+        return if (locale.language == "es") locale.toLanguageTag() else "es-419"
+    }
+
     private fun launchVoiceRecognition() {
+        val language = preferredSpeechLanguage()
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(
                 RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
             )
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-ES")
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, language)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Habla con Aura")
         }

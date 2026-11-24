@@ -44,6 +44,9 @@ jobs:
       - name: Install Python test dependencies
         run: python -m pip install -r tool/requirements-train.txt
 
+      - name: Classifier quality gate
+        run: python3 tool/ci_run.py python3 tool/ci_classifier_gate.py
+
       - name: Setup Flutter stable
         uses: subosito/flutter-action@v2
         with:
