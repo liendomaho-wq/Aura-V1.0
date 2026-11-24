@@ -1,37 +1,144 @@
 // voice_engine.dart - Motor de Voz Nativo de Aura
+import 'dart:async';
+
 import 'package:flutter_tts/flutter_tts.dart';
+
+/// Texto listo para leer en voz alta.
+///
+/// La consola usa prefijos como `[OK]` o `[WARN]`, Markdown y URLs largas. Leer
+/// esos símbolos en voz alta suena artificial y puede confundir; aquí se
+/// convierten en una frase natural sin cambiar el contenido técnico.
+abstract final class AuraSpeechText {
+  static const int maxLength = 600;
+
+  static String forSpeech(String text) {
+    var value = text
+        .replaceAll(RegExp(r'\[[A-ZÁÉÍÓÚÑ ]+\]'), ' ')
+        .replaceAllMapped(
+          RegExp(r'https?://([^/\s]+)\S*'),
+          (match) => match.group(1) ?? '',
+        )
+        .replaceAll(RegExp(r'[*_`#>|]+'), ' ')
+        .replaceAll('·', ',')
+        .replaceAllMapped(
+          RegExp(r'\s+([.,;:!?])'),
+          (match) => match.group(1) ?? '',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (value.length <= maxLength) return value;
+    final cut = value.substring(0, maxLength);
+    final lastStop = cut.lastIndexOf(RegExp(r'[.!?]'));
+    if (lastStop >= 120) return cut.substring(0, lastStop + 1).trim();
+    value = cut.trimRight();
+    return '$value…';
+  }
+}
+
+enum AuraSpeechState { idle, speaking }
 
 class AuraVoiceEngine {
   final FlutterTts _flutterTts = FlutterTts();
+  final StreamController<AuraSpeechState> _stateController =
+      StreamController<AuraSpeechState>.broadcast();
   late final Future<void> _initialization;
   bool _available = true;
+  bool _speaking = false;
+  Completer<void>? _completion;
 
   AuraVoiceEngine() {
     _initialization = _initializeVoice();
   }
 
+  bool get isSpeaking => _speaking;
+
+  Stream<AuraSpeechState> get states => _stateController.stream;
+
   Future<void> _initializeVoice() async {
     try {
-      await _flutterTts.setLanguage('es-ES');
+      _flutterTts.setStartHandler(_handleStart);
+      _flutterTts.setCompletionHandler(_handleDone);
+      _flutterTts.setCancelHandler(_handleCancel);
+      _flutterTts.setErrorHandler((_) => _handleDone());
+      await _selectSpanishVoice();
       await _flutterTts.setSpeechRate(0.55);
       await _flutterTts.setVolume(1.0);
       await _flutterTts.setPitch(1.05);
     } on Object {
       // Tests, desktop targets and devices without a TTS plugin remain usable.
       _available = false;
+      _handleDone();
     }
   }
 
+  void _handleStart() {
+    if (_speaking) return;
+    _speaking = true;
+    _stateController.add(AuraSpeechState.speaking);
+  }
+
+  /// Una cancelación solo cierra el turno si la locución ya había empezado.
+  /// Así, el callback tardío del `stop()` previo no completa por error la nueva
+  /// locución que se acaba de encolar.
+  void _handleCancel() {
+    if (!_speaking) return;
+    _handleDone();
+  }
+
+  void _handleDone() {
+    final wasSpeaking = _speaking;
+    _speaking = false;
+    final completion = _completion;
+    _completion = null;
+    if (completion != null && !completion.isCompleted) completion.complete();
+    if (wasSpeaking) _stateController.add(AuraSpeechState.idle);
+  }
+
+  /// Prefiere español latinoamericano y cae a es-US o es-ES solo si el motor
+  /// del dispositivo no ofrece la variante regional.
+  Future<void> _selectSpanishVoice() async {
+    for (final locale in const <String>['es-419', 'es-US', 'es-ES']) {
+      try {
+        final available = await _flutterTts.isLanguageAvailable(locale);
+        if (available == true || available == 1) {
+          await _flutterTts.setLanguage(locale);
+          return;
+        }
+      } on Object {
+        // El motor puede no exponer esa variante; se prueba la siguiente.
+      }
+    }
+    await _flutterTts.setLanguage('es-ES');
+  }
+
   Future<void> speak(String text) async {
-    if (text.isEmpty) return;
+    final spoken = AuraSpeechText.forSpeech(text);
+    if (spoken.isEmpty) return;
     await _initialization;
     if (!_available) return;
     try {
+      final previous = _completion;
+      _completion = null;
+      if (previous != null && !previous.isCompleted) previous.complete();
       await _flutterTts.stop();
-      await _flutterTts.speak(text);
+      _completion = Completer<void>();
+      await _flutterTts.speak(spoken);
     } on Object {
       // Voice is optional; never interrupt the text-based agent response.
       _available = false;
+      _handleDone();
+    }
+  }
+
+  /// Completa cuando el motor informa el final, la cancelación o un error.
+  /// Un motor que no emite eventos no bloquea el turno: hay un límite de 30 s.
+  Future<void> waitForSpeech() async {
+    final completion = _completion;
+    if (completion == null) return;
+    try {
+      await completion.future.timeout(const Duration(seconds: 30));
+    } on TimeoutException {
+      // El turno sigue; el siguiente comando puede detener la voz igualmente.
     }
   }
 
@@ -45,8 +152,8 @@ class AuraVoiceEngine {
         final appPackage =
             arguments['app_package'] as String? ?? 'aplicación observada';
         return speak(
-          'Analizando telemetría. Amenaza de red detectada para $appPackage. '
-          'Bloqueando $domain en el DNS local para todo el dispositivo.',
+          'Solicitud en curso para $domain, observada en $appPackage. '
+          'La regla DNS solo se confirma cuando el motor local la aplica.',
         );
       case 'isolate_malicious_app':
         final packageName =
@@ -76,11 +183,15 @@ class AuraVoiceEngine {
 
   Future<void> stop() async {
     await _initialization;
-    if (!_available) return;
+    if (!_available) {
+      _handleDone();
+      return;
+    }
     try {
       await _flutterTts.stop();
     } on Object {
       _available = false;
     }
+    _handleDone();
   }
 }

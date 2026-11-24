@@ -1,6 +1,7 @@
 import 'dart:isolate';
 
 import '../inference/aura_ai_inference.dart' as shared_features;
+import '../inference/aura_host_policy.dart';
 
 class AuraInferenceResult {
   const AuraInferenceResult({
@@ -11,15 +12,32 @@ class AuraInferenceResult {
     this.featureVector = const <double>[],
     this.featureOrder = const <String>[],
     this.decisionThreshold = 0.5,
+    this.registrableDomain,
+    this.registrableScore,
+    this.riskBand = AuraRiskBand.clear,
   });
 
   final String host;
+
+  /// Puntuación del host observado, tal como la produce el bosque.
   final double threatScore;
+
+  /// Solo es `true` cuando host y dominio registrable alcanzan la banda alta.
   final bool isThreat;
+
   final Map<String, double> computedFeatures;
   final List<double> featureVector;
   final List<String> featureOrder;
   final double decisionThreshold;
+
+  /// Dominio registrable usado para la segunda puntuación (eTLD+1).
+  final String? registrableDomain;
+
+  /// Puntuación del dominio registrable. `null` en resultados antiguos.
+  final double? registrableScore;
+
+  /// Banda que la UI debe mostrar: sin señal, revisión o prioridad alta.
+  final AuraRiskBand riskBand;
 }
 
 abstract final class AuraAIInference {
@@ -68,14 +86,34 @@ abstract final class AuraAIInference {
           final rawFeatureVector = result['feature_vector'];
           final rawFeatureOrder = result['feature_order'];
           final rawDecisionThreshold = result['decision_threshold'];
+          final rawRegistrableDomain = result['registrable_domain'];
+          final rawRegistrableScore = result['registrable_score'];
+          final rawRiskBand = result['risk_band'];
           if (host is! String ||
               score is! num ||
               threat is! bool ||
               rawFeatures is! Map ||
               rawFeatureVector is! List ||
               rawFeatureOrder is! List ||
-              rawDecisionThreshold is! num) {
+              rawDecisionThreshold is! num ||
+              (rawRegistrableDomain != null &&
+                  rawRegistrableDomain is! String) ||
+              (rawRegistrableScore != null && rawRegistrableScore is! num) ||
+              (rawRiskBand != null && rawRiskBand is! String)) {
             throw const FormatException('Campos de inferencia incompletos.');
+          }
+          final riskBand = rawRiskBand == null
+              ? (threat ? AuraRiskBand.high : AuraRiskBand.clear)
+              : AuraRiskBand.values.firstWhere(
+                  (band) => band.name == rawRiskBand,
+                  orElse: () => throw const FormatException(
+                    'La banda de riesgo devuelta por el isolate no es válida.',
+                  ),
+                );
+          if (threat != (riskBand == AuraRiskBand.high)) {
+            throw const FormatException(
+              'La banda de riesgo no coincide con el veredicto del isolate.',
+            );
           }
           final features = <String, double>{};
           for (final entry in rawFeatures.entries) {
@@ -104,6 +142,10 @@ abstract final class AuraAIInference {
               rawFeatureOrder.cast<String>(),
             ),
             decisionThreshold: rawDecisionThreshold.toDouble(),
+            registrableDomain: rawRegistrableDomain as String? ?? host,
+            registrableScore:
+                (rawRegistrableScore as num?)?.toDouble() ?? score.toDouble(),
+            riskBand: riskBand,
           );
         })
         .toList(growable: false);
@@ -145,6 +187,9 @@ abstract final class AuraAIInference {
           'host': host,
           'threat_score': 1.0,
           'is_threat': true,
+          'registrable_domain': AuraHostPolicy.registrableDomain(host) ?? host,
+          'registrable_score': 1.0,
+          'risk_band': AuraRiskBand.high.name,
           'features': <String, double>{'blocklist_match': 1.0},
           'feature_vector': <double>[],
           'feature_order': <String>[],
@@ -160,14 +205,28 @@ abstract final class AuraAIInference {
           suspicious.contains(host.substring(host.lastIndexOf('.') + 1))
           ? 1.0
           : 0.0;
-      var threatVotes = 0;
-      for (final tree in trees as List) {
-        if (tree is! Map || !tree.containsKey('root')) {
-          throw const FormatException('Raíz de árbol inválida en el bosque.');
-        }
-        threatVotes += _evaluateNode(tree['root'], features);
-      }
-      final threatScore = threatVotes / trees.length;
+      final threatScore = _scoreFeatures(trees as List, features);
+      // Segunda observación: el dominio que la persona reconoce, no el host
+      // completo. Un subdominio largo de un dominio limpio no debe elevar el
+      // veredicto a amenaza.
+      final registrableHost = AuraHostPolicy.registrableDomain(host) ?? host;
+      final registrableScore = registrableHost == host
+          ? threatScore
+          : _scoreFeatures(
+              trees,
+              _featuresWithTld(
+                shared_features.AuraAIInference.extractFeaturesForModel(
+                  registrableHost,
+                  featureOrder,
+                ),
+                registrableHost,
+                suspicious,
+              ),
+            );
+      final riskBand = AuraHostPolicy.band(
+        hostScore: threatScore,
+        registrableScore: registrableScore,
+      );
       final maximumConsonantStreak = _maximumConsonantStreak(host);
       final activeFeatureOrder = usesEnhancedFeatures
           ? shared_features.AuraAIInference.enhancedFeatureOrder
@@ -175,7 +234,10 @@ abstract final class AuraAIInference {
       results.add(<String, Object?>{
         'host': host,
         'threat_score': threatScore,
-        'is_threat': threatScore >= decisionThreshold,
+        'is_threat': riskBand == AuraRiskBand.high,
+        'registrable_domain': registrableHost,
+        'registrable_score': registrableScore,
+        'risk_band': riskBand.name,
         'decision_threshold': decisionThreshold,
         'features': <String, double>{
           'length': features[0],
@@ -203,6 +265,34 @@ abstract final class AuraAIInference {
       });
     }
     return <String, Object?>{'results': results};
+  }
+
+  /// Aplica el TLD observado al vector de características.
+  static List<double> _featuresWithTld(
+    List<double> features,
+    String host,
+    Set<String> suspicious,
+  ) {
+    if (features.length > 5) {
+      final tld = host.substring(host.lastIndexOf('.') + 1);
+      features[5] = suspicious.contains(tld) ? 1.0 : 0.0;
+    }
+    return features;
+  }
+
+  /// Recorre el bosque y devuelve la proporción de votos de amenaza.
+  static double _scoreFeatures(List trees, List<double> features) {
+    if (trees.isEmpty) {
+      throw const FormatException('El bosque de inferencia está vacío.');
+    }
+    var threatVotes = 0;
+    for (final tree in trees) {
+      if (tree is! Map || !tree.containsKey('root')) {
+        throw const FormatException('Raíz de árbol inválida en el bosque.');
+      }
+      threatVotes += _evaluateNode(tree['root'], features);
+    }
+    return threatVotes / trees.length;
   }
 
   static bool _matchesFeatureOrder(

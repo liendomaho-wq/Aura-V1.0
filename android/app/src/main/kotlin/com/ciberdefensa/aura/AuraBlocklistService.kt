@@ -3,6 +3,7 @@ package com.ciberdefensa.aura
 import android.content.Context
 import android.system.ErrnoException
 import android.system.Os
+import android.util.Base64
 import android.util.Log
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
@@ -22,7 +23,11 @@ import java.io.File
 import java.io.IOException
 import java.net.IDN
 import java.net.URI
+import java.security.KeyFactory
 import java.security.MessageDigest
+import java.security.PublicKey
+import java.security.Signature
+import java.security.spec.X509EncodedKeySpec
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -49,11 +54,13 @@ object AuraBlocklistService {
     private const val WORK_NAME = "aura-daily-blocklist-update"
     private const val INITIAL_WORK_NAME = "aura-initial-blocklist-update"
     private const val MANIFEST_MAX_BYTES = 64 * 1024
+    private const val MANIFEST_SIGNATURE_MAX_BYTES = 8 * 1024
     private const val FEED_MAX_BYTES = 32 * 1024 * 1024
     private const val CACHE_DIRECTORY = "blocklists"
     private const val MANIFEST_FEEDS_KEY = "feeds"
     private val SHA256_PATTERN = Regex("^[a-f0-9]{64}$")
     private val GENERATION_PATTERN = Regex("^[a-f0-9]{64}$")
+    private val KEY_ID_PATTERN = Regex("^[A-Za-z0-9._-]{1,64}$")
     private val IPV4_PATTERN = Regex("^(?:\\d{1,3}\\.){3}\\d{1,3}$")
     private val LABEL_PATTERN = Regex("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
     private val WHITESPACE_PATTERN = Regex("\\s+")
@@ -148,6 +155,7 @@ object AuraBlocklistService {
         }
 
         val manifestBytes = download(manifestUrl, MANIFEST_MAX_BYTES)
+        verifyManifestSignature(manifestUrl, manifestBytes)
         val expectedDigests = parseManifest(manifestBytes)
         val normalizedFeeds = linkedMapOf<Feed, Set<String>>()
         for (feed in Feed.entries) {
@@ -266,6 +274,137 @@ object AuraBlocklistService {
                 ExistingWorkPolicy.KEEP,
                 initialRequest,
             )
+    }
+
+    /**
+     * Verifies the detached signature published next to the manifest. The
+     * signature is mandatory when at least one public key is compiled into the
+     * app; without a configured key the legacy SHA-256-only mode is preserved
+     * and logged as unprotected. Keys are rotated by adding a new key id to
+     * AURA_BLOCKLIST_MANIFEST_PUBLIC_KEYS and removing the old one after the
+     * manifest has been re-signed.
+     */
+    private suspend fun verifyManifestSignature(
+        manifestUrl: String,
+        manifestBytes: ByteArray,
+    ) {
+        val keys = configuredManifestKeys()
+        if (keys.isEmpty()) {
+            Log.w(
+                TAG,
+                "The blocklist manifest is not signed: configure " +
+                    "AURA_BLOCKLIST_MANIFEST_PUBLIC_KEYS to enforce signatures.",
+            )
+            return
+        }
+
+        val signatureBytes = download(
+            signatureUrl(manifestUrl),
+            MANIFEST_SIGNATURE_MAX_BYTES,
+        )
+        val envelope = try {
+            JSONObject(String(signatureBytes, Charsets.UTF_8))
+        } catch (error: JSONException) {
+            throw BlocklistIntegrityException(
+                "The blocklist manifest signature is invalid JSON.",
+                error,
+            )
+        }
+        if (envelope.optString("algorithm") != "RS256") {
+            throw BlocklistIntegrityException(
+                "The blocklist manifest signature must use RS256.",
+            )
+        }
+        val keyId = envelope.optString("key_id").trim()
+        val key = keys[keyId]
+            ?: throw BlocklistIntegrityException(
+                "The blocklist manifest was signed with an unknown key id.",
+            )
+        val encodedSignature = envelope.optString("signature").trim()
+        val signature = try {
+            Base64.decode(encodedSignature, Base64.DEFAULT)
+        } catch (error: IllegalArgumentException) {
+            throw BlocklistIntegrityException(
+                "The blocklist manifest signature is not valid base64.",
+                error,
+            )
+        }
+        if (signature.isEmpty()) {
+            throw BlocklistIntegrityException(
+                "The blocklist manifest signature is empty.",
+            )
+        }
+        val verified = try {
+            Signature.getInstance("SHA256withRSA").run {
+                initVerify(key)
+                update(manifestBytes)
+                verify(signature)
+            }
+        } catch (error: java.security.GeneralSecurityException) {
+            throw BlocklistIntegrityException(
+                "The blocklist manifest signature could not be verified.",
+                error,
+            )
+        }
+        if (!verified) {
+            throw BlocklistIntegrityException(
+                "The blocklist manifest signature does not match its contents.",
+            )
+        }
+    }
+
+    private fun configuredManifestKeys(): Map<String, PublicKey> {
+        val raw = BuildConfig.AURA_BLOCKLIST_MANIFEST_PUBLIC_KEYS.trim()
+        if (raw.isEmpty()) return emptyMap()
+        val keys = linkedMapOf<String, PublicKey>()
+        for (entry in raw.split(';')) {
+            val separator = entry.indexOf(':')
+            if (separator <= 0 || separator == entry.lastIndex) {
+                throw BlocklistConfigurationException(
+                    "Each manifest public key must use keyId:base64 format.",
+                )
+            }
+            val keyId = entry.substring(0, separator).trim()
+            if (!KEY_ID_PATTERN.matches(keyId)) {
+                throw BlocklistConfigurationException(
+                    "The manifest public key id is invalid.",
+                )
+            }
+            val encoded = entry.substring(separator + 1).trim()
+            val key = try {
+                KeyFactory.getInstance("RSA").generatePublic(
+                    X509EncodedKeySpec(Base64.decode(encoded, Base64.DEFAULT)),
+                )
+            } catch (error: IllegalArgumentException) {
+                throw BlocklistConfigurationException(
+                    "The manifest public key is not valid base64.",
+                    error,
+                )
+            } catch (error: java.security.GeneralSecurityException) {
+                throw BlocklistConfigurationException(
+                    "The manifest public key is not a valid RSA public key.",
+                    error,
+                )
+            }
+            if (keys.put(keyId, key) != null) {
+                throw BlocklistConfigurationException(
+                    "The manifest public key id is duplicated.",
+                )
+            }
+        }
+        return keys
+    }
+
+    private fun signatureUrl(manifestUrl: String): String {
+        val query = manifestUrl.indexOf('?')
+        val fragment = manifestUrl.indexOf('#')
+        val insertAt = listOf(query, fragment)
+            .filter { it >= 0 }
+            .minOrNull()
+            ?: manifestUrl.length
+        return manifestUrl.substring(0, insertAt) +
+            ".sig" +
+            manifestUrl.substring(insertAt)
     }
 
     private suspend fun download(url: String, maximumBytes: Int): ByteArray =
@@ -546,8 +685,10 @@ object AuraBlocklistService {
     open class BlocklistException(message: String, cause: Throwable? = null) :
         IOException(message, cause)
 
-    class BlocklistConfigurationException(message: String) :
-        IllegalStateException(message)
+    class BlocklistConfigurationException(
+        message: String,
+        cause: Throwable? = null,
+    ) : IllegalStateException(message, cause)
 
     class BlocklistIntegrityException(message: String, cause: Throwable? = null) :
         BlocklistException(message, cause)

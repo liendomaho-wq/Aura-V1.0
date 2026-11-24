@@ -891,7 +891,8 @@ print("PASS: app scan preserves evidence and agent network/isolation actions req
 # Model heuristics must never mutate device network policy without user approval.
 AI_BRAIN = Path("lib/ai_brain.dart").read_text(encoding="utf-8")
 ml_branch = re.search(
-    r"if \(isThreat\) \{(.*?)\n        \} else \{",
+    r"if \(band == AuraRiskBand\.high\) \{(.*?)\n"
+    r"        \} else if \(band == AuraRiskBand\.review\) \{",
     AI_BRAIN,
     re.DOTALL,
 )

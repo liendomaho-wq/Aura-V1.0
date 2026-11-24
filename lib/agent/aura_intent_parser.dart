@@ -107,7 +107,7 @@ class AuraIntentParser {
     caseSensitive: false,
   );
   static final RegExp _isolateCommand = RegExp(
-    r'\b(?:a[ií]sla|a[ií]slar|aislamiento|isolate|revisar?\s+(?:la\s+)?app(?:licaci[oó]n)?)\b',
+    r'\b(?:a[ií]sla|a[ií]slar|aislamiento|isolate|revisar?\s+(?:la\s+)?(?:app|aplicaci[oó]n))\b',
     caseSensitive: false,
   );
   static final RegExp _statusCommand = RegExp(
