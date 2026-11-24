@@ -41,11 +41,12 @@ motor informa el resultado; no hay barras de progreso simuladas.
    firma RS256 ya está implementada, pero solo se activa cuando el operador
    configura `AURA_BLOCKLIST_MANIFEST_PUBLIC_KEYS` y publica el `.sig`; sin esa
    configuración sigue en modo heredado y lo registra.
-2. Los casos ya persisten cifrados en `SecureVault`, con decisión explícita
-   (`abierta`/`descartada`), tope de 200 registros y retención de 30 días. No
-   hay estados intermedios (`en revisión`, `mitigada`) ni migraciones versionadas
-   más allá del esquema 1; ver `docs/FIRMA_MANIFIESTO_BLOCKLISTS_2026-11-22.md`
-   para la parte de firma.
+2. Los casos ya persisten cifrados en `SecureVault`, con estados `abierta`,
+   `en revisión`, `mitigada` y `descartada`, tope de 200 registros y retención
+   de 30 días. `mitigada` exige contención real (DNS activo confirmado o
+   aislamiento confirmado por el agente); no se usa para una simple revisión.
+   Quedan pendientes las pruebas en dispositivo; ver
+   `docs/FIRMA_MANIFIESTO_BLOCKLISTS_2026-11-22.md` para la firma.
 3. No hay contención por aplicación ni respuesta automática más allá del bloqueo
    DNS y el aislamiento global.
 4. Cobertura limitada: QUIC/ECH y IP directa no permiten ver el dominio; no hay
@@ -79,7 +80,7 @@ motor informa el resultado; no hay barras de progreso simuladas.
 ## Orden recomendado
 
 1. ~~Persistencia cifrada de casos, decisión del usuario, tope y retención.~~
-   Hecho en esta iteración; faltan estados de flujo y prueba en dispositivo.
+   Hecho, incluidos estados y playbooks; falta la prueba en dispositivo.
 2. ~~Firma del manifiesto de feeds con clave pública embebida y rotación.~~
    Infraestructura y pruebas hechas; falta configurar la clave real y publicar
    el `.sig` para que la protección esté activa.
