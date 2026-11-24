@@ -131,12 +131,54 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
     }
     if (!await _confirmThreatAction(threatCase) || !mounted) return;
     setState(() => _runningThreatId = threatCase.id);
+
+    // El agente emite el resultado real de la herramienta. Solo marcamos el
+    // caso como mitigado si Android confirmó el aislamiento; abrir Ajustes
+    // deja el caso en revisión, no lo declara resuelto.
+    var actionConfirmed = false;
+    var isolationConfirmed = false;
+    final subscription = AgentController.instance.events.listen((event) {
+      final data = event.data;
+      if (data == null) return;
+      if (data['isolation_active'] == true) {
+        isolationConfirmed = true;
+        actionConfirmed = true;
+      }
+      if (data['user_action_required'] == true || data['ok'] == true) {
+        actionConfirmed = true;
+      }
+    });
     try {
       final instruction = threatCase.action == AuraThreatCaseAction.reviewApp
           ? 'revisar la app $packageName'
           : 'aislamiento de emergencia';
       await AgentController.instance.run(instruction, confirmedByUser: true);
+      if (!mounted) return;
+      if (threatCase.action == AuraThreatCaseAction.emergencyIsolation &&
+          isolationConfirmed) {
+        await _setThreatStatus(
+          threatCase,
+          AuraThreatDisposition.mitigated,
+          detail: 'Aislamiento de red confirmado por el agente.',
+        );
+      } else if (threatCase.action == AuraThreatCaseAction.reviewApp &&
+          actionConfirmed) {
+        await _setThreatStatus(
+          threatCase,
+          AuraThreatDisposition.inReview,
+          detail: 'Ficha de Ajustes abierta; revisión pendiente.',
+        );
+      } else {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'La acción no confirmó un cambio. El caso sigue como estaba.',
+            ),
+          ),
+        );
+      }
     } finally {
+      await subscription.cancel();
       if (mounted) setState(() => _runningThreatId = null);
     }
   }
@@ -160,12 +202,17 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
     }
   }
 
-  Future<void> _setThreatDisposition(AuraThreatCase threatCase) async {
+  Future<void> _setThreatStatus(
+    AuraThreatCase threatCase,
+    AuraThreatDisposition disposition, {
+    String? detail,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
     final updated = threatCase.copyWith(
-      disposition: threatCase.isDismissed
-          ? AuraThreatDisposition.open
-          : AuraThreatDisposition.dismissed,
-      updatedAt: DateTime.now().millisecondsSinceEpoch,
+      disposition: disposition,
+      statusChangedAt: now,
+      statusDetail: detail,
+      updatedAt: now,
     );
     setState(() {
       _storedThreats = <AuraThreatCase>[
@@ -189,6 +236,76 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
             'No se pudo guardar la decisión en el almacén cifrado.',
           ),
         ),
+      );
+    }
+  }
+
+  Future<void> _toggleThreat(AuraThreatCase threatCase) async {
+    final opening = _expandedThreatId != threatCase.id;
+    setState(
+      () => _expandedThreatId = opening ? threatCase.id : null,
+    );
+    if (opening && threatCase.disposition == AuraThreatDisposition.open) {
+      await _setThreatStatus(
+        threatCase,
+        AuraThreatDisposition.inReview,
+        detail: 'Evidencia abierta por el usuario.',
+      );
+    }
+  }
+
+  Future<void> _toggleDismissed(AuraThreatCase threatCase) async {
+    await _setThreatStatus(
+      threatCase,
+      threatCase.isDismissed
+          ? AuraThreatDisposition.open
+          : AuraThreatDisposition.dismissed,
+      detail: threatCase.isDismissed
+          ? 'Restaurada por el usuario.'
+          : 'Descartada por el usuario.',
+    );
+  }
+
+  Future<void> _confirmMitigation(AuraThreatCase threatCase) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AuraTokens.surface,
+        title: const Text(
+          '¿Confirmar mitigación?',
+          style: TextStyle(
+            color: AuraTokens.textPrimary,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: const Text(
+          'El bloqueo DNS ya está activo y confirmas que revisaste el origen. '
+          'El caso pasará a mitigado, pero la app no se elimina y QUIC, ECH '
+          'o una IP directa pueden seguir fuera de ese bloqueo.',
+          style: TextStyle(
+            color: AuraTokens.textMuted,
+            fontSize: 13,
+            height: 1.5,
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Confirmar mitigación'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await _setThreatStatus(
+        threatCase,
+        AuraThreatDisposition.mitigated,
+        detail: 'Bloqueo DNS activo; revisión confirmada por el usuario.',
       );
     }
   }
@@ -221,6 +338,9 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
         .where((threat) => threat.state == AuraThreatCaseState.needsReview)
         .length;
     final dismissedThreats = threats.length - activeThreats.length;
+    final mitigatedThreats = activeThreats
+        .where((threat) => threat.isMitigated)
+        .length;
     final maxSeverity = activeThreats.isEmpty
         ? null
         : activeThreats
@@ -362,6 +482,7 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
                       threats: activeThreats,
                       contained: containedThreats,
                       review: reviewThreats,
+                      mitigated: mitigatedThreats,
                       dismissed: dismissedThreats,
                       maxSeverity: maxSeverity!,
                       onOpen: () =>
@@ -429,17 +550,15 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
                                     threatCase: threat,
                                     expanded: _expandedThreatId == threat.id,
                                     busy: _runningThreatId == threat.id,
-                                    onToggle: () => setState(
-                                      () => _expandedThreatId =
-                                          _expandedThreatId == threat.id
-                                          ? null
-                                          : threat.id,
-                                    ),
+                                    onToggle: () => _toggleThreat(threat),
                                     onAction: threat.isActionable
                                         ? () => _runThreatAction(threat)
                                         : null,
+                                    onMitigate: threat.canConfirmMitigation
+                                        ? () => _confirmMitigation(threat)
+                                        : null,
                                     onDismiss: () =>
-                                        _setThreatDisposition(threat),
+                                        _toggleDismissed(threat),
                                   );
                                 },
                               )
@@ -550,6 +669,7 @@ class _ThreatRibbon extends StatelessWidget {
     required this.threats,
     required this.contained,
     required this.review,
+    required this.mitigated,
     required this.dismissed,
     required this.maxSeverity,
     required this.onOpen,
@@ -558,6 +678,7 @@ class _ThreatRibbon extends StatelessWidget {
   final List<AuraThreatCase> threats;
   final int contained;
   final int review;
+  final int mitigated;
   final int dismissed;
   final AuraFindingSeverity maxSeverity;
   final VoidCallback onOpen;
@@ -569,7 +690,7 @@ class _ThreatRibbon extends StatelessWidget {
       button: true,
       label:
           '${threats.length} detecciones locales. $contained con DNS bloqueado, '
-          '$review por revisar.',
+          '$review por revisar, $mitigated mitigadas.',
       child: InkWell(
         onTap: onOpen,
         borderRadius: BorderRadius.circular(14),
@@ -599,6 +720,7 @@ class _ThreatRibbon extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       '$contained con DNS bloqueado · $review por revisar'
+                      '${mitigated > 0 ? ' · $mitigated mitigadas' : ''}'
                       '${dismissed > 0 ? ' · $dismissed descartadas' : ''}',
                       style: const TextStyle(
                         color: AuraTokens.textMuted,
@@ -679,6 +801,7 @@ class _ThreatCaseTile extends StatelessWidget {
     required this.busy,
     required this.onToggle,
     required this.onAction,
+    required this.onMitigate,
     required this.onDismiss,
   });
 
@@ -687,18 +810,23 @@ class _ThreatCaseTile extends StatelessWidget {
   final bool busy;
   final VoidCallback onToggle;
   final VoidCallback? onAction;
+  final VoidCallback? onMitigate;
   final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
     final color = _severityColor(threatCase.severity);
-    final stateColor = threatCase.isDismissed
-        ? AuraTokens.textMuted
-        : switch (threatCase.state) {
-            AuraThreatCaseState.dnsContained => AuraTokens.success,
-            AuraThreatCaseState.needsReview => AuraTokens.warning,
-            AuraThreatCaseState.informational => AuraTokens.textMuted,
-          };
+    final stateColor = switch (threatCase.state) {
+      AuraThreatCaseState.dnsContained => AuraTokens.success,
+      AuraThreatCaseState.needsReview => AuraTokens.warning,
+      AuraThreatCaseState.informational => AuraTokens.textMuted,
+    };
+    final statusColor = switch (threatCase.disposition) {
+      AuraThreatDisposition.open => AuraTokens.warning,
+      AuraThreatDisposition.inReview => AuraTokens.accent,
+      AuraThreatDisposition.mitigated => AuraTokens.success,
+      AuraThreatDisposition.dismissed => AuraTokens.textMuted,
+    };
     return Container(
       decoration: BoxDecoration(
         color: AuraTokens.surface.withValues(alpha: 0.78),
@@ -741,10 +869,8 @@ class _ThreatCaseTile extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     _MiniTag(
-                      label: threatCase.isDismissed
-                          ? 'descartada'
-                          : threatCase.stateLabel,
-                      color: stateColor,
+                      label: threatCase.dispositionLabel,
+                      color: statusColor,
                     ),
                   ],
                 ),
@@ -765,6 +891,10 @@ class _ThreatCaseTile extends StatelessWidget {
                   runSpacing: 4,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: <Widget>[
+                    _MiniTag(
+                      label: threatCase.stateLabel,
+                      color: stateColor,
+                    ),
                     _MiniTag(
                       label: threatCase.category.label,
                       color: AuraTokens.textMuted,
@@ -838,9 +968,61 @@ class _ThreatCaseTile extends StatelessWidget {
                       height: 1.45,
                     ),
                   ),
+                  if (threatCase.statusDetail != null) ...<Widget>[
+                    const SizedBox(height: 7),
+                    Text(
+                      'Estado del caso: ${threatCase.dispositionLabel}. '
+                      '${threatCase.statusDetail}',
+                      style: const TextStyle(
+                        color: AuraTokens.textMuted,
+                        fontSize: 11,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Plan de respuesta',
+                    style: TextStyle(
+                      color: AuraTokens.textPrimary,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  for (var index = 0;
+                      index < threatCase.playbook.length;
+                      index++)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            '${index + 1}. ${threatCase.playbook[index].title}',
+                            style: const TextStyle(
+                              color: AuraTokens.textPrimary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              height: 1.4,
+                            ),
+                          ),
+                          Text(
+                            threatCase.playbook[index].detail,
+                            style: const TextStyle(
+                              color: AuraTokens.textMuted,
+                              fontSize: 10.8,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
                 const SizedBox(height: 4),
-                Row(
+                Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 2,
                   children: <Widget>[
                     TextButton(
                       onPressed: onToggle,
@@ -854,7 +1036,19 @@ class _ThreatCaseTile extends StatelessWidget {
                         style: const TextStyle(fontSize: 11),
                       ),
                     ),
-                    const Spacer(),
+                    if (onMitigate != null && !threatCase.isDismissed)
+                      TextButton(
+                        onPressed: busy ? null : onMitigate,
+                        style: TextButton.styleFrom(
+                          foregroundColor: AuraTokens.success,
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          minimumSize: const Size(0, 32),
+                        ),
+                        child: const Text(
+                          'Confirmar mitigación',
+                          style: TextStyle(fontSize: 11),
+                        ),
+                      ),
                     TextButton(
                       onPressed: onDismiss,
                       style: TextButton.styleFrom(

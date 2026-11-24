@@ -9,8 +9,12 @@ enum AuraThreatCaseAction { none, reviewApp, emergencyIsolation }
 /// ese canal, no «eliminada» del dispositivo.
 enum AuraThreatCaseState { dnsContained, needsReview, informational }
 
-/// Decisión del usuario sobre el caso. No cambia la evidencia ni la severidad.
-enum AuraThreatDisposition { open, dismissed }
+/// Estado de gestión del caso. No cambia la evidencia ni la severidad.
+///
+/// `mitigated` solo se usa cuando una contención real ya está confirmada
+/// (por ejemplo, el bloqueo DNS sigue activo o el agente confirmó el
+/// aislamiento). No significa que la amenaza haya sido eliminada.
+enum AuraThreatDisposition { open, inReview, mitigated, dismissed }
 
 /// Caso de amenaza derivado de evidencia real.
 ///
@@ -37,8 +41,11 @@ class AuraThreatCase {
     this.signalCount = 1,
     this.disposition = AuraThreatDisposition.open,
     int? updatedAt,
+    int? statusChangedAt,
+    this.statusDetail,
   }) : firstSeenAt = firstSeenAt ?? observedAt,
-       updatedAt = updatedAt ?? observedAt;
+       updatedAt = updatedAt ?? observedAt,
+       statusChangedAt = statusChangedAt ?? updatedAt ?? observedAt;
 
   final String id;
   final AuraFindingCategory category;
@@ -58,8 +65,29 @@ class AuraThreatCase {
   final String? appName;
   final int signalCount;
   final AuraThreatDisposition disposition;
+  final int statusChangedAt;
+  final String? statusDetail;
 
   bool get isDismissed => disposition == AuraThreatDisposition.dismissed;
+
+  bool get isInReview => disposition == AuraThreatDisposition.inReview;
+
+  bool get isMitigated => disposition == AuraThreatDisposition.mitigated;
+
+  /// Solo se ofrece cuando la contención ya es real: el bloqueo DNS está
+  /// activo y el usuario confirma que revisó el origen. No se ofrece para
+  /// casos que solo requieren revisión.
+  bool get canConfirmMitigation =>
+      state == AuraThreatCaseState.dnsContained &&
+      disposition != AuraThreatDisposition.dismissed &&
+      !isMitigated;
+
+  String get dispositionLabel => switch (disposition) {
+    AuraThreatDisposition.open => 'abierta',
+    AuraThreatDisposition.inReview => 'en revisión',
+    AuraThreatDisposition.mitigated => 'mitigada',
+    AuraThreatDisposition.dismissed => 'descartada',
+  };
 
   bool get isActionable =>
       action != AuraThreatCaseAction.none &&
@@ -80,12 +108,19 @@ class AuraThreatCase {
 
   String get subjectLabel => appName ?? packageName ?? domain ?? 'dispositivo';
 
+  /// Plan de respuesta derivado de la evidencia. Son pasos para el usuario;
+  /// ninguna acción se ejecuta sin su confirmación y ninguna promete eliminar
+  /// una amenaza que Android no permita eliminar.
+  List<AuraThreatPlaybookStep> get playbook => _playbookFor(this);
+
   AuraThreatCase copyWith({
     AuraThreatDisposition? disposition,
     int? observedAt,
     int? firstSeenAt,
     int? updatedAt,
     int? signalCount,
+    int? statusChangedAt,
+    String? statusDetail,
   }) => AuraThreatCase(
     id: id,
     category: category,
@@ -105,10 +140,12 @@ class AuraThreatCase {
     signalCount: signalCount ?? this.signalCount,
     disposition: disposition ?? this.disposition,
     updatedAt: updatedAt ?? this.updatedAt,
+    statusChangedAt: statusChangedAt ?? this.statusChangedAt,
+    statusDetail: statusDetail ?? this.statusDetail,
   );
 
   Map<String, Object?> toMap() => <String, Object?>{
-    'schema': 1,
+    'schema': 2,
     'id': id,
     'category': category.name,
     'severity': severity.name,
@@ -124,6 +161,8 @@ class AuraThreatCase {
     'updated_at': updatedAt,
     'signal_count': signalCount,
     'disposition': disposition.name,
+    'status_changed_at': statusChangedAt,
+    if (statusDetail != null) 'status_detail': statusDetail!,
     if (domain != null) 'domain': domain!,
     if (packageName != null) 'package_name': packageName!,
     if (appName != null) 'app_name': appName!,
@@ -132,7 +171,8 @@ class AuraThreatCase {
   /// Reconstruye un caso almacenado y rechaza cualquier registro que no cumpla
   /// el esquema. El almacén es privado, pero no se confía en su contenido.
   static AuraThreatCase? fromMap(Map<String, dynamic> map) {
-    if (map['schema'] != 1) return null;
+    final schema = map['schema'];
+    if (schema != 1 && schema != 2) return null;
     final id = _boundedString(map['id'], 120);
     final title = _boundedString(map['title'], 300);
     final summary = _boundedString(map['summary'], 2000);
@@ -149,6 +189,12 @@ class AuraThreatCase {
       AuraThreatDisposition.values,
       map['disposition'],
     );
+    final statusChangedAt = schema == 2
+        ? _positiveInt(map['status_changed_at'])
+        : updatedAt;
+    final statusDetail = schema == 2 && map['status_detail'] != null
+        ? _boundedString(map['status_detail'], 300)
+        : null;
     if (id == null ||
         title == null ||
         summary == null ||
@@ -161,7 +207,13 @@ class AuraThreatCase {
         severity == null ||
         state == null ||
         action == null ||
-        disposition == null) {
+        disposition == null ||
+        statusChangedAt == null) {
+      return null;
+    }
+    if (schema == 2 &&
+        map['status_detail'] != null &&
+        statusDetail == null) {
       return null;
     }
     final evidence = _boundedStrings(map['evidence'], 8, 500);
@@ -192,6 +244,8 @@ class AuraThreatCase {
       signalCount: signalCount,
       disposition: disposition,
       updatedAt: updatedAt,
+      statusChangedAt: statusChangedAt,
+      statusDetail: statusDetail,
     );
   }
 
@@ -251,6 +305,130 @@ class AuraThreatCase {
     final normalized = value.trim();
     return _storedPackagePattern.hasMatch(normalized) ? normalized : null;
   }
+}
+
+/// Paso de un plan de respuesta. `action` indica qué acción existente puede
+/// acompañar el paso; no se ejecuta desde el playbook.
+class AuraThreatPlaybookStep {
+  const AuraThreatPlaybookStep({
+    required this.title,
+    required this.detail,
+    this.action = AuraThreatCaseAction.none,
+  });
+
+  final String title;
+  final String detail;
+  final AuraThreatCaseAction action;
+}
+
+List<AuraThreatPlaybookStep> _playbookFor(AuraThreatCase threatCase) {
+  final steps = <AuraThreatPlaybookStep>[];
+  switch (threatCase.category) {
+    case AuraFindingCategory.networkActivity:
+      steps.add(
+        AuraThreatPlaybookStep(
+          title: 'Contención observada',
+          detail: threatCase.state == AuraThreatCaseState.dnsContained
+              ? 'Aura bloqueó ${threatCase.domain ?? 'el dominio'} en DNS '
+                    'para el tráfico que pasa por su túnel. QUIC, ECH o una IP '
+                    'directa pueden evitar ese bloqueo.'
+              : 'La conexión apareció en la evidencia, pero no hay una '
+                    'contención universal confirmada.',
+        ),
+      );
+      steps.add(
+        AuraThreatPlaybookStep(
+          title: 'Identifica el origen',
+          detail:
+              'Origen observado: ${threatCase.subjectLabel}. Comprueba si esa '
+              'aplicación debería estar conectándose a ese destino.',
+        ),
+      );
+      if (threatCase.action == AuraThreatCaseAction.reviewApp) {
+        steps.add(
+          const AuraThreatPlaybookStep(
+            title: 'Revisa la ficha de la app',
+            detail:
+                'Abre Ajustes y revisa permisos, accesos y uso de red. Aura no '
+                'modifica la aplicación por su cuenta.',
+            action: AuraThreatCaseAction.reviewApp,
+          ),
+        );
+      }
+      if (threatCase.action == AuraThreatCaseAction.emergencyIsolation) {
+        steps.add(
+          const AuraThreatPlaybookStep(
+            title: 'Corta la red si el bloqueo se repite',
+            detail:
+                'El aislamiento detiene el forwarding del túnel y deja la VPN '
+                'en modo de descarte. Interrumpe las conexiones actuales.',
+            action: AuraThreatCaseAction.emergencyIsolation,
+          ),
+        );
+      }
+      steps.add(
+        const AuraThreatPlaybookStep(
+          title: 'Decide si la app sigue siendo confiable',
+          detail:
+              'Si no reconoces la aplicación, desinstálala desde Ajustes. '
+              'Android exige que esa decisión la tome el usuario.',
+        ),
+      );
+      break;
+    case AuraFindingCategory.installedApps:
+      steps.add(
+        AuraThreatPlaybookStep(
+          title: 'Abre la ficha de ${threatCase.subjectLabel}',
+          detail:
+              'Ajustes muestra permisos, accesos especiales y almacenamiento. '
+              'Aura no puede aislar ni desinstalar otra app sin privilegios '
+              'especiales.',
+          action: threatCase.action,
+        ),
+      );
+      steps.add(
+        const AuraThreatPlaybookStep(
+          title: 'Revisa permisos y accesos',
+          detail:
+              'Comprueba permisos sensibles, accesibilidad, superposición y '
+              'servicios en segundo plano. Revoca solo lo que no necesites.',
+        ),
+      );
+      steps.add(
+        const AuraThreatPlaybookStep(
+          title: 'Desinstala solo si no la reconoces',
+          detail:
+              'La desinstalación se hace desde Ajustes. Aura no la ejecuta en '
+              'silencio ni conserva una copia de tus datos.',
+        ),
+      );
+      break;
+    case AuraFindingCategory.devicePosture:
+      steps.add(
+        AuraThreatPlaybookStep(
+          title: 'Revisa el hallazgo en el dispositivo',
+          detail: threatCase.recommendedAction,
+        ),
+      );
+      steps.add(
+        const AuraThreatPlaybookStep(
+          title: 'Aplica el cambio en Ajustes',
+          detail:
+              'Aura solo puede leer las señales que Android expone. Los cambios '
+              'de postura, depuración o permisos los aplica el usuario.',
+        ),
+      );
+      steps.add(
+        const AuraThreatPlaybookStep(
+          title: 'Vuelve a auditar para confirmar',
+          detail:
+              'Una nueva auditoría compara el estado real; no se marca como '
+              'mitigado por haber abierto esta pantalla.',
+        ),
+      );
+      break;
+  }
+  return List<AuraThreatPlaybookStep>.unmodifiable(steps);
 }
 
 /// Convierte alertas correlacionadas y hallazgos del motor local en una lista
@@ -401,13 +579,27 @@ class AuraThreatCaseBuilder {
     }
     for (final liveCase in live) {
       final previous = merged[liveCase.id];
+      var disposition = previous?.disposition ?? liveCase.disposition;
+      var statusDetail = previous?.statusDetail;
+      var statusChangedAt = previous?.statusChangedAt ?? liveCase.statusChangedAt;
+      // Una mitigación no oculta actividad nueva: si el caso vuelve a
+      // observarse después de la mitigación, vuelve a revisión con evidencia.
+      if (previous != null &&
+          previous.disposition == AuraThreatDisposition.mitigated &&
+          liveCase.observedAt > previous.statusChangedAt) {
+        disposition = AuraThreatDisposition.inReview;
+        statusDetail = 'Nueva actividad observada después de la mitigación.';
+        statusChangedAt = now;
+      }
       merged[liveCase.id] = liveCase.copyWith(
         firstSeenAt: previous == null
             ? liveCase.firstSeenAt
             : (previous.firstSeenAt < liveCase.firstSeenAt
                   ? previous.firstSeenAt
                   : liveCase.firstSeenAt),
-        disposition: previous?.disposition ?? liveCase.disposition,
+        disposition: disposition,
+        statusDetail: statusDetail,
+        statusChangedAt: statusChangedAt,
         updatedAt: now,
       );
     }

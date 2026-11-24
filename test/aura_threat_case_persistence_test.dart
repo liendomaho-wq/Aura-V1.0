@@ -11,6 +11,7 @@ AuraThreatCase _case({
   int firstSeenAt = 1699999999000,
   int updatedAt = 1700000000000,
   AuraThreatDisposition disposition = AuraThreatDisposition.open,
+  String? statusDetail,
 }) => AuraThreatCase(
   id: id,
   category: AuraFindingCategory.networkActivity,
@@ -32,6 +33,7 @@ AuraThreatCase _case({
   appName: 'Navegador',
   signalCount: 3,
   disposition: disposition,
+  statusDetail: statusDetail,
   updatedAt: updatedAt,
 );
 
@@ -52,7 +54,10 @@ void main() {
   test(
     'un caso se serializa y se reconstruye sin perder evidencia ni estado',
     () {
-      final original = _case(disposition: AuraThreatDisposition.dismissed);
+      final original = _case(
+        disposition: AuraThreatDisposition.inReview,
+        statusDetail: 'Evidencia abierta por el usuario.',
+      );
       final restored = AuraThreatCase.fromMap(original.toMap());
 
       expect(restored, isNotNull);
@@ -62,7 +67,9 @@ void main() {
       expect(restored.packageName, 'com.example.app');
       expect(restored.evidence, original.evidence);
       expect(restored.limitations, original.limitations);
-      expect(restored.disposition, AuraThreatDisposition.dismissed);
+      expect(restored.disposition, AuraThreatDisposition.inReview);
+      expect(restored.statusDetail, 'Evidencia abierta por el usuario.');
+      expect(restored.statusChangedAt, original.statusChangedAt);
       expect(restored.firstSeenAt, original.firstSeenAt);
     },
   );
@@ -70,7 +77,7 @@ void main() {
   test('un registro con esquema o tipos inválidos no se acepta', () {
     final map = _case().toMap();
     expect(
-      AuraThreatCase.fromMap(<String, dynamic>{...map, 'schema': 2}),
+      AuraThreatCase.fromMap(<String, dynamic>{...map, 'schema': 3}),
       isNull,
     );
     expect(
@@ -147,6 +154,55 @@ void main() {
         limit: AuraThreatCaseBuilder.maxStoredCases,
       ),
       hasLength(stored.length),
+    );
+  });
+
+  test('un caso mitigado vuelve a revisión si aparece actividad nueva', () {
+    final now = 1700000100000;
+    final stored = _case(
+      observedAt: now - 5000,
+      updatedAt: now - 5000,
+      disposition: AuraThreatDisposition.mitigated,
+      statusDetail: 'Bloqueo DNS activo; revisión confirmada por el usuario.',
+    );
+    final live = _case(observedAt: now, updatedAt: now);
+
+    final merged = AuraThreatCaseBuilder.merge(
+      live: <AuraThreatCase>[live],
+      stored: <AuraThreatCase>[stored],
+      now: now,
+    );
+
+    expect(merged.single.disposition, AuraThreatDisposition.inReview);
+    expect(merged.single.statusDetail, contains('Nueva actividad'));
+    expect(merged.single.statusChangedAt, now);
+  });
+
+  test('un registro del esquema 1 se migra sin perder su decisión', () {
+    final oldMap = <String, dynamic>{
+      ..._case(disposition: AuraThreatDisposition.dismissed).toMap(),
+      'schema': 1,
+    }..remove('status_changed_at');
+    final restored = AuraThreatCase.fromMap(oldMap);
+
+    expect(restored, isNotNull);
+    expect(restored!.disposition, AuraThreatDisposition.dismissed);
+    expect(restored.statusChangedAt, restored.updatedAt);
+    expect(restored.statusDetail, isNull);
+  });
+
+  test('el playbook de red usa la contención real y no promete eliminación', () {
+    final playbook = _case().playbook;
+
+    expect(playbook, isNotEmpty);
+    expect(playbook.first.detail, contains('QUIC'));
+    expect(
+      playbook.any((step) => step.action == AuraThreatCaseAction.reviewApp),
+      isTrue,
+    );
+    expect(
+      playbook.any((step) => step.detail.contains('desinstálala')),
+      isTrue,
     );
   });
 
