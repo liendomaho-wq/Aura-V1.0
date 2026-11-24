@@ -17,7 +17,7 @@ CI y lo que todavía no puede hacer en Android con permisos ordinarios.
 | Integridad y actualizaciones | 10 % | 55 | Modelo RSA/SHA-256, feeds con digest y firma RS256 del manifiesto implementada con rotación; falta activarla, canal de actualización de código y autorreparación. |
 | Privacidad y resistencia a abuso | 10 % | 80 | Todo local, sin telemetría, confirmaciones explícitas, guardas de inyección y límites de argumentos. |
 | Cobertura de plataforma | 5 % | 35 | Solo Android, permisos ordinarios, sin Device Owner, sin iOS. |
-| Ingeniería y verificación | 10 % | 62 | 389 pruebas Flutter, 239 de Python, analyze y gates de CI; pantalla monolítica, singletons y ausencia de pruebas de widget/dispositivo. |
+| Ingeniería y verificación | 10 % | 62 | 394 pruebas Flutter, 239 de Python, analyze y gates de CI; pantalla monolítica, singletons y ausencia de pruebas de widget/dispositivo. |
 
 Ponderado: **57,5 → 58**. Las mejoras de esta iteración no suben el puntaje
 porque la firma sigue sin clave publicada y no hubo validación en el POVA 5.
@@ -33,7 +33,7 @@ porque la firma sigue sin clave publicada y no hubo validación en el POVA 5.
   varias claves y fallo cerrado cuando hay claves configuradas. Herramienta
   `tool/sign_blocklist_manifest.py` y 5 pruebas Python. Sin
   `AURA_BLOCKLIST_MANIFEST_PUBLIC_KEYS` sigue el modo heredado con advertencia.
-- **CI:** `Aura Flutter Quality` en 389 pruebas Flutter (1 omitida), 239 pruebas
+- **CI:** `Aura Flutter Quality` en 394 pruebas Flutter (1 omitida), 239 pruebas
   Python, analyze limpio y format limpio. `Aura Android Debug Build` compila el
   APK debug y el servicio Kotlin. `sbom` ahora instala el NDK declarado.
 
