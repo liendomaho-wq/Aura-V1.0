@@ -685,8 +685,10 @@ object AuraBlocklistService {
     open class BlocklistException(message: String, cause: Throwable? = null) :
         IOException(message, cause)
 
-    class BlocklistConfigurationException(message: String) :
-        IllegalStateException(message)
+    class BlocklistConfigurationException(
+        message: String,
+        cause: Throwable? = null,
+    ) : IllegalStateException(message, cause)
 
     class BlocklistIntegrityException(message: String, cause: Throwable? = null) :
         BlocklistException(message, cause)
