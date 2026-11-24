@@ -211,9 +211,7 @@ class AuraThreatCase {
         statusChangedAt == null) {
       return null;
     }
-    if (schema == 2 &&
-        map['status_detail'] != null &&
-        statusDetail == null) {
+    if (schema == 2 && map['status_detail'] != null && statusDetail == null) {
       return null;
     }
     final evidence = _boundedStrings(map['evidence'], 8, 500);
@@ -581,7 +579,8 @@ class AuraThreatCaseBuilder {
       final previous = merged[liveCase.id];
       var disposition = previous?.disposition ?? liveCase.disposition;
       var statusDetail = previous?.statusDetail;
-      var statusChangedAt = previous?.statusChangedAt ?? liveCase.statusChangedAt;
+      var statusChangedAt =
+          previous?.statusChangedAt ?? liveCase.statusChangedAt;
       // Una mitigación no oculta actividad nueva: si el caso vuelve a
       // observarse después de la mitigación, vuelve a revisión con evidencia.
       if (previous != null &&

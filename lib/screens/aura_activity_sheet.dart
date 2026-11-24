@@ -242,9 +242,7 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
 
   Future<void> _toggleThreat(AuraThreatCase threatCase) async {
     final opening = _expandedThreatId != threatCase.id;
-    setState(
-      () => _expandedThreatId = opening ? threatCase.id : null,
-    );
+    setState(() => _expandedThreatId = opening ? threatCase.id : null);
     if (opening && threatCase.disposition == AuraThreatDisposition.open) {
       await _setThreatStatus(
         threatCase,
@@ -557,8 +555,7 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
                                     onMitigate: threat.canConfirmMitigation
                                         ? () => _confirmMitigation(threat)
                                         : null,
-                                    onDismiss: () =>
-                                        _toggleDismissed(threat),
+                                    onDismiss: () => _toggleDismissed(threat),
                                   );
                                 },
                               )
@@ -891,10 +888,7 @@ class _ThreatCaseTile extends StatelessWidget {
                   runSpacing: 4,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: <Widget>[
-                    _MiniTag(
-                      label: threatCase.stateLabel,
-                      color: stateColor,
-                    ),
+                    _MiniTag(label: threatCase.stateLabel, color: stateColor),
                     _MiniTag(
                       label: threatCase.category.label,
                       color: AuraTokens.textMuted,
@@ -990,9 +984,11 @@ class _ThreatCaseTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  for (var index = 0;
-                      index < threatCase.playbook.length;
-                      index++)
+                  for (
+                    var index = 0;
+                    index < threatCase.playbook.length;
+                    index++
+                  )
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: Column(

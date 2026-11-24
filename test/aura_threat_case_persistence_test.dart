@@ -191,20 +191,23 @@ void main() {
     expect(restored.statusDetail, isNull);
   });
 
-  test('el playbook de red usa la contención real y no promete eliminación', () {
-    final playbook = _case().playbook;
+  test(
+    'el playbook de red usa la contención real y no promete eliminación',
+    () {
+      final playbook = _case().playbook;
 
-    expect(playbook, isNotEmpty);
-    expect(playbook.first.detail, contains('QUIC'));
-    expect(
-      playbook.any((step) => step.action == AuraThreatCaseAction.reviewApp),
-      isTrue,
-    );
-    expect(
-      playbook.any((step) => step.detail.contains('desinstálala')),
-      isTrue,
-    );
-  });
+      expect(playbook, isNotEmpty);
+      expect(playbook.first.detail, contains('QUIC'));
+      expect(
+        playbook.any((step) => step.action == AuraThreatCaseAction.reviewApp),
+        isTrue,
+      );
+      expect(
+        playbook.any((step) => step.detail.contains('desinstálala')),
+        isTrue,
+      );
+    },
+  );
 
   test('la fusión descarta casos fuera de la retención', () {
     final now = 1700000100000;
