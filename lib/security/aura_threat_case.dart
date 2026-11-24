@@ -380,7 +380,7 @@ class AuraThreatCaseBuilder {
         final byTime = right.observedAt.compareTo(left.observedAt);
         return byTime != 0 ? byTime : left.id.compareTo(right.id);
       });
-    return List<AuraThreatCase>.unmodifiable(ordered.take(limit));
+    return List<AuraThreatCase>.unmodifiable(ordered.take(maxCases));
   }
 
   /// Combina los casos vivos con los persistidos. Conserva la decisión del
