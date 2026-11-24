@@ -42,6 +42,13 @@ void main() {
     FlutterSecureStorage.setMockInitialValues(<String, String>{});
   });
 
+  test('el tope del modelo coincide con el del almacén cifrado', () {
+    expect(
+      AuraThreatCaseBuilder.maxStoredCases,
+      AuraSecureVault.maxThreatCases,
+    );
+  });
+
   test(
     'un caso se serializa y se reconstruye sin perder evidencia ni estado',
     () {
