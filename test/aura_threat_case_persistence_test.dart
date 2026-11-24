@@ -160,9 +160,7 @@ void main() {
   test('solo se ofrece mitigar cuando la contención DNS es real', () {
     expect(_case().canConfirmMitigation, isTrue);
     expect(
-      _case(
-        disposition: AuraThreatDisposition.mitigated,
-      ).canConfirmMitigation,
+      _case(disposition: AuraThreatDisposition.mitigated).canConfirmMitigation,
       isFalse,
     );
     expect(
