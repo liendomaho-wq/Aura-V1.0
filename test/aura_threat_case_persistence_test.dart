@@ -157,6 +157,36 @@ void main() {
     );
   });
 
+  test('solo se ofrece mitigar cuando la contención DNS es real', () {
+    expect(_case().canConfirmMitigation, isTrue);
+    expect(
+      _case(
+        disposition: AuraThreatDisposition.mitigated,
+      ).canConfirmMitigation,
+      isFalse,
+    );
+    expect(
+      _case(disposition: AuraThreatDisposition.dismissed).canConfirmMitigation,
+      isFalse,
+    );
+  });
+
+  test('las etiquetas de estado son explícitas', () {
+    expect(_case().dispositionLabel, 'abierta');
+    expect(
+      _case(disposition: AuraThreatDisposition.inReview).dispositionLabel,
+      'en revisión',
+    );
+    expect(
+      _case(disposition: AuraThreatDisposition.mitigated).dispositionLabel,
+      'mitigada',
+    );
+    expect(
+      _case(disposition: AuraThreatDisposition.dismissed).dispositionLabel,
+      'descartada',
+    );
+  });
+
   test('un caso mitigado vuelve a revisión si aparece actividad nueva', () {
     final now = 1700000100000;
     final stored = _case(

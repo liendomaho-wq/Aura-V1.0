@@ -202,11 +202,13 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
     }
   }
 
-  Future<void> _setThreatStatus(
+  Future<bool> _setThreatStatus(
     AuraThreatCase threatCase,
     AuraThreatDisposition disposition, {
     String? detail,
   }) async {
+    final previousStored = _storedThreats;
+    final previousLatest = _latestThreats;
     final now = DateTime.now().millisecondsSinceEpoch;
     final updated = threatCase.copyWith(
       disposition: disposition,
@@ -228,15 +230,22 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
       await AgentController.instance.writeStoredThreatCases(
         _latestThreats.map((threat) => threat.toMap()).toList(growable: false),
       );
+      return true;
     } on Object {
-      if (!mounted) return;
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(
-          content: Text(
-            'No se pudo guardar la decisión en el almacén cifrado.',
+      if (mounted) {
+        setState(() {
+          _storedThreats = previousStored;
+          _latestThreats = previousLatest;
+        });
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No se pudo guardar la decisión en el almacén cifrado.',
+            ),
           ),
-        ),
-      );
+        );
+      }
+      return false;
     }
   }
 
