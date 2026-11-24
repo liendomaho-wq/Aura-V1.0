@@ -259,6 +259,7 @@ class AuraThreatCaseBuilder {
   AuraThreatCaseBuilder._();
 
   static const int maxCases = 40;
+  static const int maxStoredCases = 200;
   static const int _maxEvidence = 8;
 
   static final RegExp _domainPattern = RegExp(
@@ -379,7 +380,7 @@ class AuraThreatCaseBuilder {
         final byTime = right.observedAt.compareTo(left.observedAt);
         return byTime != 0 ? byTime : left.id.compareTo(right.id);
       });
-    return List<AuraThreatCase>.unmodifiable(ordered.take(maxCases));
+    return List<AuraThreatCase>.unmodifiable(ordered.take(limit));
   }
 
   /// Combina los casos vivos con los persistidos. Conserva la decisión del
@@ -389,6 +390,7 @@ class AuraThreatCaseBuilder {
     required List<AuraThreatCase> stored,
     required int now,
     Duration retention = const Duration(days: 30),
+    int limit = maxCases,
   }) {
     final cutoff = now - retention.inMilliseconds;
     final merged = <String, AuraThreatCase>{};
@@ -419,7 +421,7 @@ class AuraThreatCaseBuilder {
         final byTime = right.updatedAt.compareTo(left.updatedAt);
         return byTime != 0 ? byTime : left.id.compareTo(right.id);
       });
-    return List<AuraThreatCase>.unmodifiable(ordered.take(maxCases));
+    return List<AuraThreatCase>.unmodifiable(ordered.take(limit));
   }
 
   static AuraFindingSeverity _alertSeverity(AuraThreatSeverity severity) =>

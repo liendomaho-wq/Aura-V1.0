@@ -112,6 +112,37 @@ void main() {
     },
   );
 
+  test('la fusión puede conservar más de 40 casos para el almacén', () {
+    final now = 1700000100000;
+    final stored = <AuraThreatCase>[
+      for (var index = 0; index < 60; index++)
+        _case(
+          id: 'network:caso$index.example:com.example.app',
+          observedAt: now - index,
+          firstSeenAt: now - index,
+          updatedAt: now - index,
+        ),
+    ];
+
+    expect(
+      AuraThreatCaseBuilder.merge(
+        live: const <AuraThreatCase>[],
+        stored: stored,
+        now: now,
+      ),
+      hasLength(AuraThreatCaseBuilder.maxCases),
+    );
+    expect(
+      AuraThreatCaseBuilder.merge(
+        live: const <AuraThreatCase>[],
+        stored: stored,
+        now: now,
+        limit: AuraThreatCaseBuilder.maxStoredCases,
+      ),
+      hasLength(stored.length),
+    );
+  });
+
   test('la fusión descarta casos fuera de la retención', () {
     final now = 1700000100000;
     final expired = _case(

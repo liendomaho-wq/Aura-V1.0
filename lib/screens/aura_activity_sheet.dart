@@ -177,9 +177,20 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
         updated,
       ];
     });
-    await AgentController.instance.writeStoredThreatCases(
-      _latestThreats.map((threat) => threat.toMap()).toList(growable: false),
-    );
+    try {
+      await AgentController.instance.writeStoredThreatCases(
+        _latestThreats.map((threat) => threat.toMap()).toList(growable: false),
+      );
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No se pudo guardar la decisión en el almacén cifrado.',
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -190,12 +201,16 @@ class _AuraActivitySheetState extends State<AuraActivitySheet> {
       alerts: state.threatAlerts,
       report: findings,
     );
-    final threats = AuraThreatCaseBuilder.merge(
+    final mergedThreats = AuraThreatCaseBuilder.merge(
       live: liveThreats,
       stored: _storedThreats,
       now: DateTime.now().millisecondsSinceEpoch,
+      limit: AuraThreatCaseBuilder.maxStoredCases,
     );
-    _latestThreats = threats;
+    _latestThreats = mergedThreats;
+    final threats = mergedThreats
+        .take(AuraThreatCaseBuilder.maxCases)
+        .toList(growable: false);
     final activeThreats = threats
         .where((threat) => !threat.isDismissed)
         .toList(growable: false);
