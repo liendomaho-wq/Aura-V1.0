@@ -37,11 +37,15 @@ motor informa el resultado; no hay barras de progreso simuladas.
 
 ## Brechas de ciberdefensa
 
-1. El manifiesto de blocklists se valida con SHA-256 y TLS, pero no lleva una
-   firma propia verificada con una clave pública embebida. Un servidor
-   comprometido podría servir manifiesto y feeds coherentes entre sí.
-2. Los casos no persisten entre sesiones ni tienen estado (`nueva`, `mitigada`,
-   `descartada`) con retención configurable.
+1. El manifiesto de blocklists se valida con SHA-256 y TLS. La verificación de
+   firma RS256 ya está implementada, pero solo se activa cuando el operador
+   configura `AURA_BLOCKLIST_MANIFEST_PUBLIC_KEYS` y publica el `.sig`; sin esa
+   configuración sigue en modo heredado y lo registra.
+2. Los casos ya persisten cifrados en `SecureVault`, con decisión explícita
+   (`abierta`/`descartada`), tope de 200 registros y retención de 30 días. No
+   hay estados intermedios (`en revisión`, `mitigada`) ni migraciones versionadas
+   más allá del esquema 1; ver `docs/FIRMA_MANIFIESTO_BLOCKLISTS_2026-11-22.md`
+   para la parte de firma.
 3. No hay contención por aplicación ni respuesta automática más allá del bloqueo
    DNS y el aislamiento global.
 4. Cobertura limitada: QUIC/ECH y IP directa no permiten ver el dominio; no hay
@@ -65,8 +69,8 @@ motor informa el resultado; no hay barras de progreso simuladas.
    golden del núcleo; la lógica pura sí está cubierta.
 5. No hay pruebas de integración en dispositivo ni presupuesto de rendimiento
    medido en el TECNO POVA 5.
-6. Los casos viven en memoria; falta una base local cifrada con retención y
-   migraciones.
+6. La persistencia de casos es un documento JSON cifrado con tope y retención,
+   no una base con consultas indexadas; si el volumen crece habrá que migrar.
 7. Los textos están hardcodeados en español; no hay capa de localización.
 8. Varios `catch (Object)` son deliberadamente amplios para no romper la app,
    pero pueden ocultar errores de programación si no se registran localmente.
@@ -74,8 +78,11 @@ motor informa el resultado; no hay barras de progreso simuladas.
 
 ## Orden recomendado
 
-1. Persistencia cifrada de casos y estados, con retención y borrado.
-2. Firma del manifiesto de feeds con clave pública embebida y rotación.
+1. ~~Persistencia cifrada de casos, decisión del usuario, tope y retención.~~
+   Hecho en esta iteración; faltan estados de flujo y prueba en dispositivo.
+2. ~~Firma del manifiesto de feeds con clave pública embebida y rotación.~~
+   Infraestructura y pruebas hechas; falta configurar la clave real y publicar
+   el `.sig` para que la protección esté activa.
 3. Pruebas de widget/golden de actividad, amenazas y núcleo.
 4. Contención por app solo si se puede hacer con una API de Android que lo
    garantice; si no, mantener la verdad actual y no prometerlo.

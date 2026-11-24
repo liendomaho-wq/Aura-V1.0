@@ -13,7 +13,7 @@ CI y lo que todavía no puede hacer en Android con permisos ordinarios.
 | Control de red y prevención | 20 % | 65 | VPN local, DNS/SNI, bloqueo de DoH/QUIC, blocklists con SHA-256, modelo firmado. Falta firma del manifiesto de feeds. |
 | Detección y correlación | 20 % | 60 | Bosque local de 500 árboles, correlador de 10 minutos, postura, permisos, firmas y ofuscación. QUIC/ECH/IP directa siguen siendo puntos ciegos. |
 | Respuesta y contención | 15 % | 40 | Bloqueo DNS y aislamiento de emergencia reales; no hay contención por app, playbooks ni eliminación automática. |
-| Evidencia y gestión de casos | 10 % | 50 | Actividad en vivo, auditoría cifrada y casos con evidencia. No hay persistencia de casos ni estados entre sesiones. |
+| Evidencia y gestión de casos | 10 % | 50 | Actividad en vivo, auditoría cifrada y casos con evidencia. Ya persisten cifrados con decisión, tope y retención; faltan estados de flujo y validación en dispositivo. |
 | Integridad y actualizaciones | 10 % | 55 | Modelo RSA/SHA-256 y feeds con digest; falta firma del manifiesto, canal de actualización de código y autorreparación. |
 | Privacidad y resistencia a abuso | 10 % | 80 | Todo local, sin telemetría, confirmaciones explícitas, guardas de inyección y límites de argumentos. |
 | Cobertura de plataforma | 5 % | 35 | Solo Android, permisos ordinarios, sin Device Owner, sin iOS. |
@@ -38,10 +38,13 @@ Ponderado: **57,5 → 58**.
 ### P0 — antes de llamarlo «sistema de amenazas»
 
 1. **Firmar el manifiesto de blocklists** con una clave pública embebida y
-   rotación. Hoy el SHA-256 protege la integridad del transporte, no autentica
-   al editor si el servidor se compromete.
-2. **Persistir casos cifrados** con estados (`nueva`, `en revisión`, `mitigada`,
-   `descartada`), retención configurable y borrado verificable.
+   rotación. Infraestructura implementada (`AURA_BLOCKLIST_MANIFEST_PUBLIC_KEYS`,
+   RS256, `.sig`, rotación y herramienta `tool/sign_blocklist_manifest.py`);
+   **no está activa** hasta configurar una clave y publicar el `.sig`. Sin
+   configurar sigue el modo heredado con advertencia.
+2. **Persistir casos cifrados** con decisión (`abierta`/`descartada`),
+   retención de 30 días, tope de 200 y borrado global verificable. Hecho; faltan
+   estados `en revisión`/`mitigada` y la prueba en el POVA 5.
 3. **Playbooks de respuesta** por caso: contener en DNS, aislar la red, abrir la
    ficha de la app o lanzar el desinstalador del sistema. Nunca desinstalar en
    silencio.
