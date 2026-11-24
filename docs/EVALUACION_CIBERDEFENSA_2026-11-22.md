@@ -10,16 +10,30 @@ CI y lo que todavía no puede hacer en Android con permisos ordinarios.
 
 | Dimensión | Peso | Puntaje | Por qué |
 | --- | ---: | ---: | --- |
-| Control de red y prevención | 20 % | 65 | VPN local, DNS/SNI, bloqueo de DoH/QUIC, blocklists con SHA-256, modelo firmado. Falta firma del manifiesto de feeds. |
+| Control de red y prevención | 20 % | 65 | VPN local, DNS/SNI, bloqueo de DoH/QUIC, blocklists con SHA-256 y verificación RS256 opcional del manifiesto. La firma aún no está activa en una compilación publicada. |
 | Detección y correlación | 20 % | 60 | Bosque local de 500 árboles, correlador de 10 minutos, postura, permisos, firmas y ofuscación. QUIC/ECH/IP directa siguen siendo puntos ciegos. |
 | Respuesta y contención | 15 % | 40 | Bloqueo DNS y aislamiento de emergencia reales; no hay contención por app, playbooks ni eliminación automática. |
 | Evidencia y gestión de casos | 10 % | 50 | Actividad en vivo, auditoría cifrada y casos con evidencia. Ya persisten cifrados con decisión, tope y retención; faltan estados de flujo y validación en dispositivo. |
-| Integridad y actualizaciones | 10 % | 55 | Modelo RSA/SHA-256 y feeds con digest; falta firma del manifiesto, canal de actualización de código y autorreparación. |
+| Integridad y actualizaciones | 10 % | 55 | Modelo RSA/SHA-256, feeds con digest y firma RS256 del manifiesto implementada con rotación; falta activarla, canal de actualización de código y autorreparación. |
 | Privacidad y resistencia a abuso | 10 % | 80 | Todo local, sin telemetría, confirmaciones explícitas, guardas de inyección y límites de argumentos. |
 | Cobertura de plataforma | 5 % | 35 | Solo Android, permisos ordinarios, sin Device Owner, sin iOS. |
-| Ingeniería y verificación | 10 % | 62 | 382 pruebas Flutter, analyze y gates de CI; pantalla monolítica, singletons y ausencia de pruebas de widget/dispositivo. |
+| Ingeniería y verificación | 10 % | 62 | 389 pruebas Flutter, 239 de Python, analyze y gates de CI; pantalla monolítica, singletons y ausencia de pruebas de widget/dispositivo. |
 
-Ponderado: **57,5 → 58**.
+Ponderado: **57,5 → 58**. Las mejoras de esta iteración no suben el puntaje
+porque la firma sigue sin clave publicada y no hubo validación en el POVA 5.
+
+## Progreso posterior a la evaluación
+
+- **Casos persistentes:** `SecureVault` guarda hasta 200 casos, retención de 30
+  días, decisión `abierta`/`descartada`, restauración y purga global verificable.
+  La hoja conserva el historial completo y muestra solo 40 casos por vista.
+- **Firma del manifiesto:** verificación RSA/SHA-256 con `key_id`, rotación de
+  varias claves y fallo cerrado cuando hay claves configuradas. Herramienta
+  `tool/sign_blocklist_manifest.py` y 5 pruebas Python. Sin
+  `AURA_BLOCKLIST_MANIFEST_PUBLIC_KEYS` sigue el modo heredado con advertencia.
+- **CI:** `Aura Flutter Quality` en 389 pruebas Flutter (1 omitida), 239 pruebas
+  Python, analyze limpio y format limpio. `Aura Android Debug Build` compila el
+  APK debug y el servicio Kotlin. `sbom` ahora instala el NDK declarado.
 
 ## Lo que ya es sólido
 
