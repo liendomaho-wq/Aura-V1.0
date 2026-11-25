@@ -1,0 +1,97 @@
+name: Publicar APK de depuracion
+
+# Los artifacts caducan y su descarga exige sesion iniciada en la web de
+# Actions. Esta publicacion toma el APK ya construido por un run concreto y lo
+# deja como asset de una release, con un enlace normal que se puede abrir desde
+# el telefono. No recompila nada: los bytes son los mismos del run de origen.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'ID del run que contiene el artifact aura-debug-*'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    name: Publicar APK del run ${{ inputs.run_id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Descargar el artifact del run indicado
+        uses: actions/download-artifact@v4
+        with:
+          pattern: aura-debug-*
+          path: artifact
+          merge-multiple: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.run_id }}
+
+      - name: Verificar el APK y recalcular su huella
+        id: verify
+        run: |
+          set -euo pipefail
+          apk=$(find artifact -name app-debug.apk -type f | head -n 1)
+          if [ -z "$apk" ]; then
+            echo '::error title=Sin APK::El run no contiene app-debug.apk.'
+            exit 1
+          fi
+          size=$(stat -c%s "$apk")
+          if [ "$size" -lt 1000000 ]; then
+            echo "::error title=APK sospechosamente pequeno::$size bytes"
+            exit 1
+          fi
+          sha=$(sha256sum "$apk" | cut -d' ' -f1)
+          mkdir -p dist
+          cp "$apk" dist/app-debug.apk
+          printf '%s  app-debug.apk\n' "$sha" > dist/SHA256SUMS
+          if [ -f artifact/SOURCE_COMMIT.txt ]; then
+            cp artifact/SOURCE_COMMIT.txt dist/SOURCE_COMMIT.txt
+            commit=$(cat artifact/SOURCE_COMMIT.txt)
+          else
+            printf 'no declarado\n' > dist/SOURCE_COMMIT.txt
+            commit='no declarado'
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "::notice title=APK verificado::sha256=$sha bytes=$size commit=$commit"
+
+      - name: Publicar la release con el APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ inputs.run_id }}
+          SHA: ${{ steps.verify.outputs.sha }}
+          COMMIT: ${{ steps.verify.outputs.commit }}
+        run: |
+          set -euo pipefail
+          tag="debug-apk-${RUN_ID}"
+          notes=$(cat <<EOF
+          APK de depuracion generado por el run ${RUN_ID}.
+
+          - Commit de origen: ${COMMIT}
+          - SHA-256: ${SHA}
+          - Firma: clave de depuracion, no es una build de produccion.
+          - Verificacion del run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}
+
+          Instalacion: descarga app-debug.apk en el telefono y permita instalar
+          desde esta fuente. Si ya hay una version con otro certificado, Android
+          pedira desinstalar primero y eso borra SecureVault.
+          EOF
+          )
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/app-debug.apk dist/SHA256SUMS dist/SOURCE_COMMIT.txt \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Aura depuracion (${COMMIT:0:7})" \
+              --notes "$notes" \
+              --prerelease \
+              dist/app-debug.apk dist/SHA256SUMS dist/SOURCE_COMMIT.txt
+          fi
+          echo "::notice title=Release publicada::https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"
