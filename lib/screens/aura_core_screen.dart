@@ -657,7 +657,6 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
     if (!_isAuthenticated || _isRunning) return;
     setState(() => _isRunning = true);
     try {
-      final controller = AgentController.instance;
       await AuraIntentParser.executeCommand('audita dispositivo');
       if (!mounted) return;
       await AuraIntentParser.executeCommand('escanea aplicaciones');
