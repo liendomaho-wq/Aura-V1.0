@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../agent/agent_controller.dart';
 import '../agent/agent_event.dart';
+import '../agent/aura_conversation.dart';
 import '../ai_brain.dart';
 import '../explanation/aura_verdict_explanation.dart';
 import '../inference/aura_host_policy.dart';
@@ -91,7 +92,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
   List<Map<String, dynamic>> _localTelemetryEvents =
       const <Map<String, dynamic>>[];
   String? _coverageAutotestStatus;
-  int _lastRenderedEventCount = -1;
+  _AuraCoreView _view = _AuraCoreView.essential;
 
   @override
   void initState() {
@@ -626,7 +627,6 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
     try {
       final controller = AgentController.instance;
       controller.reportTerminalInput(instruction);
-      _scrollToLatest(controller.history.length, force: true);
 
       // Execute immediately. Progress must come from the real agent/tool
       // callbacks; artificial delays and fabricated "thinking" events make
@@ -648,8 +648,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
         }
       }
       if (mounted) {
-        _scrollToLatest(controller.history.length, force: true);
-      }
+        }
     } finally {
       if (mounted) setState(() => _isRunning = false);
     }
@@ -664,7 +663,6 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
       if (!mounted) return;
       await AuraIntentParser.executeCommand('escanea aplicaciones');
       if (!mounted) return;
-      _scrollToLatest(controller.history.length, force: true);
     } finally {
       if (mounted) setState(() => _isRunning = false);
     }
@@ -943,17 +941,6 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
     return '$time · $type · $domain · $action';
   }
 
-  void _scrollToLatest(int eventCount, {bool force = false}) {
-    if (!force && eventCount == _lastRenderedEventCount) return;
-    final keepInitialOverview = _lastRenderedEventCount < 0 && !force;
-    _lastRenderedEventCount = eventCount;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || keepInitialOverview) return;
-      if (!_scrollController.hasClients) return;
-      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AuraStateProvider>();
@@ -1137,20 +1124,27 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                         metrics: presenceMetrics,
                       ),
                       SizedBox(height: compactLayout ? 12 : 18),
-                      AuraIntentConstellation(intents: intents),
-                      SizedBox(height: compactLayout ? 10 : 18),
-                      _FindingsCenter(
-                        report: findingsReport,
-                        scanning: _isRunning,
-                        onScan: quickActionsEnabled ? _runFindingsScan : null,
+                      _AuraViewSwitch(
+                        value: _view,
+                        onChanged: (value) => setState(() => _view = value),
                       ),
-                      SizedBox(height: compactLayout ? 10 : 18),
-                      if (showLlmBanner)
-                        _AuraLlmSetupBanner(
-                          controller: llmSetup,
-                          onPrepare: () =>
-                              showAuraLlmSetupSheet(context, llmSetup),
+                      SizedBox(height: compactLayout ? 10 : 16),
+                      if (_view == _AuraCoreView.essential) ...[
+                        AuraIntentConstellation(intents: intents),
+                        SizedBox(height: compactLayout ? 10 : 18),
+                        _FindingsCenter(
+                          report: findingsReport,
+                          scanning: _isRunning,
+                          onScan: quickActionsEnabled ? _runFindingsScan : null,
                         ),
+                        SizedBox(height: compactLayout ? 10 : 18),
+                        if (showLlmBanner)
+                          _AuraLlmSetupBanner(
+                            controller: llmSetup,
+                            onPrepare: () =>
+                                showAuraLlmSetupSheet(context, llmSetup),
+                          ),
+                      ],
                       if (_isAuthenticated)
                         StreamBuilder<AgentEvent>(
                           stream: AgentController.instance.events,
@@ -1201,9 +1195,40 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                                   _AccessibilityRetry(
                                     onRetry: _refreshAccessibilityServices,
                                   ),
-                                if (events.isEmpty) const _SilentStream(),
-                                for (final event in events)
-                                  _SyslogLine(event: event),
+                                if (_view == _AuraCoreView.essential)
+                                  _LastExchangeCard(
+                                    turns:
+                                        AuraConversationMemory.instance.turns,
+                                    onOpenConversation: () => setState(
+                                      () => _view = _AuraCoreView.conversation,
+                                    ),
+                                  )
+                                else ...[
+                                  _ConversationThread(
+                                    turns:
+                                        AuraConversationMemory.instance.turns,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: TextButton(
+                                      onPressed: () =>
+                                          showAuraActivitySheet(context),
+                                      child: const Text('Ver todo en actividad'),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  if (events.isEmpty)
+                                    const _SilentStream()
+                                  else ...[
+                                    const _TechLogLabel(),
+                                    for (final event in events.reversed
+                                        .take(10)
+                                        .toList()
+                                        .reversed)
+                                      _SyslogLine(event: event),
+                                  ],
+                                ],
                               ],
                             );
                           },
@@ -2515,4 +2540,266 @@ class _AccessibilityRetry extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Dos vistas sobre el mismo estado real: lo esencial del dispositivo y la
+/// conversación. El hilo deja de crecer dentro de la vista principal, que era
+/// lo que empujaba la pantalla hacia abajo con cada evento.
+enum _AuraCoreView { essential, conversation }
+
+class _AuraViewSwitch extends StatelessWidget {
+  const _AuraViewSwitch({required this.value, required this.onChanged});
+
+  final _AuraCoreView value;
+  final ValueChanged<_AuraCoreView> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _tab('ESENCIAL', _AuraCoreView.essential),
+        const SizedBox(width: 24),
+        _tab('CONVERSACIÓN', _AuraCoreView.conversation),
+      ],
+    );
+  }
+
+  Widget _tab(String label, _AuraCoreView target) {
+    final selected = value == target;
+    return GestureDetector(
+      onTap: selected ? null : () => onChanged(target),
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? AuraTokens.textPrimary : AuraTokens.textMuted,
+                fontSize: 10.5,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                letterSpacing: 1.7,
+              ),
+            ),
+            const SizedBox(height: 5),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              height: 1.5,
+              width: selected ? 42 : 0,
+              color: AuraTokens.accent,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Último intercambio, sin historial: lo que Aura dijo la última vez y lo que
+/// se le preguntó. El resto vive en la vista de conversación.
+class _LastExchangeCard extends StatelessWidget {
+  const _LastExchangeCard({
+    required this.turns,
+    required this.onOpenConversation,
+  });
+
+  final List<AuraConversationTurn> turns;
+  final VoidCallback onOpenConversation;
+
+  @override
+  Widget build(BuildContext context) {
+    AuraConversationTurn? lastUser;
+    AuraConversationTurn? lastAura;
+    for (final turn in turns) {
+      if (turn.role == 'user') {
+        lastUser = turn;
+      } else if (turn.role == 'aura') {
+        lastAura = turn;
+      }
+    }
+    if (lastUser == null && lastAura == null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Todavía no hablamos. Preguntame un concepto, tu estado o una '
+              'acción: respondo en el dispositivo.',
+              style: TextStyle(
+                color: AuraTokens.textMuted,
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 6),
+            TextButton(
+              onPressed: onOpenConversation,
+              style: TextButton.styleFrom(padding: EdgeInsets.zero),
+              child: const Text('Abrir conversación'),
+            ),
+          ],
+        ),
+      );
+    }
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.only(left: 14),
+      decoration: const BoxDecoration(
+        border: Border(
+          left: BorderSide(color: AuraTokens.border, width: 1),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'ÚLTIMO TURNO',
+            style: TextStyle(
+              color: AuraTokens.textMuted,
+              fontSize: 9.5,
+              letterSpacing: 1.8,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (lastUser != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              lastUser.text,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFFD9E8FF),
+                fontSize: 13,
+                height: 1.45,
+              ),
+            ),
+          ],
+          if (lastAura != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              lastAura.text,
+              maxLines: 6,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AuraTokens.textPrimary,
+                fontSize: 13.5,
+                height: 1.5,
+              ),
+            ),
+          ],
+          const SizedBox(height: 4),
+          TextButton(
+            onPressed: onOpenConversation,
+            style: TextButton.styleFrom(padding: EdgeInsets.zero),
+            child: const Text('Abrir conversación'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ConversationThread extends StatelessWidget {
+  const _ConversationThread({required this.turns});
+
+  final List<AuraConversationTurn> turns;
+
+  @override
+  Widget build(BuildContext context) {
+    if (turns.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Text(
+          'Escribí o dictá tu pregunta. El texto no sale del teléfono.',
+          style: TextStyle(
+            color: AuraTokens.textMuted,
+            fontSize: 13,
+            height: 1.5,
+          ),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [for (final turn in turns) _ConversationLine(turn: turn)],
+    );
+  }
+}
+
+/// Sin burbujas: una etiqueta discreta y el texto. La fuente solo se nombra
+/// cuando el modelo local produjo la respuesta, para no insinuar nada.
+class _ConversationLine extends StatelessWidget {
+  const _ConversationLine({required this.turn});
+
+  final AuraConversationTurn turn;
+
+  @override
+  Widget build(BuildContext context) {
+    final isUser = turn.role == 'user';
+    final fromModel = turn.source == 'local_llm';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                isUser ? 'TÚ' : 'AURA',
+                style: TextStyle(
+                  color: isUser ? AuraTokens.accentViolet : AuraTokens.accent,
+                  fontSize: 9.5,
+                  letterSpacing: 1.8,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (fromModel) ...[
+                const SizedBox(width: 8),
+                Text(
+                  'motor local',
+                  style: TextStyle(
+                    color: AuraTokens.textMuted,
+                    fontSize: 9,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            turn.text,
+            style: TextStyle(
+              color: isUser
+                  ? const Color(0xFFD9E8FF)
+                  : AuraTokens.textPrimary,
+              fontSize: 14,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TechLogLabel extends StatelessWidget {
+  const _TechLogLabel();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+    padding: EdgeInsets.only(top: 4, bottom: 10),
+    child: Text(
+      'REGISTRO TÉCNICO · ÚLTIMOS 10 EVENTOS',
+      style: TextStyle(
+        color: AuraTokens.textMuted,
+        fontSize: 9.5,
+        letterSpacing: 1.6,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
 }
