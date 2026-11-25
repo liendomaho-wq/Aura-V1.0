@@ -166,11 +166,17 @@ void main() {
   group('límites de memoria', () {
     test('solo conserva los últimos turnos y se borra por completo', () {
       final memory = AuraConversationMemory.instance;
-      for (var index = 0; index < 30; index++) {
+      memory.reset();
+      const extra = 10;
+      for (
+        var index = 0;
+        index < AuraConversationMemory.maxTurns + extra;
+        index++
+      ) {
         memory.recordUserMessage('turno $index');
       }
       expect(memory.turns, hasLength(AuraConversationMemory.maxTurns));
-      expect(memory.turns.first.text, 'turno 18');
+      expect(memory.turns.first.text, 'turno $extra');
 
       memory.recordAuraMessage('respuesta final');
       expect(memory.lastAuraMessage, 'respuesta final');

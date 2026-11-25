@@ -36,6 +36,22 @@ class AgentController {
       '[ KERNEL MASTER ACTIVE ] Aura Centinela en línea. Listo para auditar los sockets. Ingrese un comando o consulta táctica.';
   static final AuraVoiceEngine _voiceEngine = AuraVoiceEngine();
   static final AuraSecureVault _agentAuditVault = AuraSecureVault();
+
+  /// Intenciones donde el modelo local puede responder mejor que una lista
+  /// fija. Quedan fuera el estado, la revisión de seguridad y el análisis de
+  /// amenazas: esos datos se leen del dispositivo y no se inventan.
+  static const Set<AuraIntentKind> _conversationalKinds = <AuraIntentKind>{
+    AuraIntentKind.greet,
+    AuraIntentKind.identity,
+    AuraIntentKind.capabilities,
+    AuraIntentKind.insult,
+    AuraIntentKind.praise,
+    AuraIntentKind.existential,
+    AuraIntentKind.fear,
+    AuraIntentKind.provocation,
+    AuraIntentKind.humor,
+  };
+
   static const Map<AuraIntentKind, List<String>> _responses = {
     AuraIntentKind.greet: [
       'Saludos, operador. Sistemas de monitoreo listos.',
@@ -760,12 +776,67 @@ class AgentController {
         await _speakResponse(message);
         return;
       }
+      // Una pregunta de conversación no tiene una respuesta preescrita que
+      // valga la pena: si el modelo local está cargado se le pide la respuesta
+      // y, si falla o tarda demasiado, se cae a la lista determinista. El estado
+      // real (status, securityCheck, analyzeThreats) nunca pasa por aquí: esos
+      // datos se leen del dispositivo y no se improvisan.
+      if (_localLlmPlanner != null &&
+          _conversationalKinds.contains(intent.kind)) {
+        final plan = await _planWithLocalModel(
+          text,
+          cancellationToken,
+          conversational: true,
+        );
+        cancellationToken.throwIfCancelled();
+        final modelAnswer = plan.answer;
+        if (plan.hasAnswer && modelAnswer != null) {
+          _emit(intent.toEvent());
+          _emit(
+            AgentEvent(
+              kind: AgentEventKind.success,
+              message: modelAnswer,
+              data: <String, dynamic>{
+                'intent': intent.name,
+                'source': 'local_llm',
+                'local_llm_status': plan.status.name,
+                'answer_is_unverified': true,
+                'operation_id': operationId,
+              },
+            ),
+          );
+          AuraConversationMemory.instance.recordAuraMessage(
+            modelAnswer,
+            source: 'local_llm',
+          );
+          await _speakResponse(modelAnswer);
+          return;
+        }
+        _emit(
+          AgentEvent(
+            kind: AgentEventKind.thought,
+            message:
+                'El motor local no dio una respuesta usable para esta '
+                'conversación: se usa la respuesta del sistema.',
+            data: <String, dynamic>{
+              'intent': intent.name,
+              'local_llm_status': plan.status.name,
+              if (plan.errorCode != null) 'local_llm_error': plan.errorCode,
+              'operation_id': operationId,
+            },
+          ),
+        );
+      }
+
       final variants = _responses[responseKind];
       if (variants != null) {
         final cursor = _responseCursors[responseKind] ?? 0;
         final response = variants[cursor % variants.length];
         _responseCursors[responseKind] = cursor + 1;
-        AuraConversationMemory.instance.recordAuraMessage(response);
+        AuraConversationMemory.instance.recordAuraMessage(
+          response,
+          source: 'system',
+        );
         _emit(intent.toEvent());
         _emit(
           AgentEvent(
@@ -773,6 +844,7 @@ class AgentController {
             message: response,
             data: <String, dynamic>{
               'intent': intent.name,
+              'source': 'system',
               'response_index': cursor % variants.length,
               'response_count': variants.length,
             },
@@ -799,7 +871,10 @@ class AgentController {
               },
             ),
           );
-          AuraConversationMemory.instance.recordAuraMessage(answer);
+          AuraConversationMemory.instance.recordAuraMessage(
+            answer,
+            source: 'local_llm',
+          );
           await _speakResponse(answer);
           return;
         }
@@ -1183,8 +1258,9 @@ class AgentController {
 
   Future<LocalLlmPlanResult> _planWithLocalModel(
     String instruction,
-    AgentCancellationToken cancellationToken,
-  ) async {
+    AgentCancellationToken cancellationToken, {
+    bool conversational = false,
+  }) async {
     try {
       final planner = _localLlmPlanner ??= LocalLlmPlanner();
       final state = _securityState;
@@ -1195,6 +1271,7 @@ class AgentController {
         instruction,
         cancellationToken: cancellationToken,
         conversationContext: context,
+        conversational: conversational,
       );
     } on Object {
       // The planner maps its own failures; this guards against a programming

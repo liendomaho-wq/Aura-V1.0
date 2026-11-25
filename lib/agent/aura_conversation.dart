@@ -25,11 +25,17 @@ class AuraConversationTurn {
     required this.role,
     required this.text,
     required this.timestamp,
+    this.source,
   });
 
   final String role;
   final String text;
   final DateTime timestamp;
+
+  /// Motor que produjo el texto cuando es una respuesta de Aura:
+  /// `local_llm` cuando lo generó el modelo, `system` cuando salió de la capa
+  /// determinista. Nulo en los turnos del usuario.
+  final String? source;
 }
 
 /// Memoria conversacional acotada y determinista.
@@ -43,7 +49,7 @@ class AuraConversationMemory {
 
   static final AuraConversationMemory instance = AuraConversationMemory._();
 
-  static const int maxTurns = 12;
+  static const int maxTurns = 40;
   static const int maxStoredTextLength = 400;
   static const int maxFollowUpLength = 200;
   static const int maxConfirmationLength = 60;
@@ -81,11 +87,11 @@ class AuraConversationMemory {
 
   void recordUserMessage(String text) => _append('user', text);
 
-  void recordAuraMessage(String text) {
+  void recordAuraMessage(String text, {String? source}) {
     final normalized = text.trim();
     if (normalized.isEmpty) return;
     _lastAuraMessage = normalized;
-    _append('aura', normalized);
+    _append('aura', normalized, source: source);
   }
 
   /// Contexto estructurado para el planificador local. Solo incluye valores
@@ -182,7 +188,7 @@ class AuraConversationMemory {
     return null;
   }
 
-  void _append(String role, String text) {
+  void _append(String role, String text, {String? source}) {
     final normalized = text.trim();
     if (normalized.isEmpty) return;
     final bounded = normalized.length <= maxStoredTextLength
@@ -193,6 +199,7 @@ class AuraConversationMemory {
         role: role,
         text: bounded,
         timestamp: DateTime.now(),
+        source: source,
       ),
     );
     if (_turns.length > maxTurns) {

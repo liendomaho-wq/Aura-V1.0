@@ -10,6 +10,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// El registro técnico vive en la vista de conversación desde que la pantalla
+/// principal se dividió en ESENCIAL y CONVERSACIÓN.
+Future<void> _openConversation(WidgetTester tester) async {
+  await tester.tap(find.text('CONVERSACIÓN'));
+  await _pumpAuraFrames(tester);
+}
+
 Future<void> _pumpAuraFrames(WidgetTester tester) async {
   // Aura's avatar intentionally loops forever; settle() can never complete.
   // Advance a bounded number of frames while allowing async startup work to run.
@@ -264,6 +271,7 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await _pumpAuraFrames(tester);
     expect(find.text('DEFENSA: OFF'), findsOneWidget);
+    await _openConversation(tester);
     expect(
       find.textContaining(
         '[CRIT] TÚNEL REVOCADO POR ANDROID O POR EL OPERADOR',

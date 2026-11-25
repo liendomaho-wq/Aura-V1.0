@@ -200,14 +200,63 @@ class LlmConversationReply {
     if (answer is! String) return null;
     final text = answer.trim();
     if (text.isEmpty || text.length > maxAnswerChars) return null;
-    if (text.runes.any(
-      (rune) =>
-          rune == 0 ||
-          (rune < 0x20 && rune != 0x09 && rune != 0x0a && rune != 0x0d),
-    )) {
-      return null;
-    }
+    if (_hasForbiddenRune(text)) return null;
     return LlmConversationReply._(text);
+  }
+
+  /// Accepts a plain-text answer produced for an open question.
+  ///
+  /// The JSON contract stays reserved for tool proposals: a model that answers
+  /// a question about a concept has no reason to wrap the text in a schema, and
+  /// demanding it discarded correct answers. This path still bounds length,
+  /// removes Markdown fences and rejects control characters, so the text that
+  /// reaches the screen is display-only, exactly like [parse].
+  static LlmConversationReply? fromPlainText(String output) {
+    final text = _stripDecorations(output);
+    if (text.isEmpty) return null;
+    if (utf8.encode(text).length > LlmToolProposal.maxOutputBytes) return null;
+    if (_hasForbiddenRune(text)) return null;
+    return LlmConversationReply._(_boundLength(text));
+  }
+
+  static final RegExp _prefixPattern = RegExp(
+    r'^(?:respuesta|answer|aura|assistant|asistente)\s*:\s*',
+    caseSensitive: false,
+  );
+
+  static String _stripDecorations(String output) {
+    var text = output.trim();
+    if (text.startsWith('```')) {
+      final firstBreak = text.indexOf('\n');
+      text = firstBreak == -1 ? '' : text.substring(firstBreak + 1);
+    }
+    if (text.endsWith('```')) {
+      text = text.substring(0, text.length - 3);
+    }
+    text = text.trim();
+    // Un prefijo repetido ("Aura: Aura: ...") tampoco es contenido.
+    while (_prefixPattern.hasMatch(text)) {
+      text = text.replaceFirst(_prefixPattern, '').trim();
+    }
+    return text;
+  }
+
+  static bool _hasForbiddenRune(String text) => text.runes.any(
+    (rune) =>
+        rune == 0 ||
+        (rune < 0x20 && rune != 0x09 && rune != 0x0a && rune != 0x0d),
+  );
+
+  /// Cuts at the last sentence boundary under the limit when possible, so a
+  /// long answer is not truncated mid-word.
+  static String _boundLength(String text) {
+    if (text.length <= maxAnswerChars) return text;
+    final window = text.substring(0, maxAnswerChars);
+    final lastStop = window.lastIndexOf(RegExp(r'[.!?…]\s'));
+    final cut = lastStop > maxAnswerChars ~/ 2
+        ? window.substring(0, lastStop + 1)
+        : window;
+    return '${cut.trimRight()}…';
   }
 }
 
