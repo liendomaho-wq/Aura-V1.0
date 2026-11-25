@@ -36,6 +36,7 @@ class AgentController {
       '[ KERNEL MASTER ACTIVE ] Aura Centinela en línea. Listo para auditar los sockets. Ingrese un comando o consulta táctica.';
   static final AuraVoiceEngine _voiceEngine = AuraVoiceEngine();
   static final AuraSecureVault _agentAuditVault = AuraSecureVault();
+
   /// Intenciones donde el modelo local puede responder mejor que una lista
   /// fija. Quedan fuera el estado, la revisión de seguridad y el análisis de
   /// amenazas: esos datos se leen del dispositivo y no se inventan.

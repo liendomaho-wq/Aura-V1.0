@@ -33,10 +33,7 @@ void main() {
     });
 
     test('rechaza caracteres de control', () {
-      expect(
-        LlmConversationReply.fromPlainText('hola\u0000mundo'),
-        isNull,
-      );
+      expect(LlmConversationReply.fromPlainText('hola\u0000mundo'), isNull);
     });
 
     test('acota una respuesta larga sin cortar a mitad de palabra', () {

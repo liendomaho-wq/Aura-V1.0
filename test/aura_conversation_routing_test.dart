@@ -22,14 +22,13 @@ class _PlainTextRuntime extends AuraLlmRuntime {
   Stream<AuraLlmEvent> get events => _events.stream;
 
   @override
-  Future<AuraLlmCapabilities> capabilities() async =>
-      const AuraLlmCapabilities(
-        available: true,
-        loaded: true,
-        backend: 'llama.cpp',
-        abi: 'arm64-v8a',
-        maxContextTokens: 8192,
-      );
+  Future<AuraLlmCapabilities> capabilities() async => const AuraLlmCapabilities(
+    available: true,
+    loaded: true,
+    backend: 'llama.cpp',
+    abi: 'arm64-v8a',
+    maxContextTokens: 8192,
+  );
 
   @override
   Future<String> startGeneration({
@@ -42,7 +41,9 @@ class _PlainTextRuntime extends AuraLlmRuntime {
     _events.add(
       AuraLlmEvent(operationId: operationId, type: 'token', text: reply),
     );
-    _events.add(const AuraLlmEvent(operationId: operationId, type: 'completed'));
+    _events.add(
+      const AuraLlmEvent(operationId: operationId, type: 'completed'),
+    );
     return operationId;
   }
 
@@ -137,27 +138,30 @@ void main() {
     expect(turns.last.source, 'local_llm');
   });
 
-  test('sin modelo enlazado la conversación usa la capa determinista', () async {
-    AuraConversationMemory.instance.reset();
-    final controller = AgentController.instance;
-    controller.bindLocalLlmPlanner(null);
+  test(
+    'sin modelo enlazado la conversación usa la capa determinista',
+    () async {
+      AuraConversationMemory.instance.reset();
+      final controller = AgentController.instance;
+      controller.bindLocalLlmPlanner(null);
 
-    final start = controller.history.length;
-    await controller.run('hola aura');
+      final start = controller.history.length;
+      await controller.run('hola aura');
 
-    final events = controller.history.skip(start).toList();
-    final answer = events.where(
-      (event) =>
-          event.kind == AgentEventKind.success &&
-          event.data?['source'] == 'system',
-    );
-    expect(answer, isNotEmpty);
-    expect(
-      events.any((event) => event.data?['source'] == 'local_llm'),
-      isFalse,
-    );
-    expect(AuraConversationMemory.instance.turns.last.source, 'system');
-  });
+      final events = controller.history.skip(start).toList();
+      final answer = events.where(
+        (event) =>
+            event.kind == AgentEventKind.success &&
+            event.data?['source'] == 'system',
+      );
+      expect(answer, isNotEmpty);
+      expect(
+        events.any((event) => event.data?['source'] == 'local_llm'),
+        isFalse,
+      );
+      expect(AuraConversationMemory.instance.turns.last.source, 'system');
+    },
+  );
 
   test('el estado de seguridad nunca se le pregunta al modelo', () async {
     AuraConversationMemory.instance.reset();

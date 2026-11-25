@@ -647,8 +647,7 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
           );
         }
       }
-      if (mounted) {
-        }
+      if (mounted) {}
     } finally {
       if (mounted) setState(() => _isRunning = false);
     }
@@ -1214,7 +1213,9 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                                     child: TextButton(
                                       onPressed: () =>
                                           showAuraActivitySheet(context),
-                                      child: const Text('Ver todo en actividad'),
+                                      child: const Text(
+                                        'Ver todo en actividad',
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: 12),
@@ -1222,10 +1223,11 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
                                     const _SilentStream()
                                   else ...[
                                     const _TechLogLabel(),
-                                    for (final event in events.reversed
-                                        .take(10)
-                                        .toList()
-                                        .reversed)
+                                    for (final event
+                                        in events.reversed
+                                            .take(10)
+                                            .toList()
+                                            .reversed)
                                       _SyslogLine(event: event),
                                   ],
                                 ],
@@ -2648,9 +2650,7 @@ class _LastExchangeCard extends StatelessWidget {
       margin: const EdgeInsets.only(top: 4),
       padding: const EdgeInsets.only(left: 14),
       decoration: const BoxDecoration(
-        border: Border(
-          left: BorderSide(color: AuraTokens.border, width: 1),
-        ),
+        border: Border(left: BorderSide(color: AuraTokens.border, width: 1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2773,9 +2773,7 @@ class _ConversationLine extends StatelessWidget {
           Text(
             turn.text,
             style: TextStyle(
-              color: isUser
-                  ? const Color(0xFFD9E8FF)
-                  : AuraTokens.textPrimary,
+              color: isUser ? const Color(0xFFD9E8FF) : AuraTokens.textPrimary,
               fontSize: 14,
               height: 1.5,
             ),

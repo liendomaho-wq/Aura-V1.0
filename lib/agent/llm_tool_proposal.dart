@@ -243,7 +243,8 @@ class LlmConversationReply {
 
   static bool _hasForbiddenRune(String text) => text.runes.any(
     (rune) =>
-        rune == 0 || (rune < 0x20 && rune != 0x09 && rune != 0x0a && rune != 0x0d),
+        rune == 0 ||
+        (rune < 0x20 && rune != 0x09 && rune != 0x0a && rune != 0x0d),
   );
 
   /// Cuts at the last sentence boundary under the limit when possible, so a
@@ -252,7 +253,9 @@ class LlmConversationReply {
     if (text.length <= maxAnswerChars) return text;
     final window = text.substring(0, maxAnswerChars);
     final lastStop = window.lastIndexOf(RegExp(r'[.!?…]\s'));
-    final cut = lastStop > maxAnswerChars ~/ 2 ? window.substring(0, lastStop + 1) : window;
+    final cut = lastStop > maxAnswerChars ~/ 2
+        ? window.substring(0, lastStop + 1)
+        : window;
     return '${cut.trimRight()}…';
   }
 }
