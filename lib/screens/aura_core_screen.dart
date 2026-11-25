@@ -647,10 +647,28 @@ class _AuraCoreScreenState extends State<AuraCoreScreen>
           );
         }
       }
-      if (mounted) {}
+      if (mounted) _followConversation();
     } finally {
       if (mounted) setState(() => _isRunning = false);
     }
+  }
+
+  /// Baja al último turno solo si el operador ya estaba al final del hilo.
+  /// Si está leyendo algo más arriba, la vista no se mueve: era exactamente el
+  /// salto constante que hacía inservible la pantalla.
+  void _followConversation() {
+    if (_view != _AuraCoreView.conversation) return;
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.maxScrollExtent - position.pixels > 160) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   Future<void> _runFindingsScan() async {
